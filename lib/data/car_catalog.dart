@@ -52,8 +52,8 @@ abstract final class CarCatalog {
       'Urban Cruiser', 'Yaris',
     ], monogram: 'TO'),
     CarMake('Nissan', [
-      'Altima', 'Kicks', 'Maxima', 'Navara', 'Pathfinder', 'Patrol',
-      'Sunny', 'X-Trail', 'Xterra', 'Z',
+      'Altima', 'Armada', 'Kicks', 'Maxima', 'Navara', 'Pathfinder',
+      'Patrol', 'Sunny', 'X-Trail', 'Xterra', 'Z',
     ], monogram: 'NI'),
     CarMake('Lexus', [
       'ES', 'GX', 'IS', 'LS', 'LX', 'NX', 'RX', 'UX',

@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/app_state.dart';
 import '../../data/models.dart';
+
+String _orderStatusLabel(S s, OrderStatus status) => switch (status) {
+      OrderStatus.placed => s.t('تم الطلب', 'Placed'),
+      OrderStatus.processing => s.t('قيد التجهيز', 'Being prepared'),
+      OrderStatus.delivered => s.t('تم التوصيل', 'Delivered'),
+      OrderStatus.completed => s.t('مكتمل', 'Completed'),
+    };
 
 /// Payments — escrow wallet view across service requests and shop orders.
 class PaymentsScreen extends ConsumerWidget {
@@ -12,6 +20,8 @@ class PaymentsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final requests = ref.watch(requestsProvider);
     final orders = ref.watch(ordersProvider);
 
@@ -20,17 +30,24 @@ class PaymentsScreen extends ConsumerWidget {
       for (final r in requests)
         if (r.status != RequestStatus.completed &&
             r.status != RequestStatus.disputed)
-          ('Service #${r.id}', r.offering.name, r.total, 0),
+          (s.t('خدمة #${r.id}', 'Service #${r.id}'), r.offering.name, r.total, 0),
       for (final r in requests)
         if (r.status == RequestStatus.disputed)
-          ('Service #${r.id}', '${r.offering.name} · with admin', r.total, 2),
+          (
+            s.t('خدمة #${r.id}', 'Service #${r.id}'),
+            s.t('${r.offering.name} · لدى الإدارة',
+                '${r.offering.name} · with admin'),
+            r.total,
+            2
+          ),
       for (final r in requests)
         if (r.status == RequestStatus.completed)
-          ('Service #${r.id}', r.offering.name, r.total, 1),
+          (s.t('خدمة #${r.id}', 'Service #${r.id}'), r.offering.name, r.total, 1),
       for (final o in orders)
         (
-          'Order ${o.id}',
-          '${o.items.length} parts · ${o.status.label}',
+          s.t('طلب ${o.id}', 'Order ${o.id}'),
+          s.t('${o.items.length} قطع · ${_orderStatusLabel(s, o.status)}',
+              '${o.items.length} parts · ${_orderStatusLabel(s, o.status)}'),
           o.total,
           o.status.held ? 0 : 1,
         ),
@@ -44,7 +61,7 @@ class PaymentsScreen extends ConsumerWidget {
         .fold<double>(0, (sum, e) => sum + e.$3);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Payments')),
+      appBar: AppBar(title: Text(s.t('المدفوعات', 'Payments'))),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -53,29 +70,30 @@ class PaymentsScreen extends ConsumerWidget {
               children: [
                 Expanded(
                   child: AppCard(
-                    color: AppColors.amberSoft,
+                    color: ak.amberSoft,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
                             Icon(Icons.lock_outline_rounded,
-                                size: 15, color: AppColors.amberText),
-                            SizedBox(width: 6),
-                            Text('Held in escrow',
+                                size: 15, color: ak.amberText),
+                            const SizedBox(width: 6),
+                            Text(s.t('محتجز في الضمان', 'Held in escrow'),
                                 style: TextStyle(
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.w700,
-                                    color: AppColors.amberText)),
+                                    color: ak.amberText)),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'OMR ${heldTotal.toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          s.t('${heldTotal.toStringAsFixed(2)} ${s.omr}',
+                              'OMR ${heldTotal.toStringAsFixed(2)}'),
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF7C5205),
+                            color: ak.amberDeep,
                           ),
                         ),
                       ],
@@ -85,29 +103,30 @@ class PaymentsScreen extends ConsumerWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: AppCard(
-                    color: AppColors.goodSoft,
+                    color: ak.successSoft,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
                             Icon(Icons.lock_open_rounded,
-                                size: 15, color: AppColors.good),
-                            SizedBox(width: 6),
-                            Text('Released',
+                                size: 15, color: ak.success),
+                            const SizedBox(width: 6),
+                            Text(s.t('محرّر', 'Released'),
                                 style: TextStyle(
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.w700,
-                                    color: AppColors.good)),
+                                    color: ak.success)),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'OMR ${releasedTotal.toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          s.t('${releasedTotal.toStringAsFixed(2)} ${s.omr}',
+                              'OMR ${releasedTotal.toStringAsFixed(2)}'),
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF046C4E),
+                            color: ak.success,
                           ),
                         ),
                       ],
@@ -117,16 +136,17 @@ class PaymentsScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 16),
-            const SectionHeader('Transactions'),
+            SectionHeader(s.t('المعاملات', 'Transactions')),
             const SizedBox(height: 10),
             if (held.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Center(
                   child: Text(
-                    'No payments yet — they appear here when you book or order.',
+                    s.t('لا مدفوعات بعد — تظهر هنا عند الحجز أو الطلب.',
+                        'No payments yet — they appear here when you book or order.'),
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12.5, color: AppColors.ink2),
+                    style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                   ),
                 ),
               )
@@ -148,14 +168,14 @@ class PaymentsScreen extends ConsumerWidget {
                           size: 38,
                           radius: 12,
                           background: switch (e.$4) {
-                            0 => AppColors.amberSoft,
-                            2 => AppColors.badSoft,
-                            _ => AppColors.goodSoft,
+                            0 => ak.amberSoft,
+                            2 => ak.dangerSoft,
+                            _ => ak.successSoft,
                           },
                           foreground: switch (e.$4) {
-                            0 => const Color(0xFFB45309),
-                            2 => AppColors.bad,
-                            _ => AppColors.good,
+                            0 => ak.amberText,
+                            2 => ak.danger,
+                            _ => ak.success,
                           },
                         ),
                         const SizedBox(width: 11),
@@ -168,9 +188,8 @@ class PaymentsScreen extends ConsumerWidget {
                                       fontSize: 13,
                                       fontWeight: FontWeight.w700)),
                               Text(e.$2,
-                                  style: const TextStyle(
-                                      fontSize: 11.5,
-                                      color: AppColors.ink3)),
+                                  style: TextStyle(
+                                      fontSize: 11.5, color: ak.inkFaint)),
                             ],
                           ),
                         ),
@@ -178,15 +197,16 @@ class PaymentsScreen extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              'OMR ${e.$3.toStringAsFixed(2)}',
+                              s.t('${e.$3.toStringAsFixed(2)} ${s.omr}',
+                                  'OMR ${e.$3.toStringAsFixed(2)}'),
                               style: const TextStyle(
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w800),
                             ),
                             switch (e.$4) {
-                              0 => const StatusBadge.warn('Held'),
-                              2 => const StatusBadge.bad('Disputed'),
-                              _ => const StatusBadge.good('Released'),
+                              0 => StatusBadge.warn(s.t('محتجز', 'Held')),
+                              2 => StatusBadge.bad(s.t('نزاع', 'Disputed')),
+                              _ => StatusBadge.good(s.t('محرّر', 'Released')),
                             },
                           ],
                         ),

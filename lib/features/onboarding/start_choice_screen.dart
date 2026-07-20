@@ -81,7 +81,7 @@ class _StartChoiceScreenState extends ConsumerState<StartChoiceScreen> {
                               : Icons.circle_outlined,
                           color: _addCar
                               ? AppColors.brand
-                              : const Color(0xFFCBD5E1),
+                              : const Color(0xFFD8D1C4),
                         ),
                       ],
                     ),
@@ -151,7 +151,7 @@ class _StartChoiceScreenState extends ConsumerState<StartChoiceScreen> {
                           : Icons.circle_outlined,
                       color: !_addCar
                           ? AppColors.brand
-                          : const Color(0xFFCBD5E1),
+                          : const Color(0xFFD8D1C4),
                     ),
                   ],
                 ),

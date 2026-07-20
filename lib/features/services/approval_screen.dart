@@ -80,7 +80,7 @@ class ApprovalScreen extends ConsumerWidget {
                         gradient: const LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [Color(0xFFCBD5E1), Color(0xFF94A3B8)],
+                          colors: [Color(0xFFD8D1C4), Color(0xFFB0A996)],
                         ),
                         borderRadius: BorderRadius.circular(16),
                       ),

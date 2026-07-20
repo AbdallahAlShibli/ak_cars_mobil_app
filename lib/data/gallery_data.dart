@@ -33,6 +33,186 @@ extension GallerySortX on GallerySort {
       };
 }
 
+/// Cars-market filter — instant, local-first (same pattern as [ShopFilter]),
+/// modelled on a full marketplace filter: single-value criteria (make, model,
+/// year range) plus multi-select facets (deal/body/spec/transmission/
+/// drivetrain/fuel/cylinders/colors/region) that OR within a facet and AND
+/// across facets. `null`/empty means "no constraint". Price and mileage
+/// filters exclude "Ask for price" / unknown-value listings.
+class CarsFilter {
+  const CarsFilter({
+    this.make,
+    this.model,
+    this.trims = const {},
+    this.fromYear,
+    this.toYear,
+    this.dealTypes = const {},
+    this.bodyTypes = const {},
+    this.specGrades = const {},
+    this.transmissions = const {},
+    this.drivetrains = const {},
+    this.fuels = const {},
+    this.cylinders = const {},
+    this.exteriorColors = const {},
+    this.interiorColors = const {},
+    this.regions = const {},
+    this.cities = const {},
+    this.minPrice,
+    this.maxPrice,
+    this.maxMileage,
+    this.sort = GallerySort.newest,
+  });
+
+  final String? make;
+  final String? model;
+  final Set<String> trims;
+  final int? fromYear;
+  final int? toYear;
+  final Set<String> dealTypes;
+  final Set<String> bodyTypes;
+  final Set<String> specGrades;
+  final Set<String> transmissions;
+  final Set<String> drivetrains;
+  final Set<String> fuels;
+  final Set<int> cylinders;
+  final Set<String> exteriorColors;
+  final Set<String> interiorColors;
+
+  /// Governorate (the part after the comma in a listing's `region`).
+  final Set<String> regions;
+
+  /// Wilayat / city (the part before the comma).
+  final Set<String> cities;
+  final double? minPrice;
+  final double? maxPrice;
+  final int? maxMileage;
+  final GallerySort sort;
+
+  int get activeCount {
+    var n = 0;
+    if (make != null) n++;
+    if (model != null) n++;
+    if (trims.isNotEmpty) n++;
+    if (fromYear != null || toYear != null) n++;
+    if (dealTypes.isNotEmpty) n++;
+    if (bodyTypes.isNotEmpty) n++;
+    if (specGrades.isNotEmpty) n++;
+    if (transmissions.isNotEmpty) n++;
+    if (drivetrains.isNotEmpty) n++;
+    if (fuels.isNotEmpty) n++;
+    if (cylinders.isNotEmpty) n++;
+    if (exteriorColors.isNotEmpty) n++;
+    if (interiorColors.isNotEmpty) n++;
+    if (regions.isNotEmpty) n++;
+    if (cities.isNotEmpty) n++;
+    if (maxMileage != null) n++;
+    if (minPrice != null || maxPrice != null) n++;
+    return n;
+  }
+
+  bool matches(GalleryListing l) {
+    if (make != null && l.make != make) return false;
+    if (model != null && l.model != model) return false;
+    if (trims.isNotEmpty && !trims.contains(l.trim)) return false;
+    if (fromYear != null && l.year < fromYear!) return false;
+    if (toYear != null && l.year > toYear!) return false;
+    if (dealTypes.isNotEmpty && !dealTypes.contains(l.dealType)) return false;
+    if (bodyTypes.isNotEmpty && !bodyTypes.contains(l.bodyType)) return false;
+    if (specGrades.isNotEmpty && !specGrades.contains(l.specGrade)) {
+      return false;
+    }
+    if (transmissions.isNotEmpty &&
+        !transmissions.contains(l.transmission)) {
+      return false;
+    }
+    if (drivetrains.isNotEmpty && !drivetrains.contains(l.drivetrain)) {
+      return false;
+    }
+    if (fuels.isNotEmpty && !fuels.contains(l.fuel)) return false;
+    if (cylinders.isNotEmpty && !cylinders.contains(l.cylinders)) {
+      return false;
+    }
+    if (exteriorColors.isNotEmpty &&
+        !exteriorColors.contains(l.exteriorColor)) {
+      return false;
+    }
+    if (interiorColors.isNotEmpty &&
+        !interiorColors.contains(l.interiorColor)) {
+      return false;
+    }
+    if (regions.isNotEmpty && !regions.contains(l.governorate)) return false;
+    if (cities.isNotEmpty && !cities.contains(l.cityName)) return false;
+    if (maxMileage != null && l.mileageValue > maxMileage!) return false;
+    if (minPrice != null || maxPrice != null) {
+      final p = l.price;
+      if (p == null) return false;
+      if (minPrice != null && p < minPrice!) return false;
+      if (maxPrice != null && p > maxPrice!) return false;
+    }
+    return true;
+  }
+
+  List<GalleryListing> apply(Iterable<GalleryListing> feed) {
+    final list = feed.where(matches).toList();
+    list.sort((a, b) => switch (sort) {
+          GallerySort.newest =>
+            a.postedMinutesAgo.compareTo(b.postedMinutesAgo),
+          GallerySort.oldest =>
+            b.postedMinutesAgo.compareTo(a.postedMinutesAgo),
+          GallerySort.priceLowHigh => (a.price ?? double.infinity)
+              .compareTo(b.price ?? double.infinity),
+          GallerySort.priceHighLow =>
+            (b.price ?? -1).compareTo(a.price ?? -1),
+        });
+    return list;
+  }
+
+  CarsFilter copyWith({
+    String? Function()? make,
+    String? Function()? model,
+    Set<String>? trims,
+    int? Function()? fromYear,
+    int? Function()? toYear,
+    Set<String>? dealTypes,
+    Set<String>? bodyTypes,
+    Set<String>? specGrades,
+    Set<String>? transmissions,
+    Set<String>? drivetrains,
+    Set<String>? fuels,
+    Set<int>? cylinders,
+    Set<String>? exteriorColors,
+    Set<String>? interiorColors,
+    Set<String>? regions,
+    Set<String>? cities,
+    double? Function()? minPrice,
+    double? Function()? maxPrice,
+    int? Function()? maxMileage,
+    GallerySort? sort,
+  }) =>
+      CarsFilter(
+        make: make != null ? make() : this.make,
+        model: model != null ? model() : this.model,
+        trims: trims ?? this.trims,
+        fromYear: fromYear != null ? fromYear() : this.fromYear,
+        toYear: toYear != null ? toYear() : this.toYear,
+        dealTypes: dealTypes ?? this.dealTypes,
+        bodyTypes: bodyTypes ?? this.bodyTypes,
+        specGrades: specGrades ?? this.specGrades,
+        transmissions: transmissions ?? this.transmissions,
+        drivetrains: drivetrains ?? this.drivetrains,
+        fuels: fuels ?? this.fuels,
+        cylinders: cylinders ?? this.cylinders,
+        exteriorColors: exteriorColors ?? this.exteriorColors,
+        interiorColors: interiorColors ?? this.interiorColors,
+        regions: regions ?? this.regions,
+        cities: cities ?? this.cities,
+        minPrice: minPrice != null ? minPrice() : this.minPrice,
+        maxPrice: maxPrice != null ? maxPrice() : this.maxPrice,
+        maxMileage: maxMileage != null ? maxMileage() : this.maxMileage,
+        sort: sort ?? this.sort,
+      );
+}
+
 class GalleryListing {
   const GalleryListing({
     required this.id,
@@ -100,6 +280,23 @@ class GalleryListing {
 extension GalleryListingX on GalleryListing {
   String get displayTitle => '$year $make $model $trim'.trim();
 
+  /// Numeric odometer parsed from the display string ("200,000+" → 200000)
+  /// for range filtering.
+  int get mileageValue =>
+      int.tryParse(mileage.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+
+  /// Listing `region` is stored "City, Governorate" — split for the
+  /// Region (governorate) and City filter facets.
+  String get cityName {
+    final i = region.indexOf(',');
+    return (i < 0 ? region : region.substring(0, i)).trim();
+  }
+
+  String get governorate {
+    final i = region.indexOf(',');
+    return (i < 0 ? region : region.substring(i + 1)).trim();
+  }
+
   String get postedLabel {
     if (postedMinutesAgo < 60) return '$postedMinutesAgo min ago';
     final h = postedMinutesAgo ~/ 60;
@@ -108,8 +305,50 @@ extension GalleryListingX on GalleryListing {
 }
 
 abstract final class GalleryData {
+  /// Sub-model (trim) options per model — mirrors the marketplace's
+  /// "Sub-Model" facet. Covers the feed's models plus popular ones so the
+  /// filter is rarely empty; extend as inventory grows.
   static const trimsByModel = {
+    // Toyota
     'Camry': ['SE', 'LE', 'XSE', 'XLE', 'GL', 'GLX'],
+    'Corolla': ['XLI', 'GLI', 'SE', 'LE', 'XSE'],
+    'Land Cruiser': ['GX', 'GXR', 'VX', 'VXR', 'GR Sport'],
+    'Land Cruiser 70': ['LX', 'GXR'],
+    'Prado': ['TXL', 'VXL', 'VX', 'GXR'],
+    'Hilux': ['GLX', 'SR5', 'Adventure'],
+    'RAV4': ['LE', 'XLE', 'Limited', 'Adventure'],
+    'Fortuner': ['GX', 'GXR', 'VXR', 'Legender'],
+    'Yaris': ['Y', 'Y-Plus'],
+    // Nissan
+    'Altima': ['S', 'SV', 'SL', 'SR', 'Platinum'],
+    'Patrol': ['XE', 'SE', 'LE', 'Platinum', 'Nismo'],
+    'Armada': ['SV', 'SL', 'Platinum'],
+    'X-Trail': ['S', 'SV', 'SL'],
+    'Sunny': ['S', 'SV', 'SL'],
+    'Pathfinder': ['S', 'SV', 'SL', 'Platinum'],
+    // Lexus
+    'ES': ['250', '300h', '350'],
+    'RX': ['300', '350', '350h', '500h'],
+    'LX': ['570', '600'],
+    'GX': ['460', '550'],
+    'NX': ['250', '350', '350h'],
+    // Honda
+    'Accord': ['LX', 'EX', 'Sport', 'Touring'],
+    'Civic': ['LX', 'EX', 'Sport', 'Touring'],
+    'CR-V': ['LX', 'EX', 'Touring'],
+    // Hyundai
+    'Elantra': ['SE', 'SEL', 'Limited', 'N Line'],
+    'Sonata': ['SE', 'SEL', 'Limited', 'N Line'],
+    'Tucson': ['GL', 'GLS', 'Limited'],
+    'Santa Fe': ['GL', 'GLS', 'Limited', 'Calligraphy'],
+    'Accent': ['GL', 'GLS', 'SR'],
+    // Mitsubishi
+    'Pajero': ['GLS', 'GLX', 'Signature'],
+    'Montero Sport': ['GLX', 'GLS'],
+    // Kia
+    'Sportage': ['LX', 'EX', 'GT-Line'],
+    'Sorento': ['LX', 'EX', 'SX'],
+    'Cerato': ['LX', 'EX', 'GT'],
   };
 
   static const listings = [
@@ -237,7 +476,7 @@ abstract final class GalleryData {
       dealType: 'Sale only',
       photoCount: 18,
       icon: Icons.directions_car_filled_rounded,
-      tint: Color(0xFF94A3B8),
+      tint: Color(0xFFB0A996),
       sellerName: 'Ahmed Al Abri',
       sellerJoined: '19/9/2023',
       sellerAds: 5,

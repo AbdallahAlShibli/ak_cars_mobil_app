@@ -96,10 +96,12 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
           onTap: onPick,
           child: Container(
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: AkColors.of(context).surface,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: _make == make ? AppColors.brand : AppColors.border,
+                color: _make == make
+                    ? AkColors.of(context).ink
+                    : AkColors.of(context).border,
                 width: _make == make ? 2 : 1,
               ),
             ),
@@ -348,10 +350,10 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
                         TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                 Text(
                   'OMR ${_draft.minPrice.round()} — ${_draft.maxPrice.round()}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.brandDark),
+                      color: AkColors.of(context).ink),
                 ),
               ],
             ),
@@ -360,7 +362,7 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
               min: 0,
               max: 100,
               divisions: 20,
-              activeColor: AppColors.brand,
+              activeColor: AkColors.of(context).primary,
               onChanged: (v) => setState(() => _draft =
                   _draft.copyWith(minPrice: v.start, maxPrice: v.end)),
             ),
@@ -418,6 +420,7 @@ class _PickerField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     final filled = value != null;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -434,10 +437,10 @@ class _PickerField extends StatelessWidget {
             padding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: ak.surface,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: filled ? AppColors.brand : AppColors.border,
+                color: filled ? ak.ink : ak.border,
                 width: 1.5,
               ),
             ),
@@ -445,7 +448,7 @@ class _PickerField extends StatelessWidget {
               children: [
                 Icon(icon,
                     size: 18,
-                    color: filled ? AppColors.brand : AppColors.ink3),
+                    color: filled ? ak.ink : ak.inkFaint),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -455,7 +458,7 @@ class _PickerField extends StatelessWidget {
                         label,
                         style: TextStyle(
                           fontSize: filled ? 10.5 : 13,
-                          color: AppColors.ink3,
+                          color: ak.inkFaint,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -468,14 +471,13 @@ class _PickerField extends StatelessWidget {
                       else if (hint != null)
                         Text(
                           hint!,
-                          style: const TextStyle(
-                              fontSize: 11, color: AppColors.ink3),
+                          style: TextStyle(
+                              fontSize: 11, color: ak.inkFaint),
                         ),
                     ],
                   ),
                 ),
-                const Icon(Icons.expand_more_rounded,
-                    color: Color(0xFFCBD5E1)),
+                Icon(Icons.expand_more_rounded, color: ak.inkFaint),
               ],
             ),
           ),
@@ -500,6 +502,7 @@ class _OptionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -509,10 +512,10 @@ class _OptionRow extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
-          color: AppColors.card,
+          color: ak.surface,
           borderRadius: BorderRadius.circular(13),
           border: Border.all(
-            color: selected ? AppColors.brand : AppColors.border,
+            color: selected ? ak.ink : ak.border,
             width: selected ? 2 : 1,
           ),
         ),
@@ -520,7 +523,7 @@ class _OptionRow extends StatelessWidget {
           children: [
             Icon(icon,
                 size: 17,
-                color: selected ? AppColors.brand : AppColors.ink3),
+                color: selected ? ak.ink : ak.inkFaint),
             const SizedBox(width: 10),
             Expanded(
               child: Text(label,
@@ -528,8 +531,7 @@ class _OptionRow extends StatelessWidget {
                       fontSize: 13.5, fontWeight: FontWeight.w600)),
             ),
             if (selected)
-              const Icon(Icons.check_rounded,
-                  size: 18, color: AppColors.brand),
+              Icon(Icons.check_rounded, size: 18, color: ak.ink),
           ],
         ),
       ),

@@ -1,40 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/app_state.dart';
 
 class _Slide {
-  const _Slide(this.icon, this.title, this.body, this.badge);
+  const _Slide(this.icon, this.title, this.body);
+
   final IconData icon;
-  final String title;
-  final String body;
-  final IconData badge;
+  final L title;
+  final L body;
 }
 
 const _slides = [
   _Slide(
-    Icons.build_rounded,
-    'Trusted workshops,\none tap away',
-    'Compare verified providers near you, approve real quotes, and track every step of the work — live.',
-    Icons.verified_rounded,
+    LucideIcons.wrench,
+    L('ورش موثوقة،\nبضغطة واحدة', 'Trusted workshops,\none tap away'),
+    L(
+      'قارن مزودي الخدمة الموثّقين القريبين منك، واعتمد عروض أسعار حقيقية، وتابع كل خطوة من العمل مباشرة.',
+      'Compare verified providers near you, approve real quotes, and track every step of the work — live.',
+    ),
   ),
   _Slide(
-    Icons.settings_rounded,
-    'Parts that fit,\ndelivered right',
-    'Shop parts for your car — or any car — with filters for category, provider, price, and region.',
-    Icons.local_shipping_rounded,
+    LucideIcons.shoppingBag,
+    L('قطع مناسبة،\nتوصلك حيث أنت', 'Parts that fit,\ndelivered right'),
+    L(
+      'تسوّق قطع الغيار لسيارتك — أو لأي سيارة — مع فلاتر للفئة والمزوّد والسعر والمنطقة.',
+      'Shop parts for your car — or any car — with filters for category, provider, price, and region.',
+    ),
   ),
   _Slide(
-    Icons.sell_rounded,
-    'Buy & sell cars\nwith confidence',
-    'Browse listings across Oman, save favorites, and post your own ad in minutes.',
-    Icons.favorite_rounded,
+    LucideIcons.car,
+    L('بِع واشترِ السيارات\nبثقة', 'Buy & sell cars\nwith confidence'),
+    L(
+      'تصفّح الإعلانات في كل عُمان، واحفظ المفضلة، وانشر إعلانك في دقائق.',
+      'Browse listings across Oman, save favorites, and post your own ad in minutes.',
+    ),
   ),
 ];
 
-/// First-launch guide (rule 2) — shown once, skippable.
+/// First-launch guide — Sand & Ink restyle of the original slides.
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -59,7 +67,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     return Scaffold(
+      backgroundColor: ak.bg,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -69,10 +80,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 alignment: AlignmentDirectional.centerEnd,
                 child: TextButton(
                   onPressed: _finish,
-                  child: const Text(
-                    'Skip',
+                  child: Text(
+                    s.t('تخطّي', 'Skip'),
                     style: TextStyle(
-                      color: AppColors.ink2,
+                      color: ak.inkSub,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -84,61 +95,41 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   itemCount: _slides.length,
                   onPageChanged: (i) => setState(() => _page = i),
                   itemBuilder: (context, i) {
-                    final s = _slides[i];
+                    final slide = _slides[i];
                     return Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              width: 190,
-                              height: 190,
-                              decoration: BoxDecoration(
-                                color: AppColors.brandSoft,
-                                borderRadius: BorderRadius.circular(48),
-                              ),
-                              child: Icon(s.icon,
-                                  size: 74, color: AppColors.brand),
-                            ),
-                            Positioned(
-                              top: -8,
-                              right: -8,
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: AppColors.goodSoft,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: AppColors.bg, width: 4),
-                                ),
-                                child: Icon(s.badge,
-                                    size: 20, color: AppColors.good),
-                              ),
-                            ),
-                          ],
+                        Container(
+                          width: 170,
+                          height: 170,
+                          decoration: BoxDecoration(
+                            color: ak.surface,
+                            borderRadius: BorderRadius.circular(48),
+                            border: Border.all(color: ak.border),
+                          ),
+                          child: Icon(slide.icon, size: 64, color: ak.ink),
                         ),
                         const SizedBox(height: 28),
                         Text(
-                          s.title,
+                          slide.title.of(s),
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            height: 1.25,
+                            fontWeight: FontWeight.w700,
+                            height: 1.3,
                           ),
                         ),
                         const SizedBox(height: 12),
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 20),
                           child: Text(
-                            s.body,
+                            slide.body.of(s),
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 13.5,
-                              color: AppColors.ink2,
-                              height: 1.6,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: ak.inkSub,
+                              height: 1.7,
                             ),
                           ),
                         ),
@@ -153,13 +144,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   final active = i == _page;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    margin: const EdgeInsets.symmetric(horizontal: 3.5),
                     width: active ? 22 : 7,
                     height: 7,
                     decoration: BoxDecoration(
-                      color: active
-                          ? AppColors.brand
-                          : const Color(0xFFCBD5E1),
+                      color: active ? ak.ink : ak.inkFaint,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   );
@@ -177,8 +166,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     );
                   }
                 },
-                child: Text(
-                    _page == _slides.length - 1 ? 'Get started' : 'Next'),
+                child: Text(_page == _slides.length - 1
+                    ? s.t('ابدأ الآن', 'Get started')
+                    : s.t('التالي', 'Next')),
               ),
             ],
           ),

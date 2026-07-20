@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/app_state.dart';
@@ -16,31 +17,33 @@ class OrdersScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final orders = ref.watch(ordersProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Shop orders')),
+      appBar: AppBar(title: Text(s.t('طلبات المتجر', 'Shop orders'))),
       body: SafeArea(
         child: orders.isEmpty
             ? Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const IconTile(Icons.inventory_2_outlined,
+                    IconTile(Icons.inventory_2_outlined,
                         size: 64,
                         radius: 22,
-                        background: AppColors.field,
-                        foreground: AppColors.ink3),
+                        background: ak.surfaceDim,
+                        foreground: ak.inkFaint),
                     const SizedBox(height: 12),
-                    const Text('No orders yet',
-                        style: TextStyle(
+                    Text(s.t('لا طلبات بعد', 'No orders yet'),
+                        style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 16),
                     SizedBox(
                       width: 180,
                       child: FilledButton(
                         onPressed: () => context.go('/shop'),
-                        child: const Text('Browse parts'),
+                        child: Text(s.t('تصفّح القطع', 'Browse parts')),
                       ),
                     ),
                   ],
@@ -60,26 +63,39 @@ class OrdersScreen extends ConsumerWidget {
   }
 }
 
+String _statusLabel(S s, OrderStatus status) => switch (status) {
+      OrderStatus.placed => s.t('تم الطلب', 'Placed'),
+      OrderStatus.processing => s.t('قيد التجهيز', 'Being prepared'),
+      OrderStatus.delivered =>
+        s.t('تم التوصيل — أكّد الاستلام', 'Delivered — confirm receipt'),
+      OrderStatus.completed => s.t('مكتمل', 'Completed'),
+    };
+
 class _OrderCard extends ConsumerWidget {
   const _OrderCard({required this.order});
 
   final Order order;
 
-  static const _steps = [
-    (OrderStatus.placed, 'Placed & paid', Icons.receipt_long_outlined),
-    (OrderStatus.processing, 'Being prepared', Icons.inventory_2_outlined),
-    (OrderStatus.delivered, 'Delivered', Icons.local_shipping_outlined),
-    (OrderStatus.completed, 'Received → released', Icons.lock_open_rounded),
+  static const _stepIcons = [
+    Icons.receipt_long_outlined,
+    Icons.inventory_2_outlined,
+    Icons.local_shipping_outlined,
+    Icons.lock_open_rounded,
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final statusIndex = order.status.index;
 
     final badge = switch (order.status) {
-      OrderStatus.delivered => const StatusBadge.warn('Confirm receipt'),
-      OrderStatus.completed => const StatusBadge.good('Completed'),
-      _ => StatusBadge('${order.status.label} · held'),
+      OrderStatus.delivered =>
+        StatusBadge.warn(s.t('أكّد الاستلام', 'Confirm receipt')),
+      OrderStatus.completed => StatusBadge.good(s.t('مكتمل', 'Completed')),
+      _ => StatusBadge(
+          s.t('${_statusLabel(s, order.status)} · محتجز',
+              '${_statusLabel(s, order.status)} · held')),
     };
 
     return AppCard(
@@ -89,7 +105,7 @@ class _OrderCard extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Order ${order.id}',
+                child: Text(s.t('الطلب ${order.id}', 'Order ${order.id}'),
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w800)),
               ),
@@ -99,52 +115,47 @@ class _OrderCard extends ConsumerWidget {
           const SizedBox(height: 2),
           Text(
             DateFormat('d MMM y · h:mm a').format(order.placedAt),
-            style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
+            style: TextStyle(fontSize: 11.5, color: ak.inkFaint),
           ),
           const SizedBox(height: 12),
           // ---- lifecycle strip
           Row(
             children: [
-              for (final (i, step) in _steps.indexed) ...[
+              for (var i = 0; i < _stepIcons.length; i++) ...[
                 if (i > 0)
                   Expanded(
                     child: Container(
                       height: 2.5,
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       decoration: BoxDecoration(
-                        color: i <= statusIndex
-                            ? AppColors.good
-                            : const Color(0xFFE2E8F0),
+                        color: i <= statusIndex ? ak.success : ak.surfaceDim,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
-                Tooltip(
-                  message: step.$2,
-                  child: Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: i < statusIndex
-                          ? AppColors.goodSoft
-                          : i == statusIndex
-                              ? (order.status == OrderStatus.completed
-                                  ? AppColors.goodSoft
-                                  : AppColors.brandSoft)
-                              : AppColors.field,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      i < statusIndex ? Icons.check_rounded : step.$3,
-                      size: 15,
-                      color: i < statusIndex
-                          ? AppColors.good
-                          : i == statusIndex
-                              ? (order.status == OrderStatus.completed
-                                  ? AppColors.good
-                                  : AppColors.brand)
-                              : AppColors.ink3,
-                    ),
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: i < statusIndex
+                        ? ak.successSoft
+                        : i == statusIndex
+                            ? (order.status == OrderStatus.completed
+                                ? ak.successSoft
+                                : ak.surfaceDim)
+                            : ak.surfaceDim,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    i < statusIndex ? Icons.check_rounded : _stepIcons[i],
+                    size: 15,
+                    color: i < statusIndex
+                        ? ak.success
+                        : i == statusIndex
+                            ? (order.status == OrderStatus.completed
+                                ? ak.success
+                                : ak.ink)
+                            : ak.inkFaint,
                   ),
                 ),
               ],
@@ -152,13 +163,13 @@ class _OrderCard extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            order.status.label,
+            _statusLabel(s, order.status),
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w700,
               color: order.status == OrderStatus.completed
-                  ? AppColors.good
-                  : AppColors.brand,
+                  ? ak.success
+                  : ak.ink,
             ),
           ),
           const SizedBox(height: 10),
@@ -167,42 +178,40 @@ class _OrderCard extends ConsumerWidget {
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(
                 children: [
-                  Icon(item.product.icon, size: 15, color: AppColors.ink3),
+                  Icon(item.product.icon, size: 15, color: ak.inkFaint),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '${item.product.name} × ${item.qty}',
-                      style: const TextStyle(
-                          fontSize: 12.5, color: AppColors.ink2),
+                      style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                     ),
                   ),
                   Text(
-                    'OMR ${item.total.toStringAsFixed(2)}',
+                    s.t('${item.total.toStringAsFixed(2)} ${s.omr}',
+                        'OMR ${item.total.toStringAsFixed(2)}'),
                     style: const TextStyle(
                         fontSize: 12.5, fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
             ),
-          const Divider(height: 16),
+          Divider(height: 16, color: ak.divider),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 order.status.held
-                    ? 'Total held in escrow'
-                    : 'Total released to store',
-                style:
-                    const TextStyle(fontSize: 12.5, color: AppColors.ink2),
+                    ? s.t('الإجمالي محتجز في الضمان', 'Total held in escrow')
+                    : s.t('الإجمالي حُوّل للمتجر', 'Total released to store'),
+                style: TextStyle(fontSize: 12.5, color: ak.inkSub),
               ),
               Text(
-                'OMR ${order.total.toStringAsFixed(2)}',
+                s.t('${order.total.toStringAsFixed(2)} ${s.omr}',
+                    'OMR ${order.total.toStringAsFixed(2)}'),
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: order.status.held
-                      ? AppColors.brandDark
-                      : AppColors.good,
+                  color: order.status.held ? ak.ink : ak.success,
                 ),
               ),
             ],
@@ -211,7 +220,7 @@ class _OrderCard extends ConsumerWidget {
             const SizedBox(height: 12),
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.good,
+                backgroundColor: ak.success,
                 minimumSize: const Size.fromHeight(48),
               ),
               onPressed: () {
@@ -221,27 +230,27 @@ class _OrderCard extends ConsumerWidget {
                     .confirmReceived(order.id);
               },
               icon: const Icon(Icons.lock_open_rounded, size: 17),
-              label: const Text('Confirm received — release payment'),
+              label: Text(s.t('أكّد الاستلام — حرّر الدفع',
+                  'Confirm received — release payment')),
             ),
           ] else if (order.status != OrderStatus.completed) ...[
             const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(Icons.autorenew_rounded,
-                    size: 13, color: AppColors.ink3),
+                Icon(Icons.autorenew_rounded, size: 13, color: ak.inkFaint),
                 const SizedBox(width: 6),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Live — the store updates this automatically.',
-                    style:
-                        TextStyle(fontSize: 11, color: AppColors.ink3),
+                    s.t('مباشر — المتجر يحدّث هذا تلقائياً.',
+                        'Live — the store updates this automatically.'),
+                    style: TextStyle(fontSize: 11, color: ak.inkFaint),
                   ),
                 ),
                 TextButton(
                   onPressed: () =>
                       ref.read(ordersProvider.notifier).advance(order.id),
-                  child:
-                      const Text('Skip ahead', style: TextStyle(fontSize: 12)),
+                  child: Text(s.t('تقديم', 'Skip ahead'),
+                      style: const TextStyle(fontSize: 12)),
                 ),
               ],
             ),

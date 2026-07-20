@@ -84,7 +84,7 @@ class CarImage extends StatelessWidget {
               ? child
               : Center(
                   child: Icon(fallbackIcon,
-                      size: height * 0.45, color: const Color(0xFFCBD5E1)),
+                      size: height * 0.45, color: const Color(0xFFD8D1C4)),
                 ),
         ),
       ),

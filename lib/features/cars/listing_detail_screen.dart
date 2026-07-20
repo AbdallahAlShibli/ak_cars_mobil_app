@@ -171,7 +171,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                               errorBuilder: (context, _, _) => Center(
                                 child: Icon(listing.icon,
                                     size: 72,
-                                    color: const Color(0xFF94A3B8)),
+                                    color: const Color(0xFFB0A996)),
                               ),
                             ),
                           ),
@@ -455,7 +455,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                               ),
                             ),
                             const Icon(Icons.chevron_right_rounded,
-                                color: Color(0xFFCBD5E1)),
+                                color: Color(0xFFD8D1C4)),
                           ],
                         ),
                       ),

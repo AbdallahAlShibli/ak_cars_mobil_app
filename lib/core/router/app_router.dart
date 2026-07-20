@@ -9,7 +9,9 @@ import '../../features/cars/listing_detail_screen.dart';
 import '../../features/cars/make_filter_screen.dart';
 import '../../features/cars/post_ad_screen.dart';
 import '../../features/cars/results_screen.dart';
+import '../../features/challenge/challenge_screen.dart';
 import '../../features/garage/add_car_screen.dart';
+import '../../features/garage/maintenance_screen.dart';
 import '../../features/garage/my_cars_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/home/notifications_screen.dart';
@@ -25,6 +27,7 @@ import '../../features/services/requests_screen.dart';
 import '../../features/services/service_detail_screen.dart';
 import '../../features/services/services_screen.dart';
 import '../../features/services/tracking_screen.dart';
+import '../../features/settings/settings_screen.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/shop/cart_screen.dart';
 import '../../features/shop/orders_screen.dart';
@@ -91,6 +94,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/garage',
         builder: (context, state) => const MyCarsScreen(),
+      ),
+      GoRoute(
+        path: '/maintenance',
+        builder: (context, state) => const MaintenanceScreen(),
+      ),
+      GoRoute(
+        path: '/challenge',
+        builder: (context, state) => const ChallengeScreen(),
+      ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
         path: '/requests',

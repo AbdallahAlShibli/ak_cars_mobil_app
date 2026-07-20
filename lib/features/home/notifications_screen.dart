@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/app_state.dart';
@@ -27,30 +28,32 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final items = ref.watch(notificationsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(title: Text(s.t('الإشعارات', 'Notifications'))),
       body: SafeArea(
         child: items.isEmpty
             ? Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const IconTile(Icons.notifications_none_rounded,
+                    IconTile(Icons.notifications_none_rounded,
                         size: 64,
                         radius: 22,
-                        background: AppColors.field,
-                        foreground: AppColors.ink3),
+                        background: ak.surfaceDim,
+                        foreground: ak.inkFaint),
                     const SizedBox(height: 12),
-                    const Text("You're all caught up",
-                        style: TextStyle(
+                    Text(s.t('لا جديد لديك', "You're all caught up"),
+                        style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
-                    const Text(
-                      'Booking updates and payment events land here.',
-                      style:
-                          TextStyle(fontSize: 12.5, color: AppColors.ink2),
+                    Text(
+                      s.t('تحديثات الحجز وأحداث الدفع تظهر هنا.',
+                          'Booking updates and payment events land here.'),
+                      style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                     ),
                   ],
                 ),
@@ -84,24 +87,23 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                         fontWeight: FontWeight.w700)),
                                 const SizedBox(height: 2),
                                 Text(n.body,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontSize: 12,
-                                        color: AppColors.ink2,
+                                        color: ak.inkSub,
                                         height: 1.4)),
                                 const SizedBox(height: 4),
                                 Text(
                                   DateFormat('d MMM · h:mm a')
                                       .format(n.time),
-                                  style: const TextStyle(
-                                      fontSize: 10.5,
-                                      color: AppColors.ink3),
+                                  style: TextStyle(
+                                      fontSize: 10.5, color: ak.inkFaint),
                                 ),
                               ],
                             ),
                           ),
                           if (n.route != null)
-                            const Icon(Icons.chevron_right_rounded,
-                                color: Color(0xFFCBD5E1)),
+                            Icon(Icons.chevron_right_rounded,
+                                color: ak.inkFaint),
                         ],
                       ),
                     ),

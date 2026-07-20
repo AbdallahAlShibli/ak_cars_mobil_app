@@ -2,19 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart' as intl;
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/utils/contact.dart';
 import '../../core/widgets/car_media.dart';
-import '../../core/widgets/widgets.dart';
+import '../../core/widgets/sand_widgets.dart';
 import '../../data/app_state.dart';
 import '../../data/car_catalog.dart';
 import '../../data/gallery_data.dart';
-import 'listing_card.dart';
+import 'cars_filter_screen.dart';
 
-/// Cars marketplace — gradient hero with live search, fancy manufacturer
-/// tiles, filtered feed, and a directional floating "Post ad" button
-/// (bottom-start: left in English, right in Arabic).
+final _fmt = intl.NumberFormat('#,###', 'en');
+
+/// Cars marketplace — Sand & Ink (handoff #3d): title + "Post your ad"
+/// ink pill, search, category chips, brand row with the amber "+N more"
+/// card, and a 2×n ads grid with WhatsApp shortcuts.
 class CarsScreen extends ConsumerStatefulWidget {
   const CarsScreen({super.key});
 
@@ -23,7 +31,6 @@ class CarsScreen extends ConsumerStatefulWidget {
 }
 
 class _CarsScreenState extends ConsumerState<CarsScreen> {
-  VehicleType _type = VehicleType.all;
   bool _allMakes = false;
   String _query = '';
   final _search = TextEditingController();
@@ -34,16 +41,28 @@ class _CarsScreenState extends ConsumerState<CarsScreen> {
     super.dispose();
   }
 
+  Future<void> _openFilters() async {
+    HapticFeedback.selectionClick();
+    final result = await Navigator.of(context).push<CarsFilter>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) =>
+            CarsFilterScreen(initial: ref.read(carsFilterProvider)),
+      ),
+    );
+    if (result != null) {
+      ref.read(carsFilterProvider.notifier).set(result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final allFeed = ref.watch(galleryFeedProvider);
+    final filter = ref.watch(carsFilterProvider);
     final q = _query.trim().toLowerCase();
-    final feed = allFeed.where((l) {
-      final typeOk = switch (_type) {
-        VehicleType.trucks || VehicleType.bikes => false,
-        _ => true,
-      };
-      if (!typeOk) return false;
+    final feed = ref.watch(filteredGalleryProvider).where((l) {
       if (q.isEmpty) return true;
       return l.displayTitle.toLowerCase().contains(q) ||
           l.region.toLowerCase().contains(q);
@@ -55,115 +74,259 @@ class _CarsScreenState extends ConsumerState<CarsScreen> {
     }
     final makes = [...CarCatalog.makes]..sort((a, b) =>
         (countsByMake[b.name] ?? 0).compareTo(countsByMake[a.name] ?? 0));
+    final topMakes = makes.take(4).toList();
+
+    final categories = [
+      ('all', s.t('الكل', 'All')),
+      ('Sedan', s.t('سيدان', 'Sedan')),
+      ('SUV', s.t('دفع رباعي', 'SUV')),
+      ('Pickup', s.t('بيك أب', 'Pickup')),
+    ];
 
     return Scaffold(
-      floatingActionButton: _PostAdFab(onTap: () {
-        if (!ensureRegistered(context, ref)) return;
-        context.push('/post-ad');
-      }),
-      // Bottom-start: left in English (LTR), right in Arabic (RTL).
-      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 90),
-        children: [
-          // ------------------------------------------------ hero header
-          Container(
-            clipBehavior: Clip.antiAlias,
-            decoration: const BoxDecoration(
-              gradient: AppColors.brandGradient,
-              borderRadius:
-                  BorderRadius.vertical(bottom: Radius.circular(28)),
-            ),
-            child: Stack(
+      backgroundColor: ak.bg,
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          children: [
+            // ------------------------------------------------ header
+            Row(
               children: [
-                Positioned(
-                  top: -50,
-                  right: -34,
-                  child: Container(
-                    width: 160,
-                    height: 160,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.08),
+                Expanded(
+                  child: Text(
+                    s.t('سوق السيارات', 'Cars market'),
+                    style: const TextStyle(
+                        fontSize: 19, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                InkPill(
+                  label: s.t('أضف إعلانك', 'Post your ad'),
+                  icon: LucideIcons.plus,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  onTap: () {
+                    if (!ensureRegistered(context, ref)) return;
+                    context.push('/post-ad');
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            // ------------------------------------------------ search
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: ak.surface,
+                border: Border.all(color: ak.border),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                children: [
+                  Icon(LucideIcons.search, size: 15, color: ak.inkSub),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _search,
+                      onChanged: (v) => setState(() => _query = v),
+                      style: const TextStyle(fontSize: 12.5),
+                      decoration: InputDecoration(
+                        hintText:
+                            s.t('ابحث: كامري، أرمادا…', 'Search: Camry, Armada…'),
+                        isDense: true,
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 13),
+                      ),
+                    ),
+                  ),
+                  if (q.isNotEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        _search.clear();
+                        setState(() => _query = '');
+                      },
+                      child: Icon(LucideIcons.x, size: 15, color: ak.inkSub),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            // ------------------------------------------------ categories
+            Text(
+              s.t('الفئات الشائعة', 'Popular categories'),
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: ak.inkSub),
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final (id, label) in categories) ...[
+                    _CategoryChip(
+                      label: label,
+                      selected: id == 'all'
+                          ? filter.bodyTypes.isEmpty
+                          : (filter.bodyTypes.length == 1 &&
+                              filter.bodyTypes.contains(id)),
+                      onTap: () => ref
+                          .read(carsFilterProvider.notifier)
+                          .setBodyType(id == 'all' ? null : id),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            // ------------------------------------------------ makes
+            Text(
+              s.t('كل الماركات', 'All makes'),
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: ak.inkSub),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (final m in topMakes) ...[
+                  Expanded(child: _MakeCard(make: m)),
+                  const SizedBox(width: 9),
+                ],
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _allMakes = !_allMakes),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 11, horizontal: 2),
+                      decoration: BoxDecoration(
+                        color: ak.amberSoft,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            _allMakes
+                                ? '×'
+                                : '+${makes.length - topMakes.length}',
+                            style: GoogleFonts.chakraPetch(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF1D1B17),
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            _allMakes
+                                ? s.t('إغلاق', 'Close')
+                                : s.t('المزيد', 'More'),
+                            style: TextStyle(
+                                fontSize: 8.5, color: ak.promoSub),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                Positioned(
-                  bottom: -60,
-                  left: -20,
-                  child: Container(
-                    width: 140,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color:
-                          const Color(0xFF6A5CFF).withValues(alpha: 0.35),
-                    ),
+              ],
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: _allMakes
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 9),
+                      child: GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 5,
+                          mainAxisSpacing: 9,
+                          crossAxisSpacing: 9,
+                          childAspectRatio: 1.05,
+                        ),
+                        itemCount: makes.length - topMakes.length,
+                        itemBuilder: (context, i) =>
+                            _MakeCard(make: makes[i + topMakes.length]),
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+            const SizedBox(height: 14),
+            // ------------------------------------------------ latest ads
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    q.isEmpty && filter.activeCount == 0
+                        ? s.t('أحدث الإعلانات', 'Latest ads')
+                        : s.t('${feed.length} نتيجة', '${feed.length} results'),
+                    style: const TextStyle(
+                        fontSize: 14.5, fontWeight: FontWeight.w700),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
-                  child: SafeArea(
-                    bottom: false,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                if (filter.activeCount > 0) ...[
+                  GestureDetector(
+                    onTap: () =>
+                        ref.read(carsFilterProvider.notifier).reset(),
+                    child: Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 10),
+                      child: Text(
+                        s.t('مسح', 'Clear'),
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: ak.dangerText,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                GestureDetector(
+                  onTap: _openFilters,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: filter.activeCount > 0
+                          ? ak.primary
+                          : ak.surface,
+                      border: filter.activeCount > 0
+                          ? null
+                          : Border.all(color: ak.border),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
                       children: [
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Find your next car',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
+                        Icon(LucideIcons.slidersHorizontal,
+                            size: 12,
+                            color: filter.activeCount > 0
+                                ? ak.onPrimary
+                                : ak.inkSub),
+                        const SizedBox(width: 5),
                         Text(
-                          '${allFeed.length} live listings across Oman',
-                          style: const TextStyle(
-                              fontSize: 12.5, color: Colors.white70),
-                        ),
-                        const SizedBox(height: 14),
-                        TextField(
-                          controller: _search,
-                          onChanged: (v) => setState(() => _query = v),
-                          decoration: InputDecoration(
-                            hintText: 'Search make, model or city…',
-                            prefixIcon: const Icon(Icons.search_rounded),
-                            suffixIcon: q.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.close_rounded,
-                                        size: 18),
-                                    onPressed: () {
-                                      _search.clear();
-                                      setState(() => _query = '');
-                                    },
-                                  )
-                                : null,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
+                          filter.activeCount > 0
+                              ? s.t('فلاتر (${filter.activeCount})',
+                                  'Filters (${filter.activeCount})')
+                              : s.t('فلاتر', 'Filters'),
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: filter.activeCount > 0
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                            color: filter.activeCount > 0
+                                ? ak.onPrimary
+                                : ak.inkSub,
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            for (final t in VehicleType.values) ...[
-                              _HeroTypeChip(
-                                label: t.label,
-                                icon: t.icon,
-                                selected: _type == t,
-                                onTap: () =>
-                                    setState(() => _type = t),
-                              ),
-                              const SizedBox(width: 7),
-                            ],
-                          ],
                         ),
                       ],
                     ),
@@ -171,225 +334,127 @@ class _CarsScreenState extends ConsumerState<CarsScreen> {
                 ),
               ],
             ),
-          ),
-          // ------------------------------------------------ manufacturers
-          if (q.isEmpty) ...[
-            const SizedBox(height: 18),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: SectionHeader(
-                'Manufacturer',
-                action: _allMakes ? 'Show less' : 'View all',
-                onAction: () => setState(() => _allMakes = !_allMakes),
-              ),
-            ),
-            const SizedBox(height: 12),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              alignment: Alignment.topCenter,
-              child: _allMakes
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                          childAspectRatio: 0.74,
-                        ),
-                        itemCount: makes.length,
-                        itemBuilder: (context, i) => _MakeTile(
-                          make: makes[i],
-                          count: countsByMake[makes[i].name] ?? 0,
-                        ),
-                      ),
-                    )
-                  : SizedBox(
-                      height: 118,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: makes.length,
-                        separatorBuilder: (_, _) =>
-                            const SizedBox(width: 10),
-                        itemBuilder: (context, i) => _MakeTile(
-                          make: makes[i],
-                          count: countsByMake[makes[i].name] ?? 0,
-                        ),
-                      ),
-                    ),
-            ),
-          ],
-          // ------------------------------------------------ feed
-          const SizedBox(height: 18),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: SectionHeader(
-              q.isEmpty ? 'All cars' : '${feed.length} results',
-              action: 'Filters',
-              onAction: () => context.push('/cars/results'),
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (feed.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 40),
-              child: Center(
-                child: Column(
-                  children: [
-                    const IconTile(Icons.no_crash_rounded,
-                        size: 64,
-                        radius: 22,
-                        background: AppColors.field,
-                        foreground: AppColors.ink3),
-                    const SizedBox(height: 10),
-                    Text(
-                      q.isEmpty
-                          ? 'No listings in this category yet'
-                          : 'No cars match "$_query"',
-                      style: const TextStyle(
-                          fontSize: 13, color: AppColors.ink2),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            for (final (i, l) in feed.indexed) ...[
+            const SizedBox(height: 11),
+            if (feed.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Entrance(
-                  delayMs: 40 * i,
-                  child: ListingCard(listing: l),
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(LucideIcons.car,
+                          size: 44, color: ak.inkFaint),
+                      const SizedBox(height: 10),
+                      Text(
+                        q.isNotEmpty
+                            ? s.t('لا نتائج لـ "$_query"',
+                                'No cars match "$_query"')
+                            : filter.activeCount > 0
+                                ? s.t('لا إعلانات تطابق هذه الفلاتر',
+                                    'No ads match these filters')
+                                : s.t('لا إعلانات في هذه الفئة بعد',
+                                    'No listings in this category yet'),
+                        style:
+                            TextStyle(fontSize: 13, color: ak.inkSub),
+                      ),
+                    ],
+                  ),
                 ),
+              )
+            else
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 11,
+                crossAxisSpacing: 11,
+                childAspectRatio: 0.92,
+                children: [
+                  for (final l in feed) _AdCard(listing: l),
+                ],
               ),
-              const SizedBox(height: 12),
-            ],
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Frosted type chip that sits on the hero gradient.
-class _HeroTypeChip extends StatelessWidget {
-  const _HeroTypeChip({
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({
     required this.label,
-    required this.icon,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
-  final IconData icon;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
         onTap();
       },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         decoration: BoxDecoration(
-          color: selected
-              ? Colors.white
-              : Colors.white.withValues(alpha: 0.14),
+          color: selected ? ak.primary : ak.surface,
+          border: selected ? null : Border.all(color: ak.border),
           borderRadius: BorderRadius.circular(999),
         ),
-        child: Row(
-          children: [
-            Icon(icon,
-                size: 14,
-                color: selected ? AppColors.brandDark : Colors.white),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: selected ? AppColors.brandDark : Colors.white,
-              ),
-            ),
-          ],
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+            color: selected ? ak.onPrimary : ak.ink,
+          ),
         ),
       ),
     );
   }
 }
 
-/// Fancy manufacturer tile — gradient-ringed real logo + listing count.
-class _MakeTile extends StatelessWidget {
-  const _MakeTile({required this.make, required this.count});
+class _MakeCard extends StatelessWidget {
+  const _MakeCard({required this.make});
 
   final CarMake make;
-  final int count;
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
         context.push('/cars/make/${Uri.encodeComponent(make.name)}');
       },
       child: Container(
-        width: 92,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 2),
         decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.brand.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          color: ak.surface,
+          border: Border.all(color: ak.border),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(2.5),
-              decoration: const BoxDecoration(
-                gradient: AppColors.brandGradient,
-                shape: BoxShape.circle,
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: MakeLogo(make: make, size: 42),
-              ),
-            ),
-            const SizedBox(height: 7),
             Text(
-              make.name,
+              make.name.toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              count > 0 ? '$count cars' : 'Browse',
-              style: TextStyle(
+              style: GoogleFonts.chakraPetch(
                 fontSize: 9.5,
                 fontWeight: FontWeight.w700,
-                color: count > 0 ? AppColors.brand : AppColors.ink3,
+                color: ak.ink,
               ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              make.mark,
+              style: TextStyle(fontSize: 8.5, color: ak.inkSub),
             ),
           ],
         ),
@@ -398,46 +463,136 @@ class _MakeTile extends StatelessWidget {
   }
 }
 
-/// Gradient floating "Post ad" button — placed at bottom-start so it
-/// sits left in English and right in Arabic automatically.
-class _PostAdFab extends StatelessWidget {
-  const _PostAdFab({required this.onTap});
+class _AdCard extends StatelessWidget {
+  const _AdCard({required this.listing});
 
-  final VoidCallback onTap;
+  final GalleryListing listing;
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    final featured = listing.dealType != 'Sale only';
+
     return GestureDetector(
-      onTap: () {
-        HapticFeedback.mediumImpact();
-        onTap();
-      },
+      onTap: () => context.push('/cars/listing/${listing.id}'),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          gradient: AppColors.brandGradient,
+          color: ak.surface,
+          border: Border.all(color: ak.border),
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.brand.withValues(alpha: 0.45),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
         ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.add_circle_outline_rounded,
-                color: Colors.white, size: 19),
-            SizedBox(width: 8),
-            Text(
-              'Post ad',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    color: ak.surfaceDim,
+                    child: CarImage(
+                        make: listing.make,
+                        model: listing.model,
+                        height: 92),
+                  ),
+                  if (featured)
+                    PositionedDirectional(
+                      top: 8,
+                      start: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3D9A4),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          s.t('مميز', 'Featured'),
+                          style: const TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF7A6534),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    listing.displayTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 11.5, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    s.t('ممشى ${listing.mileage} · ${listing.region}',
+                        '${listing.mileage} km · ${listing.region}'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 9, color: ak.inkSub),
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: listing.price == null
+                            ? Text(
+                                s.t('عند الطلب', 'Ask for price'),
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: ak.inkSub),
+                              )
+                            : Text.rich(
+                                TextSpan(children: [
+                                  TextSpan(
+                                    text: _fmt.format(listing.price),
+                                    style: AppTheme.numeric(
+                                        size: 13, color: ak.ink),
+                                  ),
+                                  TextSpan(
+                                    text: ' ${s.omr}',
+                                    style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w500,
+                                        color: ak.inkSub),
+                                  ),
+                                ]),
+                              ),
+                      ),
+                      GestureDetector(
+                        onTap: () => Contact.whatsapp(
+                          context,
+                          '96892000000',
+                          message: s.t(
+                            'مرحباً، مهتم بسيارتك ${listing.displayTitle} المعروضة في AK Cars.',
+                            'Hi, I am interested in your ${listing.displayTitle} on AK Cars.',
+                          ),
+                        ),
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: ak.successSoft,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(LucideIcons.messageCircle,
+                              size: 12, color: ak.success),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ],

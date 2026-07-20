@@ -428,7 +428,7 @@ class _FulfillmentCard extends StatelessWidget {
                     : Icons.circle_outlined,
                 color: selected
                     ? AppColors.brand
-                    : const Color(0xFFCBD5E1),
+                    : const Color(0xFFD8D1C4),
               ),
           ],
         ),

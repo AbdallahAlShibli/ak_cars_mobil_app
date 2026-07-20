@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/contact.dart';
@@ -35,6 +36,8 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final filter = ref.watch(shopFilterProvider);
     final products = ref
         .watch(filteredProductsProvider)
@@ -52,7 +55,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Parts shop'),
+        title: Text(s.t('متجر القطع', 'Parts shop')),
         actions: [
           Padding(
             padding: const EdgeInsetsDirectional.only(end: 12),
@@ -86,17 +89,17 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                         child: TextField(
                           onChanged: (v) => setState(() => _query = v),
                           decoration: InputDecoration(
-                            hintText: 'Search parts…',
+                            hintText: s.t('ابحث عن قطعة…', 'Search parts…'),
                             prefixIcon: const Icon(Icons.search_rounded),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(999),
-                              borderSide: const BorderSide(
-                                  color: AppColors.border, width: 1.5),
+                              borderSide: BorderSide(
+                                  color: ak.border, width: 1.5),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(999),
-                              borderSide: const BorderSide(
-                                  color: AppColors.border, width: 1.5),
+                              borderSide: BorderSide(
+                                  color: ak.border, width: 1.5),
                             ),
                           ),
                         ),
@@ -161,9 +164,9 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                                       borderRadius:
                                           BorderRadius.circular(999),
                                     ),
-                                    child: const Text(
-                                      'THIS WEEK',
-                                      style: TextStyle(
+                                    child: Text(
+                                      s.t('هذا الأسبوع', 'THIS WEEK'),
+                                      style: const TextStyle(
                                         fontSize: 9,
                                         fontWeight: FontWeight.w800,
                                         letterSpacing: 1,
@@ -172,18 +175,20 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  const Text(
-                                    'Up to 15% off batteries',
-                                    style: TextStyle(
+                                  Text(
+                                    s.t('خصم حتى 15% على البطاريات',
+                                        'Up to 15% off batteries'),
+                                    style: const TextStyle(
                                       fontSize: 17,
                                       fontWeight: FontWeight.w800,
                                       color: Colors.white,
                                     ),
                                   ),
                                   const SizedBox(height: 3),
-                                  const Text(
-                                    'Free fitting at partner workshops',
-                                    style: TextStyle(
+                                  Text(
+                                    s.t('تركيب مجاني في الورش الشريكة',
+                                        'Free fitting at partner workshops'),
+                                    style: const TextStyle(
                                         fontSize: 11.5,
                                         color: Colors.white70),
                                   ),
@@ -207,7 +212,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                       children: [
                         _CategoryAvatar(
                           icon: Icons.apps_rounded,
-                          label: 'All',
+                          label: s.t('الكل', 'All'),
                           selected: filter.categoryId == null,
                           onTap: () => ref
                               .read(shopFilterProvider.notifier)
@@ -230,9 +235,9 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                   ),
                   const SizedBox(height: 16),
                   // ------------------------------------ best sellers
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
-                    child: SectionHeader('Best sellers'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: SectionHeader(s.t('الأكثر مبيعاً', 'Best sellers')),
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -258,21 +263,22 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                         horizontal: 14, vertical: 10),
                     child: Row(
                       children: [
-                        const Icon(Icons.directions_car_outlined,
-                            size: 17, color: AppColors.brand),
+                        Icon(Icons.directions_car_outlined,
+                            size: 17, color: ak.ink),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text.rich(
                             TextSpan(
-                              text: 'Shopping for: ',
+                              text: s.t('التسوق لـ: ', 'Shopping for: '),
                               style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600),
                               children: [
                                 TextSpan(
-                                  text: filter.car?.label ?? 'Any car',
-                                  style: const TextStyle(
-                                      color: AppColors.brandDark,
+                                  text: filter.car?.label ??
+                                      s.t('أي سيارة', 'Any car'),
+                                  style: TextStyle(
+                                      color: ak.ink,
                                       fontWeight: FontWeight.w700),
                                 ),
                               ],
@@ -285,7 +291,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                             isScrollControlled: true,
                             builder: (_) => const ShopFilterSheet(),
                           ),
-                          child: const StatusBadge('Change car'),
+                          child: StatusBadge(s.t('تغيير', 'Change car')),
                         ),
                       ],
                     ),
@@ -295,22 +301,24 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: SectionHeader(searching
-                      ? '${products.length} results'
-                      : 'All parts'),
+                      ? s.t('${products.length} نتيجة', '${products.length} results')
+                      : s.t('كل القطع', 'All parts')),
                 ),
                 const SizedBox(height: 10),
                 if (products.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 40),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
                     child: Center(
                       child: Column(
                         children: [
                           Icon(Icons.search_off_rounded,
-                              size: 40, color: AppColors.ink3),
-                          SizedBox(height: 8),
-                          Text('No parts match these filters',
+                              size: 40, color: ak.inkFaint),
+                          const SizedBox(height: 8),
+                          Text(
+                              s.t('لا قطع تطابق هذه الفلاتر',
+                                  'No parts match these filters'),
                               style: TextStyle(
-                                  fontSize: 13, color: AppColors.ink2)),
+                                  fontSize: 13, color: ak.inkSub)),
                         ],
                       ),
                     ),
@@ -357,11 +365,11 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 18, vertical: 15),
                       decoration: BoxDecoration(
-                        color: AppColors.ink,
+                        color: ak.primary,
                         borderRadius: BorderRadius.circular(18),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.ink.withValues(alpha: 0.3),
+                            color: Colors.black.withValues(alpha: 0.25),
                             blurRadius: 16,
                             offset: const Offset(0, 6),
                           ),
@@ -369,29 +377,31 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.shopping_bag_rounded,
-                              color: Colors.white, size: 19),
+                          Icon(Icons.shopping_bag_rounded,
+                              color: ak.onPrimary, size: 19),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              '${cartItems.length} item${cartItems.length == 1 ? '' : 's'} · OMR ${cartTotal.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                color: Colors.white,
+                              s.t(
+                                  '${cartItems.length} قطعة · ${cartTotal.toStringAsFixed(2)} ${s.omr}',
+                                  '${cartItems.length} item${cartItems.length == 1 ? '' : 's'} · OMR ${cartTotal.toStringAsFixed(2)}'),
+                              style: TextStyle(
+                                color: ak.onPrimary,
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
-                          const Text(
-                            'View cart',
+                          Text(
+                            s.t('عرض السلة', 'View cart'),
                             style: TextStyle(
-                              color: Color(0xFF9DB4F0),
+                              color: ak.onPrimary.withValues(alpha: 0.75),
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: Color(0xFF9DB4F0)),
+                          Icon(Icons.chevron_right_rounded,
+                              color: ak.onPrimary.withValues(alpha: 0.75)),
                         ],
                       ),
                     ),
@@ -430,6 +440,7 @@ class _CategoryAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -445,26 +456,14 @@ class _CategoryAvatar extends StatelessWidget {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                gradient: selected ? AppColors.brandGradient : null,
-                color: selected ? null : AppColors.card,
+                color: selected ? ak.primary : ak.surface,
                 shape: BoxShape.circle,
-                border: selected
-                    ? null
-                    : Border.all(color: AppColors.border),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color:
-                              AppColors.brand.withValues(alpha: 0.35),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ]
-                    : null,
+                border:
+                    selected ? null : Border.all(color: ak.border),
               ),
               child: Icon(icon,
                   size: 22,
-                  color: selected ? Colors.white : AppColors.ink2),
+                  color: selected ? ak.onPrimary : ak.inkSub),
             ),
             const SizedBox(height: 5),
             Text(
@@ -475,7 +474,7 @@ class _CategoryAvatar extends StatelessWidget {
                 fontSize: 10.5,
                 fontWeight:
                     selected ? FontWeight.w800 : FontWeight.w600,
-                color: selected ? AppColors.ink : AppColors.ink2,
+                color: selected ? ak.ink : ak.inkSub,
               ),
             ),
           ],
@@ -493,23 +492,24 @@ class _BestSellerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 250,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.card,
+          color: ak.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: ak.border),
         ),
         child: Row(
           children: [
             IconTile(product.icon,
                 size: 60,
                 radius: 14,
-                background: AppColors.field,
-                foreground: AppColors.ink2),
+                background: ak.surfaceDim,
+                foreground: ak.inkSub),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -543,6 +543,8 @@ class _ProductCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final inCart = ref.watch(cartProvider).containsKey(product.id);
     final car = ref.watch(shopFilterProvider).car;
     final fits = car != null && product.fitsCar(car);
@@ -559,11 +561,11 @@ class _ProductCard extends ConsumerWidget {
                 Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: AppColors.field,
+                    color: ak.surfaceDim,
                     borderRadius: BorderRadius.circular(13),
                   ),
                   child:
-                      Icon(product.icon, size: 32, color: AppColors.ink3),
+                      Icon(product.icon, size: 32, color: ak.inkFaint),
                 ),
                 if (product.onOffer)
                   Positioned(
@@ -573,7 +575,8 @@ class _ProductCard extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.bad,
+                        // Amber, not red — red is reserved for SOS.
+                        color: ak.amber,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -581,7 +584,7 @@ class _ProductCard extends ConsumerWidget {
                         style: const TextStyle(
                           fontSize: 9.5,
                           fontWeight: FontWeight.w800,
-                          color: Colors.white,
+                          color: Color(0xFF1D1B17),
                         ),
                       ),
                     ),
@@ -594,15 +597,15 @@ class _ProductCard extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.goodSoft,
+                        color: ak.successSoft,
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Text(
-                        '✓ Fits your car',
+                      child: Text(
+                        s.t('✓ تناسب سيارتك', '✓ Fits your car'),
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
-                          color: AppColors.good,
+                          color: ak.success,
                         ),
                       ),
                     ),
@@ -624,7 +627,8 @@ class _ProductCard extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _PriceLine(product: product, size: 13),
+              Expanded(child: _PriceLine(product: product, size: 13)),
+              const SizedBox(width: 6),
               GestureDetector(
                 onTap: () {
                   if (!ensureRegistered(context, ref)) return;
@@ -636,13 +640,13 @@ class _ProductCard extends ConsumerWidget {
                   width: 30,
                   height: 30,
                   decoration: BoxDecoration(
-                    color: inCart ? AppColors.good : AppColors.brandSoft,
+                    color: inCart ? ak.success : ak.surfaceDim,
                     borderRadius: BorderRadius.circular(9),
                   ),
                   child: Icon(
                     inCart ? Icons.check_rounded : Icons.add_rounded,
                     size: 17,
-                    color: inCart ? Colors.white : AppColors.brand,
+                    color: inCart ? Colors.white : ak.ink,
                   ),
                 ),
               ),
@@ -678,6 +682,8 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final p = widget.product;
     final provider = MockData.providers
         .where((x) => x.id == p.providerId)
@@ -702,7 +708,7 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                       Container(
                         height: 190,
                         decoration: BoxDecoration(
-                          color: AppColors.field,
+                          color: ak.surfaceDim,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         clipBehavior: Clip.antiAlias,
@@ -715,7 +721,7 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                             child: Icon(
                               i == 0 ? p.icon : Icons.photo_outlined,
                               size: 64,
-                              color: AppColors.ink3,
+                              color: ak.inkFaint,
                             ),
                           ),
                         ),
@@ -728,7 +734,8 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 9, vertical: 4),
                             decoration: BoxDecoration(
-                              color: AppColors.bad,
+                              // Amber, not red — red is reserved for SOS.
+                              color: ak.amber,
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
@@ -736,7 +743,7 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                               style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
-                                color: Colors.white,
+                                color: Color(0xFF1D1B17),
                               ),
                             ),
                           ),
@@ -758,8 +765,8 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                                 height: 7,
                                 decoration: BoxDecoration(
                                   color: _photo == i
-                                      ? AppColors.ink
-                                      : Colors.white,
+                                      ? ak.ink
+                                      : ak.surface,
                                   borderRadius:
                                       BorderRadius.circular(4),
                                 ),
@@ -784,20 +791,21 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                             horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: p.fits.contains('any')
-                              ? AppColors.brandSoft
-                              : AppColors.goodSoft,
+                              ? ak.surfaceDim
+                              : ak.successSoft,
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           p.fits.contains('any')
-                              ? 'Universal fit'
-                              : 'Fits: ${p.fits.join(', ')}',
+                              ? s.t('تناسب كل السيارات', 'Universal fit')
+                              : s.t('تناسب: ${p.fits.join('، ')}',
+                                  'Fits: ${p.fits.join(', ')}'),
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
                             color: p.fits.contains('any')
-                                ? AppColors.brandDark
-                                : AppColors.good,
+                                ? ak.ink
+                                : ak.success,
                           ),
                         ),
                       ),
@@ -806,9 +814,9 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                   const SizedBox(height: 10),
                   Text(
                     p.details,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12.5,
-                        color: AppColors.ink2,
+                        color: ak.inkSub,
                         height: 1.55),
                   ),
                   const SizedBox(height: 14),
@@ -817,7 +825,7 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                     Container(
                       padding: const EdgeInsets.all(13),
                       decoration: BoxDecoration(
-                        color: AppColors.field,
+                        color: ak.surfaceDim,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Column(
@@ -847,18 +855,18 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                                         ),
                                         if (provider.verified) ...[
                                           const SizedBox(width: 4),
-                                          const Icon(
+                                          Icon(
                                               Icons.verified_rounded,
                                               size: 14,
-                                              color: AppColors.brand),
+                                              color: ak.ink),
                                         ],
                                       ],
                                     ),
                                     Text(
                                       '${provider.area}, ${provider.region} · ${provider.distanceKm} km',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 11,
-                                          color: AppColors.ink3),
+                                          color: ak.inkFaint),
                                     ),
                                   ],
                                 ),
@@ -873,14 +881,14 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                                   style: OutlinedButton.styleFrom(
                                     minimumSize:
                                         const Size.fromHeight(42),
-                                    backgroundColor: AppColors.card,
+                                    backgroundColor: ak.surface,
                                   ),
                                   onPressed: () => Contact.call(
                                       context, '+96824000000'),
                                   icon: const Icon(Icons.phone_outlined,
                                       size: 15),
-                                  label: const Text('Call',
-                                      style: TextStyle(fontSize: 12.5)),
+                                  label: Text(s.t('اتصل', 'Call'),
+                                      style: const TextStyle(fontSize: 12.5)),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -895,13 +903,14 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                                   onPressed: () => Contact.whatsapp(
                                     context,
                                     '96892000000',
-                                    message:
-                                        'Hi, I am asking about "${p.name}" on AK Cars shop.',
+                                    message: s.t(
+                                        'مرحباً، أستفسر عن "${p.name}" في متجر AK Cars.',
+                                        'Hi, I am asking about "${p.name}" on AK Cars shop.'),
                                   ),
                                   icon: const Icon(Icons.chat_rounded,
                                       size: 15),
-                                  label: const Text('WhatsApp',
-                                      style: TextStyle(fontSize: 12.5)),
+                                  label: Text(s.t('واتساب', 'WhatsApp'),
+                                      style: const TextStyle(fontSize: 12.5)),
                                 ),
                               ),
                             ],
@@ -915,10 +924,10 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
             // ---------------------------------- price + qty + CTA
             Container(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              decoration: const BoxDecoration(
-                color: AppColors.card,
+              decoration: BoxDecoration(
+                color: ak.surface,
                 borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(24)),
+                    const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -929,7 +938,7 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                       const Spacer(),
                       Container(
                         decoration: BoxDecoration(
-                          color: AppColors.field,
+                          color: ak.surfaceDim,
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Row(
@@ -967,8 +976,9 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                     },
                     icon: const Icon(Icons.shopping_bag_outlined,
                         size: 17),
-                    label: Text(
-                        'Add $_qty to cart — OMR ${(p.price * _qty).toStringAsFixed(2)}'),
+                    label: Text(s.t(
+                        'أضف $_qty للسلة — ${(p.price * _qty).toStringAsFixed(2)} ${s.omr}',
+                        'Add $_qty to cart — OMR ${(p.price * _qty).toStringAsFixed(2)}')),
                   ),
                 ],
               ),
@@ -987,17 +997,17 @@ class _Rating extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.star_rounded,
-            size: 13, color: Color(0xFFF59E0B)),
+        Icon(Icons.star_rounded, size: 13, color: ak.amber),
         const SizedBox(width: 3),
         Text(
           rating.toStringAsFixed(1),
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 11, fontWeight: FontWeight.w700,
-              color: AppColors.ink2),
+              color: ak.inkSub),
         ),
       ],
     );
@@ -1012,27 +1022,36 @@ class _PriceLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        Text(
-          'OMR ${product.price.toStringAsFixed(2)}',
-          style: TextStyle(
-            fontSize: size,
-            fontWeight: FontWeight.w800,
-            color: AppColors.brandDark,
+        Flexible(
+          child: Text(
+            'OMR ${product.price.toStringAsFixed(2)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: FontWeight.w800,
+              color: ak.ink,
+            ),
           ),
         ),
         if (product.onOffer) ...[
           const SizedBox(width: 5),
-          Text(
-            product.oldPrice!.toStringAsFixed(2),
-            style: TextStyle(
-              fontSize: size - 3,
-              color: AppColors.ink3,
-              decoration: TextDecoration.lineThrough,
+          Flexible(
+            child: Text(
+              product.oldPrice!.toStringAsFixed(2),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: size - 3,
+                color: ak.inkFaint,
+                decoration: TextDecoration.lineThrough,
+              ),
             ),
           ),
         ],

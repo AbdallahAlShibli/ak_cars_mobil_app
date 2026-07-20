@@ -2,41 +2,47 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 
-/// Bottom navigation shell — Home, Services, Shop, Cars, Profile.
+/// Bottom navigation shell — Sand & Ink: surface bar with 24px top radius,
+/// active item = icon inside an ink pill (inverted cream in dark) + bold
+/// label. Home, Services, Shop, Cars, Profile.
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({super.key, required this.shell});
 
   final StatefulNavigationShell shell;
 
-  static const _items = [
-    (Icons.home_rounded, 'Home'),
-    (Icons.build_rounded, 'Services'),
-    (Icons.shopping_bag_rounded, 'Shop'),
-    (Icons.directions_car_filled_rounded, 'Cars'),
-    (Icons.person_rounded, 'Profile'),
-  ];
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    final items = [
+      (LucideIcons.home, s.navHome),
+      (LucideIcons.wrench, s.navServices),
+      (LucideIcons.shoppingBag, s.navShop),
+      (LucideIcons.car, s.navCars),
+      (LucideIcons.user, s.navProfile),
+    ];
+
     return Scaffold(
       body: shell,
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.card,
-          border: Border(
-            top: BorderSide(color: Color(0xFFEDF1F6), width: 1),
-          ),
+        decoration: BoxDecoration(
+          color: ak.navBar,
+          border: Border(top: BorderSide(color: ak.border)),
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(
           top: false,
-          child: SizedBox(
-            height: 64,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
             child: Row(
               children: [
-                for (final (i, item) in _items.indexed)
+                for (final (i, item) in items.indexed)
                   _NavItem(
                     icon: item.$1,
                     label: item.$2,
@@ -70,45 +76,41 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? AppColors.brand : AppColors.ink3;
+    final ak = AkColors.of(context);
     return Expanded(
       child: InkWell(
+        borderRadius: BorderRadius.circular(16),
         onTap: () {
           HapticFeedback.selectionClick();
           onTap();
         },
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
               padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
-                gradient: selected ? AppColors.brandGradient : null,
+                color: selected ? ak.primary : Colors.transparent,
                 borderRadius: BorderRadius.circular(999),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: AppColors.brand.withValues(alpha: 0.35),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ]
-                    : null,
               ),
-              child: Icon(icon,
-                  color: selected ? Colors.white : color, size: 22),
+              child: Icon(
+                icon,
+                size: 16,
+                color: selected ? ak.onPrimary : ak.navIdle,
+              ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 10.5,
-                fontWeight:
-                    selected ? FontWeight.w700 : FontWeight.w600,
-                color: color,
+                fontSize: 9.5,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? ak.ink : ak.navIdle,
               ),
             ),
           ],

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/app_state.dart';
@@ -26,10 +27,12 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     if (!mounted) return;
     final order = ref.read(ordersProvider.notifier).place(items, total);
     ref.read(cartProvider.notifier).clear();
+    final s = S.of(context);
     ref.read(notificationsProvider.notifier).push(
-          title: 'Order ${order.id} placed',
-          body:
-              'OMR ${total.toStringAsFixed(2)} held — released when you confirm receipt.',
+          title: s.t('تم إنشاء الطلب ${order.id}', 'Order ${order.id} placed'),
+          body: s.t(
+              'تم احتجاز ${total.toStringAsFixed(2)} ر.ع — تُحرّر عند تأكيد الاستلام.',
+              'OMR ${total.toStringAsFixed(2)} held — released when you confirm receipt.'),
           icon: Icons.inventory_2_outlined,
           route: '/orders',
         );
@@ -39,36 +42,39 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final items = ref.watch(cartItemsProvider);
     final total = ref.watch(cartTotalProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Cart')),
+      appBar: AppBar(title: Text(s.t('السلة', 'Cart'))),
       body: SafeArea(
         child: items.isEmpty
             ? Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const IconTile(Icons.shopping_bag_outlined,
+                    IconTile(Icons.shopping_bag_outlined,
                         size: 64,
                         radius: 22,
-                        background: AppColors.field,
-                        foreground: AppColors.ink3),
+                        background: ak.surfaceDim,
+                        foreground: ak.inkFaint),
                     const SizedBox(height: 12),
-                    const Text('Your cart is empty',
-                        style: TextStyle(
+                    Text(s.t('سلتك فارغة', 'Your cart is empty'),
+                        style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
-                    const Text('Parts you add will appear here.',
-                        style: TextStyle(
-                            fontSize: 12.5, color: AppColors.ink2)),
+                    Text(
+                        s.t('القطع التي تضيفها ستظهر هنا.',
+                            'Parts you add will appear here.'),
+                        style: TextStyle(fontSize: 12.5, color: ak.inkSub)),
                     const SizedBox(height: 16),
                     SizedBox(
                       width: 180,
                       child: FilledButton(
                         onPressed: () => context.go('/shop'),
-                        child: const Text('Browse parts'),
+                        child: Text(s.t('تصفّح القطع', 'Browse parts')),
                       ),
                     ),
                   ],
@@ -93,8 +99,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                 IconTile(item.product.icon,
                                     size: 48,
                                     radius: 14,
-                                    background: AppColors.field,
-                                    foreground: AppColors.ink2),
+                                    background: ak.surfaceDim,
+                                    foreground: ak.inkSub),
                                 const SizedBox(width: 11),
                                 Expanded(
                                   child: Column(
@@ -111,11 +117,13 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                                   FontWeight.w700)),
                                       const SizedBox(height: 3),
                                       Text(
-                                        'OMR ${item.product.price.toStringAsFixed(2)}',
-                                        style: const TextStyle(
+                                        s.t(
+                                            '${item.product.price.toStringAsFixed(2)} ${s.omr}',
+                                            'OMR ${item.product.price.toStringAsFixed(2)}'),
+                                        style: TextStyle(
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w800,
-                                          color: AppColors.brandDark,
+                                          color: ak.ink,
                                         ),
                                       ),
                                     ],
@@ -136,10 +144,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                   ),
                   Container(
                     padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-                    decoration: const BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius:
-                          BorderRadius.vertical(top: Radius.circular(24)),
+                    decoration: BoxDecoration(
+                      color: ak.surface,
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(24)),
                     ),
                     child: Column(
                       children: [
@@ -147,23 +155,26 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           mainAxisAlignment:
                               MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Total',
-                                style: TextStyle(
+                            Text(s.t('الإجمالي', 'Total'),
+                                style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700)),
                             Text(
-                              'OMR ${total.toStringAsFixed(2)}',
-                              style: const TextStyle(
+                              s.t('${total.toStringAsFixed(2)} ${s.omr}',
+                                  'OMR ${total.toStringAsFixed(2)}'),
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: AppColors.brandDark,
+                                color: ak.ink,
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 10),
-                        const EscrowBanner(
-                          'Payment held safely — released to the store only after you confirm you received the parts.',
+                        EscrowBanner(
+                          s.t(
+                              'المبلغ محتجز بأمان — يُحوّل للمتجر فقط بعد تأكيدك استلام القطع.',
+                              'Payment held safely — released to the store only after you confirm you received the parts.'),
                         ),
                         const SizedBox(height: 12),
                         FilledButton(
@@ -176,8 +187,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                       strokeWidth: 2.5,
                                       color: Colors.white),
                                 )
-                              : Text(
-                                  'Checkout — OMR ${total.toStringAsFixed(2)}'),
+                              : Text(s.t(
+                                  'الدفع — ${total.toStringAsFixed(2)} ${s.omr}',
+                                  'Checkout — OMR ${total.toStringAsFixed(2)}')),
                         ),
                       ],
                     ),
@@ -197,9 +209,10 @@ class _QtyStepper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.field,
+        color: ak.surfaceDim,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -210,7 +223,7 @@ class _QtyStepper extends StatelessWidget {
             icon: Icon(
               qty == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
               size: 17,
-              color: qty == 1 ? AppColors.bad : AppColors.ink2,
+              color: qty == 1 ? ak.danger : ak.inkSub,
             ),
             onPressed: () {
               HapticFeedback.selectionClick();
@@ -228,8 +241,7 @@ class _QtyStepper extends StatelessWidget {
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.add_rounded,
-                size: 17, color: AppColors.brand),
+            icon: Icon(Icons.add_rounded, size: 17, color: ak.ink),
             onPressed: () {
               HapticFeedback.selectionClick();
               onChanged(qty + 1);

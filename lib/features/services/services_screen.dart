@@ -187,27 +187,28 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                           const EdgeInsets.symmetric(horizontal: 20),
                       child: Text(
                         '${results.length} results for "${_query.trim()}"',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.ink2),
+                            color: AkColors.of(context).inkSub),
                       ),
                     ),
                     const SizedBox(height: 10),
                   ],
                   if (searching && results.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
                       child: Center(
                         child: Column(
                           children: [
                             Icon(Icons.search_off_rounded,
-                                size: 40, color: AppColors.ink3),
-                            SizedBox(height: 8),
+                                size: 40,
+                                color: AkColors.of(context).inkFaint),
+                            const SizedBox(height: 8),
                             Text('No services match your search',
                                 style: TextStyle(
                                     fontSize: 13,
-                                    color: AppColors.ink2)),
+                                    color: AkColors.of(context).inkSub)),
                           ],
                         ),
                       ),
@@ -241,6 +242,7 @@ class _OfferingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     final category = MockData.categories
         .firstWhere((c) => c.id == offering.categoryId);
     final local = offering.provider.region == localRegion;
@@ -251,9 +253,9 @@ class _OfferingCard extends StatelessWidget {
         children: [
           IconTile(category.icon,
               background:
-                  category.emergency ? AppColors.badSoft : AppColors.brandSoft,
+                  category.emergency ? ak.dangerSoft : ak.surfaceDim,
               foreground:
-                  category.emergency ? AppColors.bad : AppColors.brand),
+                  category.emergency ? ak.danger : ak.ink),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -270,8 +272,8 @@ class _OfferingCard extends StatelessWidget {
                     ),
                     if (offering.provider.verified) ...[
                       const SizedBox(width: 4),
-                      const Icon(Icons.verified_rounded,
-                          size: 13, color: AppColors.brand),
+                      Icon(Icons.verified_rounded,
+                          size: 13, color: ak.ink),
                     ],
                   ],
                 ),
@@ -281,8 +283,8 @@ class _OfferingCard extends StatelessWidget {
                   '${local ? '' : ' · ${offering.provider.region}'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppColors.ink3),
+                  style: TextStyle(
+                      fontSize: 11.5, color: ak.inkFaint),
                 ),
               ],
             ),
@@ -294,10 +296,10 @@ class _OfferingCard extends StatelessWidget {
                 offering.price != null
                     ? 'OMR ${offering.price!.toStringAsFixed(0)}'
                     : 'Quote',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.brandDark,
+                  color: ak.ink,
                 ),
               ),
               if (local)

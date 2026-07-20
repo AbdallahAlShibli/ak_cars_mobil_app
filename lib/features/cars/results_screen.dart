@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/app_state.dart';
 import '../../data/gallery_data.dart';
+import 'cars_filter_screen.dart';
 import 'listing_card.dart';
 
-/// Results — trim chips, sort bottom sheet, active-filter badge.
+/// Results — trim chips, sort bottom sheet, editable filters (the tune
+/// button opens [CarsFilterSheet] seeded with the current criteria).
 class ResultsScreen extends ConsumerStatefulWidget {
   const ResultsScreen({
     super.key,
@@ -27,61 +31,56 @@ class ResultsScreen extends ConsumerStatefulWidget {
 }
 
 class _ResultsScreenState extends ConsumerState<ResultsScreen> {
-  String _trim = 'All';
-  GallerySort _sort = GallerySort.newest;
+  late CarsFilter _filter;
 
-  int get _activeFilters {
-    var n = 0;
-    if (widget.make != null) n++;
-    if (widget.model != null) n++;
-    if (widget.fromYear != null || widget.toYear != null) n++;
-    return n;
+  @override
+  void initState() {
+    super.initState();
+    _filter = CarsFilter(
+      make: widget.make,
+      model: widget.model,
+      fromYear: widget.fromYear,
+      toYear: widget.toYear,
+    );
   }
 
-  List<GalleryListing> get _results {
-    final list = GalleryData.listings.where((l) {
-      if (widget.make != null && l.make != widget.make) return false;
-      if (widget.model != null && l.model != widget.model) return false;
-      if (widget.fromYear != null && l.year < widget.fromYear!) return false;
-      if (widget.toYear != null && l.year > widget.toYear!) return false;
-      if (_trim != 'All' && l.trim != _trim) return false;
-      return true;
-    }).toList();
+  List<GalleryListing> _results(List<GalleryListing> feed) =>
+      _filter.apply(feed);
 
-    list.sort((a, b) => switch (_sort) {
-          GallerySort.newest =>
-            a.postedMinutesAgo.compareTo(b.postedMinutesAgo),
-          GallerySort.oldest =>
-            b.postedMinutesAgo.compareTo(a.postedMinutesAgo),
-          GallerySort.priceLowHigh => (a.price ?? double.infinity)
-              .compareTo(b.price ?? double.infinity),
-          GallerySort.priceHighLow =>
-            (b.price ?? -1).compareTo(a.price ?? -1),
-        });
-    return list;
-  }
-
-  List<String> get _trims {
-    if (widget.model != null) {
-      final known = GalleryData.trimsFor(widget.model!);
+  /// Trim quick-chips reflect the filter's Sub-Model facet. Options are
+  /// derived ignoring the trim constraint itself (so picking one never
+  /// collapses the list).
+  List<String> _trims(List<GalleryListing> feed) {
+    final model = _filter.model;
+    if (model != null) {
+      final known = GalleryData.trimsFor(model);
       if (known.isNotEmpty) return ['All', ...known];
     }
+    final base = _filter.copyWith(trims: const {});
     final seen = <String>{};
-    for (final l in _resultsUnfiltered) {
+    for (final l in feed.where(base.matches)) {
       if (l.trim.isNotEmpty) seen.add(l.trim);
     }
-    return ['All', ...seen];
+    return ['All', ...(seen.toList()..sort())];
   }
 
-  List<GalleryListing> get _resultsUnfiltered =>
-      GalleryData.listings.where((l) {
-        if (widget.make != null && l.make != widget.make) return false;
-        if (widget.model != null && l.model != widget.model) return false;
-        return true;
-      }).toList();
+  Future<void> _openFilters() async {
+    HapticFeedback.selectionClick();
+    final result = await Navigator.of(context).push<CarsFilter>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => CarsFilterScreen(initial: _filter),
+      ),
+    );
+    if (result != null) {
+      setState(() => _filter = result);
+    }
+  }
 
   Future<void> _openSort() async {
     HapticFeedback.selectionClick();
+    final ak = AkColors.of(context);
+    final s = S.of(context);
     final sort = await showModalBottomSheet<GallerySort>(
       context: context,
       builder: (context) => SafeArea(
@@ -91,41 +90,41 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Sort by',
-                  style:
-                      TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              Text(s.t('الترتيب حسب', 'Sort by'),
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),
-              for (final s in GallerySort.values)
+              for (final sort in GallerySort.values)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: GestureDetector(
-                    onTap: () => Navigator.pop(context, s),
+                    onTap: () => Navigator.pop(context, sort),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 13),
                       decoration: BoxDecoration(
-                        color: AppColors.card,
+                        color: ak.surface,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: _sort == s
-                              ? AppColors.brand
-                              : AppColors.border,
-                          width: _sort == s ? 2 : 1,
+                          color: _filter.sort == sort
+                              ? ak.ink
+                              : ak.border,
+                          width: _filter.sort == sort ? 2 : 1,
                         ),
                       ),
                       child: Row(
                         children: [
                           Icon(
-                            _sort == s
+                            _filter.sort == sort
                                 ? Icons.radio_button_checked_rounded
                                 : Icons.radio_button_off_rounded,
                             size: 19,
-                            color: _sort == s
-                                ? AppColors.brand
-                                : AppColors.ink3,
+                            color: _filter.sort == sort
+                                ? ak.ink
+                                : ak.inkFaint,
                           ),
                           const SizedBox(width: 10),
-                          Text(s.label,
+                          Text(_sortLabel(s, sort),
                               style: const TextStyle(
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w600)),
@@ -139,16 +138,31 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
         ),
       ),
     );
-    if (sort != null) setState(() => _sort = sort);
+    if (sort != null) {
+      setState(() => _filter = _filter.copyWith(sort: sort));
+    }
   }
+
+  String _sortLabel(S s, GallerySort sort) => switch (sort) {
+        GallerySort.newest => s.t('الأحدث', 'Newest'),
+        GallerySort.oldest => s.t('الأقدم', 'Oldest'),
+        GallerySort.priceLowHigh =>
+          s.t('السعر: الأقل أولاً', 'Price: low to high'),
+        GallerySort.priceHighLow =>
+          s.t('السعر: الأعلى أولاً', 'Price: high to low'),
+      };
 
   @override
   Widget build(BuildContext context) {
-    final results = _results;
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    final feed = ref.watch(galleryFeedProvider);
+    final results = _results(feed);
+    final trims = _trims(feed);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Results'),
+        title: Text(s.t('النتائج', 'Results')),
         actions: [
           IconButton(
             onPressed: _openSort,
@@ -157,10 +171,10 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
           Padding(
             padding: const EdgeInsetsDirectional.only(end: 8),
             child: Badge(
-              isLabelVisible: _activeFilters > 0,
-              label: Text('$_activeFilters'),
+              isLabelVisible: _filter.activeCount > 0,
+              label: Text('${_filter.activeCount}'),
               child: IconButton(
-                onPressed: () => Navigator.maybePop(context),
+                onPressed: _openFilters,
                 icon: const Icon(Icons.tune_rounded),
               ),
             ),
@@ -171,18 +185,22 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_trims.length > 1)
+            if (trims.length > 1)
               SizedBox(
                 height: 40,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   children: [
-                    for (final t in _trims) ...[
+                    for (final t in trims) ...[
                       SelectChip(
-                        label: t,
-                        selected: _trim == t,
-                        onTap: () => setState(() => _trim = t),
+                        label: t == 'All' ? s.t('الكل', 'All') : t,
+                        selected: t == 'All'
+                            ? _filter.trims.isEmpty
+                            : _filter.trims.length == 1 &&
+                                _filter.trims.contains(t),
+                        onTap: () => setState(() => _filter = _filter.copyWith(
+                            trims: t == 'All' ? const {} : {t})),
                       ),
                       const SizedBox(width: 7),
                     ],
@@ -195,22 +213,24 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                 duration: const Duration(milliseconds: 220),
                 switchInCurve: Curves.easeOut,
                 child: results.isEmpty
-                    ? const Center(
-                        key: ValueKey('empty'),
+                    ? Center(
+                        key: const ValueKey('empty'),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.search_off_rounded,
-                                size: 40, color: AppColors.ink3),
-                            SizedBox(height: 8),
-                            Text('No cars match these filters',
+                                size: 40, color: ak.inkFaint),
+                            const SizedBox(height: 8),
+                            Text(
+                                s.t('لا سيارات تطابق هذه الفلاتر',
+                                    'No cars match these filters'),
                                 style: TextStyle(
-                                    fontSize: 13, color: AppColors.ink2)),
+                                    fontSize: 13, color: ak.inkSub)),
                           ],
                         ),
                       )
                     : ListView.separated(
-                        key: ValueKey('$_trim-$_sort'),
+                        key: ValueKey('${_filter.trims.join()}-${_filter.sort}'),
                         padding:
                             const EdgeInsets.fromLTRB(20, 0, 20, 24),
                         itemCount: results.length,

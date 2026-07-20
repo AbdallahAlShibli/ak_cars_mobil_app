@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/app_state.dart';
@@ -13,6 +14,7 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final auth = ref.watch(authProvider);
     final garage = ref.watch(garageProvider);
     final requests = ref.watch(requestsProvider);
@@ -29,7 +31,7 @@ class ProfileScreen extends ConsumerWidget {
         activeCount + orders.where((o) => o.status.held).length;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(title: Text(s.navProfile)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 90),
@@ -65,37 +67,37 @@ class ProfileScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          auth.profile?.name ?? 'Guest',
+                          auth.profile?.name ?? s.t('زائر', 'Guest'),
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
                           ),
                         ),
+                        const SizedBox(height: 2),
                         Row(
                           children: [
-                            Text(
-                              auth.isRegistered
-                                  ? '${auth.profile!.region} · '
-                                  : 'Not registered yet · ',
-                              style: const TextStyle(
-                                  fontSize: 11.5,
-                                  color: Color(0xFFB9C9F5)),
-                            ),
                             Icon(
                               auth.isRegistered
                                   ? Icons.verified_rounded
                                   : Icons.info_outline_rounded,
                               size: 13,
-                              color: const Color(0xFFB9C9F5),
+                              color: const Color(0xFFD8D2C6),
                             ),
-                            Text(
-                              auth.isRegistered
-                                  ? ' Verified account'
-                                  : ' Tap to complete details',
-                              style: const TextStyle(
-                                  fontSize: 11.5,
-                                  color: Color(0xFFB9C9F5)),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                auth.isRegistered
+                                    ? s.t('${auth.profile!.region} · حساب موثّق',
+                                        '${auth.profile!.region} · Verified account')
+                                    : s.t('لم يتم التسجيل بعد · اضغط لإكمال البيانات',
+                                        'Not registered yet · Tap to complete details'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 11.5,
+                                    color: Color(0xFFD8D2C6)),
+                              ),
                             ),
                           ],
                         ),
@@ -118,36 +120,40 @@ class ProfileScreen extends ConsumerWidget {
                 children: [
                   _MenuRow(
                     icon: Icons.directions_car_filled_rounded,
-                    label: 'My cars',
+                    label: s.t('سياراتي', 'My cars'),
                     trailing: StatusBadge('${garage.length}'),
                     onTap: () => context.push('/garage'),
                   ),
                   _MenuRow(
                     icon: Icons.build_rounded,
-                    label: 'Service requests',
+                    label: s.t('طلبات الصيانة', 'Service requests'),
                     trailing: activeCount > 0
-                        ? StatusBadge.good('$activeCount active')
+                        ? StatusBadge.good(
+                            s.t('$activeCount نشط', '$activeCount active'))
                         : null,
                     onTap: () => context.push('/requests'),
                   ),
                   _MenuRow(
                     icon: Icons.inventory_2_outlined,
-                    label: 'Shop orders',
-                    trailing:
-                        cart.isNotEmpty ? StatusBadge('${cart.length} in cart') : null,
+                    label: s.t('طلبات المتجر', 'Shop orders'),
+                    trailing: cart.isNotEmpty
+                        ? StatusBadge(s.t('${cart.length} في السلة',
+                            '${cart.length} in cart'))
+                        : null,
                     onTap: () => context.push('/orders'),
                   ),
                   _MenuRow(
                     icon: Icons.campaign_outlined,
-                    label: 'My car ads',
+                    label: s.t('إعلاناتي', 'My car ads'),
                     onTap: () => context.go('/cars'),
                   ),
                   _MenuRow(
                     icon: Icons.credit_card_rounded,
-                    label: 'Payments',
+                    label: s.t('المدفوعات', 'Payments'),
                     warm: true,
                     trailing: heldCount > 0
-                        ? StatusBadge.warn('$heldCount held')
+                        ? StatusBadge.warn(
+                            s.t('$heldCount محتجز', '$heldCount held'))
                         : null,
                     onTap: () => context.push('/payments'),
                     last: true,
@@ -162,30 +168,26 @@ class ProfileScreen extends ConsumerWidget {
                 children: [
                   _MenuRow(
                     icon: Icons.manage_accounts_outlined,
-                    label: 'My details',
+                    label: s.t('بياناتي', 'My details'),
                     gray: true,
                     onTap: () => context.push('/register'),
                   ),
                   _MenuRow(
-                    icon: Icons.translate_rounded,
-                    label: 'Language',
+                    icon: Icons.settings_outlined,
+                    label: s.t('الإعدادات — اللغة والمظهر',
+                        'Settings — language & appearance'),
                     gray: true,
-                    trailing: const Text(
+                    trailing: Text(
                       'العربية / EN',
                       style: TextStyle(
-                          fontSize: 12, color: AppColors.ink2),
+                          fontSize: 12,
+                          color: AkColors.of(context).inkSub),
                     ),
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                'Arabic + RTL ships with the i18n phase')),
-                      );
-                    },
+                    onTap: () => context.push('/settings'),
                   ),
                   _MenuRow(
                     icon: Icons.support_agent_rounded,
-                    label: 'Support',
+                    label: s.t('الدعم', 'Support'),
                     gray: true,
                     onTap: () {},
                     last: true,
@@ -221,6 +223,7 @@ class _MenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -228,8 +231,8 @@ class _MenuRow extends StatelessWidget {
         decoration: BoxDecoration(
           border: last
               ? null
-              : const Border(
-                  bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1),
+              : Border(
+                  bottom: BorderSide(color: ak.divider, width: 1),
                 ),
         ),
         child: Row(
@@ -238,16 +241,12 @@ class _MenuRow extends StatelessWidget {
               icon,
               size: 36,
               radius: 11,
-              background: warm
-                  ? AppColors.amberSoft
-                  : gray
-                      ? AppColors.field
-                      : AppColors.brandSoft,
+              background: warm ? ak.amberSoft : ak.surfaceDim,
               foreground: warm
-                  ? const Color(0xFFB45309)
+                  ? ak.amberText
                   : gray
-                      ? AppColors.ink2
-                      : AppColors.brand,
+                      ? ak.inkSub
+                      : ak.ink,
             ),
             const SizedBox(width: 11),
             Expanded(
@@ -258,8 +257,7 @@ class _MenuRow extends StatelessWidget {
               ),
             ),
             trailing ??
-                const Icon(Icons.chevron_right_rounded,
-                    color: Color(0xFFCBD5E1)),
+                Icon(Icons.chevron_right_rounded, color: ak.inkFaint),
           ],
         ),
       ),

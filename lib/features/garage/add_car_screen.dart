@@ -452,7 +452,7 @@ class _PickerField extends StatelessWidget {
                   ),
                 ),
                 const Icon(Icons.expand_more_rounded,
-                    color: Color(0xFFCBD5E1)),
+                    color: Color(0xFFD8D1C4)),
               ],
             ),
           ),

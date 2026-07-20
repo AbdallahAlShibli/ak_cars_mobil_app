@@ -38,8 +38,8 @@ void _openCategory(BuildContext context, ServiceCategory category) {
               const SizedBox(height: 2),
               Text(
                 '${offerings.length} workshops — compare and choose',
-                style:
-                    const TextStyle(fontSize: 12, color: AppColors.ink2),
+                style: TextStyle(
+                    fontSize: 12, color: AkColors.of(sheetContext).inkSub),
               ),
               const SizedBox(height: 12),
               Flexible(
@@ -78,6 +78,7 @@ class _ProviderOfferRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     final p = offering.provider;
     return GestureDetector(
       onTap: () {
@@ -87,10 +88,10 @@ class _ProviderOfferRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.card,
+          color: ak.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: cheapest ? AppColors.brand : AppColors.border,
+            color: cheapest ? ak.ink : ak.border,
             width: cheapest ? 1.5 : 1,
           ),
         ),
@@ -113,8 +114,8 @@ class _ProviderOfferRow extends StatelessWidget {
                       ),
                       if (p.verified) ...[
                         const SizedBox(width: 4),
-                        const Icon(Icons.verified_rounded,
-                            size: 14, color: AppColors.brand),
+                        Icon(Icons.verified_rounded,
+                            size: 14, color: ak.ink),
                       ],
                     ],
                   ),
@@ -122,14 +123,14 @@ class _ProviderOfferRow extends StatelessWidget {
                   Text(
                     '${p.area}, ${p.region}'
                     '${offering.durationMin != null ? ' · ${offering.durationMin} min' : ''}',
-                    style: const TextStyle(
-                        fontSize: 11.5, color: AppColors.ink3),
+                    style: TextStyle(
+                        fontSize: 11.5, color: ak.inkFaint),
                   ),
                   const SizedBox(height: 5),
                   Row(
                     children: [
                       for (final f in p.fulfillments) ...[
-                        Icon(f.icon, size: 13, color: AppColors.ink3),
+                        Icon(f.icon, size: 13, color: ak.inkFaint),
                         const SizedBox(width: 6),
                       ],
                       if (cheapest)
@@ -137,15 +138,15 @@ class _ProviderOfferRow extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: AppColors.goodSoft,
+                            color: ak.successSoft,
                             borderRadius: BorderRadius.circular(999),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Best price',
                             style: TextStyle(
                               fontSize: 9.5,
                               fontWeight: FontWeight.w800,
-                              color: AppColors.good,
+                              color: ak.success,
                             ),
                           ),
                         ),
@@ -158,10 +159,10 @@ class _ProviderOfferRow extends StatelessWidget {
               offering.price != null
                   ? 'OMR ${offering.price!.toStringAsFixed(0)}'
                   : 'Quote',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
-                color: AppColors.brandDark,
+                color: ak.ink,
               ),
             ),
           ],
@@ -187,6 +188,7 @@ class ServicePackageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     return GestureDetector(
       onTap: () => _openCategory(context, category),
       child: Stack(
@@ -197,25 +199,19 @@ class ServicePackageCard extends StatelessWidget {
             height: height,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              gradient: filled ? AppColors.brandGradient : null,
-              color: filled ? null : AppColors.card,
+              color: filled ? ak.primary : ak.surface,
               borderRadius: BorderRadius.circular(20),
               border:
-                  filled ? null : Border.all(color: AppColors.border),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.ink.withValues(alpha: 0.06),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+                  filled ? null : Border.all(color: ak.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(category.icon,
                     size: 22,
-                    color: filled ? Colors.white70 : AppColors.brand),
+                    color: filled
+                        ? ak.onPrimary.withValues(alpha: 0.7)
+                        : ak.ink),
                 const Spacer(),
                 Text(
                   category.name,
@@ -223,7 +219,7 @@ class ServicePackageCard extends StatelessWidget {
                     fontSize: 19,
                     height: 1.15,
                     fontWeight: FontWeight.w800,
-                    color: filled ? Colors.white : AppColors.ink,
+                    color: filled ? ak.onPrimary : ak.ink,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -241,8 +237,8 @@ class ServicePackageCard extends StatelessWidget {
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,
                     color: filled
-                        ? const Color(0xFFB9C9F5)
-                        : AppColors.ink3,
+                        ? ak.onPrimary.withValues(alpha: 0.7)
+                        : ak.inkFaint,
                   ),
                 ),
               ],
@@ -256,7 +252,7 @@ class ServicePackageCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.ink,
+                  color: ak.amber,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -265,7 +261,7 @@ class ServicePackageCard extends StatelessWidget {
                     fontSize: 9.5,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.8,
-                    color: Colors.white,
+                    color: Color(0xFF1D1B17),
                   ),
                 ),
               ),
@@ -284,6 +280,7 @@ class OtherServiceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     final danger = category.emergency;
     return GestureDetector(
       onTap: () => _openCategory(context, category),
@@ -291,16 +288,16 @@ class OtherServiceTile extends StatelessWidget {
         width: 96,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
         decoration: BoxDecoration(
-          color: AppColors.card,
+          color: ak.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: danger ? const Color(0xFFF3D2D2) : AppColors.border),
+              color: danger ? ak.dangerBorder : ak.border),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(category.icon,
-                size: 30, color: danger ? AppColors.bad : AppColors.ink),
+                size: 30, color: danger ? ak.danger : ak.ink),
             const SizedBox(height: 8),
             Text(
               category.name.replaceAll('\n', ' '),
@@ -310,7 +307,7 @@ class OtherServiceTile extends StatelessWidget {
                 fontSize: 10.5,
                 height: 1.25,
                 fontWeight: FontWeight.w700,
-                color: danger ? AppColors.bad : AppColors.ink2,
+                color: danger ? ak.danger : ak.inkSub,
               ),
             ),
           ],

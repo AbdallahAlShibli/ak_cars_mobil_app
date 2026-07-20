@@ -337,6 +337,26 @@ final myAdsProvider =
 final galleryFeedProvider = Provider<List<GalleryListing>>(
     (ref) => [...ref.watch(myAdsProvider), ...GalleryData.listings]);
 
+class CarsFilterNotifier extends Notifier<CarsFilter> {
+  @override
+  CarsFilter build() => const CarsFilter();
+
+  void set(CarsFilter filter) => state = filter;
+
+  /// Single-select shortcut used by the cars-screen category chips.
+  void setBodyType(String? bodyType) => state = state.copyWith(
+      bodyTypes: bodyType == null ? const {} : {bodyType});
+
+  void reset() => state = const CarsFilter();
+}
+
+final carsFilterProvider =
+    NotifierProvider<CarsFilterNotifier, CarsFilter>(CarsFilterNotifier.new);
+
+/// Instant, local-first filtered + sorted cars market feed.
+final filteredGalleryProvider = Provider<List<GalleryListing>>((ref) =>
+    ref.watch(carsFilterProvider).apply(ref.watch(galleryFeedProvider)));
+
 /// ---------------------------------------------------------------------------
 /// Notifications
 /// ---------------------------------------------------------------------------

@@ -19,13 +19,13 @@ Built with Flutter · Riverpod · go_router — RTL-first, Arabic-native UI.
 
 ## 📸 Screenshots
 
-<div align="center">
+<!-- <div align="center">
 
 | Home / Marketplace | Search Results | Listing Detail | Full Specs |
 |:---:|:---:|:---:|:---:|
 | <img src="docs/screenshots/01-home.png" width="200"/> | <img src="docs/screenshots/02-results.png" width="200"/> | <img src="docs/screenshots/03-listing-detail.png" width="200"/> | <img src="docs/screenshots/04-specs.png" width="200"/> |
 
-</div>
+</div> -->
 
 ---
 
