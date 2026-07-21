@@ -20,12 +20,12 @@ void main() {
     });
 
     test('multi-select facets OR within a facet, AND across facets', () {
-      // Two fuels OR'd — but all seed cars are petrol, so a diesel-only
-      // filter yields nothing while petrol yields the whole feed.
+      // Two fuels OR'd together must widen, never narrow.
       const petrol = CarsFilter(fuels: {'Petrol'});
-      expect(petrol.apply(feed).length, feed.length);
-      const diesel = CarsFilter(fuels: {'Diesel'});
-      expect(diesel.apply(feed), isEmpty);
+      const both = CarsFilter(fuels: {'Petrol', 'Diesel'});
+      expect(petrol.apply(feed).every((l) => l.fuel == 'Petrol'), isTrue);
+      expect(both.apply(feed).length,
+          greaterThan(petrol.apply(feed).length));
 
       // Cylinders facet uses ints.
       const v8 = CarsFilter(cylinders: {8});

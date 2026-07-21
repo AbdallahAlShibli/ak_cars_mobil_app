@@ -150,6 +150,10 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
           s.t('السعر: الأقل أولاً', 'Price: low to high'),
         GallerySort.priceHighLow =>
           s.t('السعر: الأعلى أولاً', 'Price: high to low'),
+        GallerySort.mileageLowHigh =>
+          s.t('الممشى: الأقل أولاً', 'Mileage: low to high'),
+        GallerySort.yearNewOld =>
+          s.t('سنة الصنع: الأحدث', 'Model year: newest'),
       };
 
   @override

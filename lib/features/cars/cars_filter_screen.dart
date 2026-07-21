@@ -10,36 +10,50 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/car_media.dart';
 import '../../data/app_state.dart';
 import '../../data/car_catalog.dart';
+import '../../data/car_spec_options.dart';
 import '../../data/gallery_data.dart';
+import '../../data/oman_locations.dart';
 
-/// Collapsible filter sections, in display order — modelled on the
-/// sooq-cars marketplace filter (accordion of Make&Model, Sub-Model, Year,
-/// Specs, … Region, City), extended with the extra facets our listing data
-/// supports (body type, mileage, deal type, sort).
+/// Collapsible filter sections, in display order — the facets a used-car
+/// buyer actually narrows by, cheapest decisions first (what car, how old,
+/// how much) before the fine specs.
+///
+/// Every facet's options come from [CarSpecs] / [OmanLocations], never from
+/// the values that happen to exist in today's feed: a marketplace with eight
+/// petrol automatics must still offer Diesel, Hybrid, Electric and Manual so
+/// buyers can see the market has none — and so a seller can never publish a
+/// value the filter cannot express. Live result counts sit next to each
+/// option and options that would return nothing are shown disabled.
 enum _Section {
   makeModel,
   subModel,
+  condition,
   bodyType,
   year,
-  specs,
-  transmission,
-  driveLine,
-  fuel,
-  cylinders,
-  mileage,
   price,
+  mileage,
+  regionalSpec,
+  transmission,
+  fuel,
+  engineSize,
+  cylinders,
+  driveLine,
+  doors,
+  seats,
   exteriorColor,
   interiorColor,
+  warranty,
+  sellerType,
   region,
   city,
   dealType,
   sort,
 }
 
-/// Modern accordion car filter (sooq-cars pattern), Sand & Ink themed and
-/// dark-mode-correct. "Make and Model" is a combined section with a
-/// selected-car card + a register-a-car-style "Select Car" picker (make
-/// logo grid → model list). Pops with the chosen [CarsFilter].
+/// Modern accordion car filter, Sand & Ink themed and dark-mode-correct.
+/// "Make and Model" is a combined section with a selected-car card + a
+/// register-a-car-style "Select Car" picker (make logo grid → model list).
+/// Pops with the chosen [CarsFilter].
 class CarsFilterScreen extends ConsumerStatefulWidget {
   const CarsFilterScreen({super.key, required this.initial});
 
@@ -190,17 +204,23 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
   bool _isActive(_Section s) => switch (s) {
         _Section.makeModel => _draft.make != null || _draft.model != null,
         _Section.subModel => _draft.trims.isNotEmpty,
+        _Section.condition => _draft.conditions.isNotEmpty,
         _Section.bodyType => _draft.bodyTypes.isNotEmpty,
         _Section.year => _draft.fromYear != null || _draft.toYear != null,
-        _Section.specs => _draft.specGrades.isNotEmpty,
-        _Section.transmission => _draft.transmissions.isNotEmpty,
-        _Section.driveLine => _draft.drivetrains.isNotEmpty,
-        _Section.fuel => _draft.fuels.isNotEmpty,
-        _Section.cylinders => _draft.cylinders.isNotEmpty,
-        _Section.mileage => _draft.maxMileage != null,
         _Section.price => _draft.minPrice != null || _draft.maxPrice != null,
+        _Section.mileage => _draft.maxMileage != null,
+        _Section.regionalSpec => _draft.regionalSpecs.isNotEmpty,
+        _Section.transmission => _draft.transmissions.isNotEmpty,
+        _Section.fuel => _draft.fuels.isNotEmpty,
+        _Section.engineSize => _draft.engineSizes.isNotEmpty,
+        _Section.cylinders => _draft.cylinders.isNotEmpty,
+        _Section.driveLine => _draft.drivetrains.isNotEmpty,
+        _Section.doors => _draft.doors.isNotEmpty,
+        _Section.seats => _draft.seats.isNotEmpty,
         _Section.exteriorColor => _draft.exteriorColors.isNotEmpty,
         _Section.interiorColor => _draft.interiorColors.isNotEmpty,
+        _Section.warranty => _draft.warrantyOnly,
+        _Section.sellerType => _draft.sellerTypes.isNotEmpty,
         _Section.region => _draft.regions.isNotEmpty,
         _Section.city => _draft.cities.isNotEmpty,
         _Section.dealType => _draft.dealTypes.isNotEmpty,
@@ -212,23 +232,34 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
           (l.t('المُصنع والطراز', 'Make and Model'), LucideIcons.car),
         _Section.subModel =>
           (l.t('الفئة الفرعية', 'Sub-Model'), LucideIcons.layers),
+        _Section.condition =>
+          (l.t('الحالة', 'Condition'), LucideIcons.sparkles),
         _Section.bodyType =>
           (l.t('نوع الهيكل', 'Body Type'), LucideIcons.carFront),
         _Section.year => (l.t('السنة', 'Year'), LucideIcons.calendar),
-        _Section.specs => (l.t('المواصفات', 'Specs'), LucideIcons.info),
+        _Section.price => (l.t('نطاق السعر', 'Price Range'), LucideIcons.tag),
+        _Section.mileage => (l.t('الممشى', 'Mileage'), LucideIcons.gauge),
+        _Section.regionalSpec =>
+          (l.t('مواصفات الوارد', 'Regional Spec'), LucideIcons.globe),
         _Section.transmission =>
           (l.t('ناقل الحركة', 'Transmission'), LucideIcons.settings2),
-        _Section.driveLine =>
-          (l.t('نظام الدفع', 'Drive Line'), LucideIcons.move),
         _Section.fuel => (l.t('نوع الوقود', 'Fuel Type'), LucideIcons.fuel),
+        _Section.engineSize =>
+          (l.t('سعة المحرك', 'Engine Size'), LucideIcons.cog),
         _Section.cylinders =>
           (l.t('عدد الإسطوانات', 'Cylinders'), LucideIcons.cylinder),
-        _Section.mileage => (l.t('الممشى', 'Mileage'), LucideIcons.gauge),
-        _Section.price => (l.t('نطاق السعر', 'Price Range'), LucideIcons.tag),
+        _Section.driveLine =>
+          (l.t('نظام الدفع', 'Drive Line'), LucideIcons.move),
+        _Section.doors => (l.t('عدد الأبواب', 'Doors'), LucideIcons.doorOpen),
+        _Section.seats => (l.t('عدد المقاعد', 'Seats'), LucideIcons.users),
         _Section.exteriorColor =>
           (l.t('اللون الخارجي', 'Exterior Color'), LucideIcons.palette),
         _Section.interiorColor =>
           (l.t('اللون الداخلي', 'Interior Color'), LucideIcons.armchair),
+        _Section.warranty =>
+          (l.t('الضمان', 'Warranty'), LucideIcons.shieldCheck),
+        _Section.sellerType =>
+          (l.t('نوع البائع', 'Seller Type'), LucideIcons.store),
         _Section.region => (l.t('المنطقة', 'Region'), LucideIcons.mapPin),
         _Section.city => (l.t('المدينة', 'City'), LucideIcons.building2),
         _Section.dealType =>
@@ -242,13 +273,32 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
     return next;
   }
 
-  List<T> _distinct<T extends Comparable>(
-      List<GalleryListing> feed, T Function(GalleryListing) of) {
-    final seen = <T>{};
-    for (final l in feed) {
-      seen.add(of(l));
-    }
-    return seen.toList()..sort();
+  /// The listings a facet's counts are measured against: everything the
+  /// *other* facets allow. Standard faceted-search behaviour — ticking a
+  /// second fuel type must widen the result set, not report zero.
+  List<GalleryListing> _pool(_Section s, List<GalleryListing> feed) {
+    final base = switch (s) {
+      _Section.condition => _draft.copyWith(conditions: const {}),
+      _Section.bodyType => _draft.copyWith(bodyTypes: const {}),
+      _Section.regionalSpec => _draft.copyWith(regionalSpecs: const {}),
+      _Section.transmission => _draft.copyWith(transmissions: const {}),
+      _Section.fuel => _draft.copyWith(fuels: const {}),
+      _Section.engineSize => _draft.copyWith(engineSizes: const {}),
+      _Section.cylinders => _draft.copyWith(cylinders: const {}),
+      _Section.driveLine => _draft.copyWith(drivetrains: const {}),
+      _Section.doors => _draft.copyWith(doors: const {}),
+      _Section.seats => _draft.copyWith(seats: const {}),
+      _Section.exteriorColor => _draft.copyWith(exteriorColors: const {}),
+      _Section.interiorColor => _draft.copyWith(interiorColors: const {}),
+      _Section.warranty => _draft.copyWith(warrantyOnly: false),
+      _Section.sellerType => _draft.copyWith(sellerTypes: const {}),
+      _Section.region => _draft.copyWith(regions: const {}),
+      _Section.city => _draft.copyWith(cities: const {}),
+      _Section.dealType => _draft.copyWith(dealTypes: const {}),
+      _Section.subModel => _draft.copyWith(trims: const {}),
+      _ => _draft,
+    };
+    return feed.where(base.matches).toList();
   }
 
   @override
@@ -357,86 +407,210 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
 
   // ---------------------------------------------------------------- bodies
   Widget _body(_Section section, S s, List<GalleryListing> feed) {
+    final pool = _pool(section, feed);
     switch (section) {
       case _Section.makeModel:
         return _makeModelBody(s);
       case _Section.subModel:
-        final model = _draft.model;
-        if (model == null) {
-          return _hint(_draft.make == null
-              ? s.t('اختر السيارة أولاً', 'Select a car first')
-              : s.t('اختر الطراز أولاً', 'Select a model first'));
-        }
-        // Prefer the catalog's trim list; fall back to trims seen in the feed.
-        var options = GalleryData.trimsFor(model);
-        if (options.isEmpty) {
-          options = feed
-              .where((l) => l.model == model)
-              .map((l) => l.trim)
-              .where((t) => t.isNotEmpty)
-              .toSet()
-              .toList()
-            ..sort();
-        }
-        if (options.isEmpty) {
-          return _hint(s.t('لا فئات فرعية', 'No sub-models'));
-        }
-        // Display model-prefixed (e.g. "Camry LE"), store the raw trim.
-        return _checks(options, _draft.trims, (v) => '$model $v',
-            (set) => setState(() => _draft = _draft.copyWith(trims: set)));
+        return _subModelBody(s, pool);
+      case _Section.condition:
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.conditions,
+          selected: _draft.conditions,
+          test: (l, v) => l.condition == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(conditions: set)),
+        );
       case _Section.bodyType:
-        return _checks(_distinct(feed, (l) => l.bodyType), _draft.bodyTypes,
-            (v) => _bodyLabel(s, v),
-            (set) => setState(() => _draft = _draft.copyWith(bodyTypes: set)));
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.bodyTypes,
+          selected: _draft.bodyTypes,
+          test: (l, v) => l.bodyType == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(bodyTypes: set)),
+        );
       case _Section.year:
         return _yearBody(s);
-      case _Section.specs:
-        return _checks(_distinct(feed, (l) => l.specGrade), _draft.specGrades,
-            (v) => _specLabel(s, v),
-            (set) => setState(() => _draft = _draft.copyWith(specGrades: set)));
-      case _Section.transmission:
-        return _checks(_distinct(feed, (l) => l.transmission),
-            _draft.transmissions, (v) => _transmissionLabel(s, v),
-            (set) =>
-                setState(() => _draft = _draft.copyWith(transmissions: set)));
-      case _Section.driveLine:
-        return _checks(_distinct(feed, (l) => l.drivetrain), _draft.drivetrains,
-            (v) => _drivetrainLabel(s, v),
-            (set) => setState(() => _draft = _draft.copyWith(drivetrains: set)));
-      case _Section.fuel:
-        return _checks(_distinct(feed, (l) => l.fuel), _draft.fuels,
-            (v) => _fuelLabel(s, v),
-            (set) => setState(() => _draft = _draft.copyWith(fuels: set)));
-      case _Section.cylinders:
-        return _checks<int>(_distinct(feed, (l) => l.cylinders),
-            _draft.cylinders, (v) => s.t('$v إسطوانات', '$v-cylinder'),
-            (set) => setState(() => _draft = _draft.copyWith(cylinders: set)));
+      case _Section.price:
+        return _priceBody(s);
       case _Section.mileage:
         return _mileageBody(s, feed);
-      case _Section.price:
-        return _priceBody(s, feed);
+      case _Section.regionalSpec:
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.regionalSpecs,
+          selected: _draft.regionalSpecs,
+          test: (l, v) => l.regionalSpec == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(regionalSpecs: set)),
+        );
+      case _Section.transmission:
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.transmissions,
+          selected: _draft.transmissions,
+          test: (l, v) => l.transmission == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(transmissions: set)),
+        );
+      case _Section.fuel:
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.fuels,
+          selected: _draft.fuels,
+          test: (l, v) => l.fuel == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(fuels: set)),
+        );
+      case _Section.engineSize:
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: [
+            for (final b in CarSpecs.engineSizes)
+              SpecOption(b.value, b.ar, b.en),
+          ],
+          selected: _draft.engineSizes,
+          test: (l, v) =>
+              CarSpecs.bucketOf(v)?.contains(l.engineLitres) ?? false,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(engineSizes: set)),
+        );
+      case _Section.cylinders:
+        return _facet<int>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.cylinders,
+          selected: _draft.cylinders,
+          test: (l, v) => l.cylinders == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(cylinders: set)),
+        );
+      case _Section.driveLine:
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.drivetrains,
+          selected: _draft.drivetrains,
+          test: (l, v) => l.drivetrain == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(drivetrains: set)),
+        );
+      case _Section.doors:
+        return _facet<int>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.doors,
+          selected: _draft.doors,
+          test: (l, v) => l.doors == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(doors: set)),
+        );
+      case _Section.seats:
+        return _facet<int>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.seats,
+          selected: _draft.seats,
+          // The top option (8) reads as "8 or more".
+          test: (l, v) => v == 8 ? l.seats >= 8 : l.seats == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(seats: set)),
+        );
       case _Section.exteriorColor:
-        return _colorBody(s, feed, (l) => l.exteriorColor,
-            (l) => l.exteriorSwatch, _draft.exteriorColors,
-            (set) =>
-                setState(() => _draft = _draft.copyWith(exteriorColors: set)));
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.colors,
+          selected: _draft.exteriorColors,
+          test: (l, v) => l.exteriorColor == v,
+          swatches: true,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(exteriorColors: set)),
+        );
       case _Section.interiorColor:
-        return _colorBody(s, feed, (l) => l.interiorColor,
-            (l) => l.interiorSwatch, _draft.interiorColors,
-            (set) =>
-                setState(() => _draft = _draft.copyWith(interiorColors: set)));
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.colors,
+          selected: _draft.interiorColors,
+          test: (l, v) => l.interiorColor == v,
+          swatches: true,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(interiorColors: set)),
+        );
+      case _Section.warranty:
+        final withWarranty = pool.where((l) => l.hasWarranty).length;
+        return Column(
+          children: [
+            _RadioRow(
+              label: s.t('أي حالة ضمان', 'Any'),
+              trailing: '${pool.length}',
+              selected: !_draft.warrantyOnly,
+              onTap: () => setState(
+                  () => _draft = _draft.copyWith(warrantyOnly: false)),
+            ),
+            _RadioRow(
+              label: s.t('تحت الضمان فقط', 'Under warranty only'),
+              trailing: '$withWarranty',
+              selected: _draft.warrantyOnly,
+              onTap: withWarranty == 0
+                  ? null
+                  : () => setState(
+                      () => _draft = _draft.copyWith(warrantyOnly: true)),
+            ),
+          ],
+        );
+      case _Section.sellerType:
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.sellerTypes,
+          selected: _draft.sellerTypes,
+          test: (l, v) => l.sellerType == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(sellerTypes: set)),
+        );
       case _Section.region:
-        return _checks(_distinct(feed, (l) => l.governorate), _draft.regions,
-            (v) => v,
-            (set) => setState(() => _draft = _draft.copyWith(regions: set)));
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: [
+            for (final g in OmanLocations.governorates.keys)
+              SpecOption(g, g, g),
+          ],
+          selected: _draft.regions,
+          test: (l, v) => l.governorate == v,
+          onChanged: (set) => setState(() => _draft = _draft.copyWith(
+                regions: set,
+                // Drop cities that no longer belong to a selected region.
+                cities: set.isEmpty
+                    ? _draft.cities
+                    : _draft.cities
+                        .where((c) => set.any((r) =>
+                            OmanLocations.wilayatsOf(r).contains(c)))
+                        .toSet(),
+              )),
+        );
       case _Section.city:
-        return _checks(_distinct(feed, (l) => l.cityName), _draft.cities,
-            (v) => v,
-            (set) => setState(() => _draft = _draft.copyWith(cities: set)));
+        return _cityBody(s, pool);
       case _Section.dealType:
-        return _checks(_distinct(feed, (l) => l.dealType), _draft.dealTypes,
-            (v) => _dealLabel(s, v),
-            (set) => setState(() => _draft = _draft.copyWith(dealTypes: set)));
+        return _facet<String>(
+          s: s,
+          pool: pool,
+          options: CarSpecs.dealTypes,
+          selected: _draft.dealTypes,
+          test: (l, v) => l.dealType == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(dealTypes: set)),
+        );
       case _Section.sort:
         return Column(
           children: [
@@ -450,6 +624,105 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
           ],
         );
     }
+  }
+
+  /// Multi-select facet over a canonical option list, with a live count per
+  /// option. Options with no matching listing are shown disabled rather than
+  /// hidden — an empty count is information ("nobody is selling a diesel
+  /// Camry"), a missing row is a dead end.
+  Widget _facet<T>({
+    required S s,
+    required List<GalleryListing> pool,
+    required List<SpecOption<T>> options,
+    required Set<T> selected,
+    required bool Function(GalleryListing, T) test,
+    required ValueChanged<Set<T>> onChanged,
+    bool swatches = false,
+  }) {
+    if (options.isEmpty) return _hint(s.t('لا خيارات', 'No options'));
+    return Column(
+      children: [
+        for (final o in options)
+          Builder(builder: (context) {
+            final count = pool.where((l) => test(l, o.value)).length;
+            final isSelected = selected.contains(o.value);
+            return _CheckRow(
+              label: s.t(o.ar, o.en),
+              count: count,
+              selected: isSelected,
+              enabled: count > 0 || isSelected,
+              swatch: swatches && o.value is String
+                  ? CarSpecs.swatchOf(o.value as String)
+                  : null,
+              onTap: () => onChanged(_toggle(selected, o.value)),
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _subModelBody(S s, List<GalleryListing> pool) {
+    final model = _draft.model;
+    if (model == null) {
+      return _hint(_draft.make == null
+          ? s.t('اختر السيارة أولاً', 'Select a car first')
+          : s.t('اختر الطراز أولاً', 'Select a model first'));
+    }
+    // Prefer the catalog's trim list; fall back to trims seen in the feed.
+    var options = GalleryData.trimsFor(model);
+    if (options.isEmpty) {
+      options = pool
+          .where((l) => l.model == model)
+          .map((l) => l.trim)
+          .where((t) => t.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+    }
+    if (options.isEmpty) return _hint(s.t('لا فئات فرعية', 'No sub-models'));
+    // Display model-prefixed (e.g. "Camry LE"), store the raw trim.
+    return _facet<String>(
+      s: s,
+      pool: pool,
+      options: [
+        for (final t in options) SpecOption(t, '$model $t', '$model $t'),
+      ],
+      selected: _draft.trims,
+      test: (l, v) => l.trim == v,
+      onChanged: (set) => setState(() => _draft = _draft.copyWith(trims: set)),
+    );
+  }
+
+  Widget _cityBody(S s, List<GalleryListing> pool) {
+    // Scoped to the chosen regions; with no region chosen, showing all ~50
+    // wilayats would bury the section, so we show the ones with inventory.
+    final regions = _draft.regions;
+    final names = <String>{
+      for (final r in regions) ...OmanLocations.wilayatsOf(r),
+      if (regions.isEmpty) ...pool.map((l) => l.cityName),
+      ..._draft.cities,
+    }.toList()
+      ..sort();
+    if (names.isEmpty) return _hint(s.t('لا مدن', 'No cities'));
+    return Column(
+      children: [
+        if (regions.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _hint(s.t('اختر منطقة لعرض كل ولاياتها',
+                'Pick a region to see all of its wilayats')),
+          ),
+        _facet<String>(
+          s: s,
+          pool: pool,
+          options: [for (final c in names) SpecOption(c, c, c)],
+          selected: _draft.cities,
+          test: (l, v) => l.cityName == v,
+          onChanged: (set) =>
+              setState(() => _draft = _draft.copyWith(cities: set)),
+        ),
+      ],
+    );
   }
 
   Widget _makeModelBody(S s) {
@@ -609,7 +882,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
     );
   }
 
-  Widget _priceBody(S s, List<GalleryListing> feed) {
+  Widget _priceBody(S s) {
     final ak = AkColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -631,54 +904,6 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
     );
   }
 
-  Widget _colorBody(
-    S s,
-    List<GalleryListing> feed,
-    String Function(GalleryListing) colorOf,
-    Color Function(GalleryListing) swatchOf,
-    Set<String> selected,
-    ValueChanged<Set<String>> onChanged,
-  ) {
-    final swatches = <String, Color>{};
-    for (final l in feed) {
-      swatches.putIfAbsent(colorOf(l), () => swatchOf(l));
-    }
-    final options = swatches.keys.toList()..sort();
-    if (options.isEmpty) return _hint(s.t('لا خيارات', 'No options'));
-    return Column(
-      children: [
-        for (final o in options)
-          _CheckRow(
-            label: _colorLabel(s, o),
-            selected: selected.contains(o),
-            swatch: swatches[o],
-            onTap: () => onChanged(_toggle(selected, o)),
-          ),
-      ],
-    );
-  }
-
-  Widget _checks<T>(
-    List<T> options,
-    Set<T> selected,
-    String Function(T) labelOf,
-    ValueChanged<Set<T>> onChanged,
-  ) {
-    if (options.isEmpty) {
-      return _hint(S.of(context).t('لا خيارات', 'No options'));
-    }
-    return Column(
-      children: [
-        for (final o in options)
-          _CheckRow(
-            label: labelOf(o),
-            selected: selected.contains(o),
-            onTap: () => onChanged(_toggle(selected, o)),
-          ),
-      ],
-    );
-  }
-
   Widget _hint(String text) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(text,
@@ -687,53 +912,6 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
       );
 
   // -------------------------------------------------------------- labels
-  String _dealLabel(S s, String v) => switch (v) {
-        'Sale only' => s.t('بيع فقط', 'Sale only'),
-        'Sale or exchange' => s.t('بيع أو تبديل', 'Sale or exchange'),
-        _ => v,
-      };
-  String _bodyLabel(S s, String v) => switch (v) {
-        'Sedan' => s.t('سيدان', 'Sedan'),
-        'SUV' => s.t('دفع رباعي', 'SUV'),
-        'Pickup' => s.t('بيك أب', 'Pickup'),
-        _ => v,
-      };
-  String _specLabel(S s, String v) => switch (v) {
-        'First grade' => s.t('الفئة الأولى', 'First grade'),
-        'Second grade' => s.t('الفئة الثانية', 'Second grade'),
-        _ => v,
-      };
-  String _transmissionLabel(S s, String v) => switch (v) {
-        'Automatic' => s.t('أوتوماتيك', 'Automatic'),
-        'Manual' => s.t('عادي', 'Manual'),
-        _ => v,
-      };
-  String _drivetrainLabel(S s, String v) => switch (v) {
-        'Front-wheel drive' => s.t('دفع أمامي', 'Front-wheel drive'),
-        'Rear-wheel drive' => s.t('دفع خلفي', 'Rear-wheel drive'),
-        'Four-wheel drive' => s.t('دفع رباعي', 'Four-wheel drive'),
-        _ => v,
-      };
-  String _fuelLabel(S s, String v) => switch (v) {
-        'Petrol' => s.t('بترول', 'Petrol'),
-        'Diesel' => s.t('ديزل', 'Diesel'),
-        'Electric' => s.t('كهرباء', 'Electric'),
-        'Hybrid' => s.t('هجين', 'Hybrid'),
-        _ => v,
-      };
-  String _colorLabel(S s, String v) => switch (v) {
-        'Silver' => s.t('فضي', 'Silver'),
-        'Black' => s.t('أسود', 'Black'),
-        'White' => s.t('أبيض', 'White'),
-        'Gray' => s.t('رمادي', 'Gray'),
-        'Maroon' => s.t('كستنائي', 'Maroon'),
-        'Beige' => s.t('بيج', 'Beige'),
-        'Blue' => s.t('أزرق', 'Blue'),
-        'Red' => s.t('أحمر', 'Red'),
-        'Brown' => s.t('بني', 'Brown'),
-        'Gold' => s.t('ذهبي', 'Gold'),
-        _ => v,
-      };
   String _sortLabel(S s, GallerySort sort) => switch (sort) {
         GallerySort.newest => s.t('الأحدث إلى الأقدم', 'Newest to oldest'),
         GallerySort.oldest => s.t('الأقدم إلى الأحدث', 'Oldest to newest'),
@@ -741,6 +919,10 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
           s.t('السعر من الأدنى إلى الأعلى', 'Price: low to high'),
         GallerySort.priceHighLow =>
           s.t('السعر من الأعلى إلى الأدنى', 'Price: high to low'),
+        GallerySort.mileageLowHigh =>
+          s.t('الممشى من الأقل إلى الأكثر', 'Mileage: low to high'),
+        GallerySort.yearNewOld =>
+          s.t('سنة الصنع: الأحدث أولاً', 'Model year: newest first'),
       };
 
   static String _km(int v) {
@@ -835,132 +1017,170 @@ class _AccordionTile extends StatelessWidget {
   }
 }
 
-/// Multi-select row: label (+ optional color swatch) with an ink check box.
+/// Multi-select row: label (+ optional color swatch), live result count and
+/// an ink check box. Rows with no results are dimmed and inert.
 class _CheckRow extends StatelessWidget {
   const _CheckRow({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.count,
+    this.enabled = true,
     this.swatch,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final int? count;
+  final bool enabled;
   final Color? swatch;
 
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        decoration: BoxDecoration(
-          color: ak.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? ak.ink : ak.border,
-            width: selected ? 1.5 : 1,
+    return Opacity(
+      opacity: enabled ? 1 : 0.45,
+      child: GestureDetector(
+        onTap: enabled
+            ? () {
+                HapticFeedback.selectionClick();
+                onTap();
+              }
+            : null,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: ak.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? ak.ink : ak.border,
+              width: selected ? 1.5 : 1,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            if (swatch != null) ...[
-              Container(
-                width: 18,
-                height: 18,
-                decoration: BoxDecoration(
-                  color: swatch,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: ak.border),
+          child: Row(
+            children: [
+              if (swatch != null) ...[
+                Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: swatch,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: ak.border),
+                  ),
+                ),
+                const SizedBox(width: 9),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
                 ),
               ),
-              const SizedBox(width: 9),
+              if (count != null) ...[
+                Text(
+                  '$count',
+                  style: GoogleFonts.chakraPetch(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: ak.inkFaint),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: selected ? ak.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                      color: selected ? ak.primary : ak.inkFaint, width: 1.5),
+                ),
+                child: selected
+                    ? Icon(LucideIcons.check, size: 13, color: ak.onPrimary)
+                    : null,
+              ),
             ],
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style:
-                    const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-              ),
-            ),
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: selected ? ak.primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                    color: selected ? ak.primary : ak.inkFaint, width: 1.5),
-              ),
-              child: selected
-                  ? Icon(LucideIcons.check, size: 13, color: ak.onPrimary)
-                  : null,
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Single-select row (trailing radio dot).
+/// Single-select row (optional trailing count + radio dot). A null [onTap]
+/// dims the row and makes it inert.
 class _RadioRow extends StatelessWidget {
   const _RadioRow({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.trailing,
   });
 
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final String? trailing;
 
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        decoration: BoxDecoration(
-          color: ak.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? ak.ink : ak.border,
-            width: selected ? 1.5 : 1,
+    return Opacity(
+      opacity: onTap == null ? 0.45 : 1,
+      child: GestureDetector(
+        onTap: onTap == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onTap!();
+              },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: ak.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? ak.ink : ak.border,
+              width: selected ? 1.5 : 1,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style:
-                    const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
               ),
-            ),
-            Icon(
-              selected
-                  ? Icons.radio_button_checked_rounded
-                  : Icons.radio_button_off_rounded,
-              size: 18,
-              color: selected ? ak.ink : ak.inkFaint,
-            ),
-          ],
+              if (trailing != null) ...[
+                Text(
+                  trailing!,
+                  style: GoogleFonts.chakraPetch(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: ak.inkFaint),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_off_rounded,
+                size: 18,
+                color: selected ? ak.ink : ak.inkFaint,
+              ),
+            ],
+          ),
         ),
       ),
     );

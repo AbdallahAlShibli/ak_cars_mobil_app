@@ -100,13 +100,25 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
 
     final specs = <(String, String, Color?)>[
       ('Car name', listing.displayTitle, null),
+      ('Condition', listing.condition, null),
       ('Mileage', '${listing.mileage} km', null),
       ('Deal type', listing.dealType, null),
       ('Body type', listing.bodyType, null),
-      ('Cylinders', '${listing.cylinders}', null),
+      (
+        'Engine',
+        listing.engineLitres == 0
+            ? 'Electric'
+            : '${listing.engineLitres.toStringAsFixed(1)} L',
+        null,
+      ),
+      ('Cylinders', listing.cylinders == 0 ? '—' : '${listing.cylinders}', null),
       ('Transmission', listing.transmission, null),
+      ('Doors', '${listing.doors}', null),
+      ('Seats', '${listing.seats}', null),
       ('Keys', '${listing.keys}', null),
-      ('Spec grade', listing.specGrade, null),
+      ('Regional spec', listing.regionalSpec, null),
+      ('Warranty', listing.hasWarranty ? 'Under warranty' : 'None', null),
+      ('Seller type', listing.sellerType, null),
       ('Drivetrain', listing.drivetrain, null),
       ('Fuel type', listing.fuel, null),
       ('Exterior color', listing.exteriorColor, listing.exteriorSwatch),

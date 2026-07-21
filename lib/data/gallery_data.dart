@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'car_spec_options.dart';
+
 /// Cars-gallery marketplace data — mirrors the reference marketplace app:
 /// vehicle types, makes rail, trim-filterable results, rich listing details.
 /// Replace with `GET /api/cars` in Phase 2.
@@ -22,7 +24,14 @@ extension VehicleTypeX on VehicleType {
       };
 }
 
-enum GallerySort { newest, oldest, priceLowHigh, priceHighLow }
+enum GallerySort {
+  newest,
+  oldest,
+  priceLowHigh,
+  priceHighLow,
+  mileageLowHigh,
+  yearNewOld,
+}
 
 extension GallerySortX on GallerySort {
   String get label => switch (this) {
@@ -30,6 +39,8 @@ extension GallerySortX on GallerySort {
         GallerySort.oldest => 'Oldest to newest',
         GallerySort.priceLowHigh => 'Price: low to high',
         GallerySort.priceHighLow => 'Price: high to low',
+        GallerySort.mileageLowHigh => 'Mileage: low to high',
+        GallerySort.yearNewOld => 'Model year: newest first',
       };
 }
 
@@ -48,11 +59,17 @@ class CarsFilter {
     this.toYear,
     this.dealTypes = const {},
     this.bodyTypes = const {},
-    this.specGrades = const {},
+    this.conditions = const {},
+    this.regionalSpecs = const {},
     this.transmissions = const {},
     this.drivetrains = const {},
     this.fuels = const {},
     this.cylinders = const {},
+    this.engineSizes = const {},
+    this.doors = const {},
+    this.seats = const {},
+    this.sellerTypes = const {},
+    this.warrantyOnly = false,
     this.exteriorColors = const {},
     this.interiorColors = const {},
     this.regions = const {},
@@ -70,11 +87,21 @@ class CarsFilter {
   final int? toYear;
   final Set<String> dealTypes;
   final Set<String> bodyTypes;
-  final Set<String> specGrades;
+  final Set<String> conditions;
+  final Set<String> regionalSpecs;
   final Set<String> transmissions;
   final Set<String> drivetrains;
   final Set<String> fuels;
   final Set<int> cylinders;
+
+  /// [EngineBucket.value] ids from [CarSpecs.engineSizes].
+  final Set<String> engineSizes;
+  final Set<int> doors;
+
+  /// `8` means "8 or more" — see [CarSpecs.seats].
+  final Set<int> seats;
+  final Set<String> sellerTypes;
+  final bool warrantyOnly;
   final Set<String> exteriorColors;
   final Set<String> interiorColors;
 
@@ -96,11 +123,17 @@ class CarsFilter {
     if (fromYear != null || toYear != null) n++;
     if (dealTypes.isNotEmpty) n++;
     if (bodyTypes.isNotEmpty) n++;
-    if (specGrades.isNotEmpty) n++;
+    if (conditions.isNotEmpty) n++;
+    if (regionalSpecs.isNotEmpty) n++;
     if (transmissions.isNotEmpty) n++;
     if (drivetrains.isNotEmpty) n++;
     if (fuels.isNotEmpty) n++;
     if (cylinders.isNotEmpty) n++;
+    if (engineSizes.isNotEmpty) n++;
+    if (doors.isNotEmpty) n++;
+    if (seats.isNotEmpty) n++;
+    if (sellerTypes.isNotEmpty) n++;
+    if (warrantyOnly) n++;
     if (exteriorColors.isNotEmpty) n++;
     if (interiorColors.isNotEmpty) n++;
     if (regions.isNotEmpty) n++;
@@ -118,7 +151,10 @@ class CarsFilter {
     if (toYear != null && l.year > toYear!) return false;
     if (dealTypes.isNotEmpty && !dealTypes.contains(l.dealType)) return false;
     if (bodyTypes.isNotEmpty && !bodyTypes.contains(l.bodyType)) return false;
-    if (specGrades.isNotEmpty && !specGrades.contains(l.specGrade)) {
+    if (conditions.isNotEmpty && !conditions.contains(l.condition)) {
+      return false;
+    }
+    if (regionalSpecs.isNotEmpty && !regionalSpecs.contains(l.regionalSpec)) {
       return false;
     }
     if (transmissions.isNotEmpty &&
@@ -132,6 +168,22 @@ class CarsFilter {
     if (cylinders.isNotEmpty && !cylinders.contains(l.cylinders)) {
       return false;
     }
+    if (engineSizes.isNotEmpty && !engineSizes.any((id) {
+      final bucket = CarSpecs.bucketOf(id);
+      return bucket != null && bucket.contains(l.engineLitres);
+    })) {
+      return false;
+    }
+    if (doors.isNotEmpty && !doors.contains(l.doors)) return false;
+    // The top seat option (8) reads as "8 or more".
+    if (seats.isNotEmpty &&
+        !seats.any((s) => s == 8 ? l.seats >= 8 : l.seats == s)) {
+      return false;
+    }
+    if (sellerTypes.isNotEmpty && !sellerTypes.contains(l.sellerType)) {
+      return false;
+    }
+    if (warrantyOnly && !l.hasWarranty) return false;
     if (exteriorColors.isNotEmpty &&
         !exteriorColors.contains(l.exteriorColor)) {
       return false;
@@ -163,6 +215,9 @@ class CarsFilter {
               .compareTo(b.price ?? double.infinity),
           GallerySort.priceHighLow =>
             (b.price ?? -1).compareTo(a.price ?? -1),
+          GallerySort.mileageLowHigh =>
+            a.mileageValue.compareTo(b.mileageValue),
+          GallerySort.yearNewOld => b.year.compareTo(a.year),
         });
     return list;
   }
@@ -175,11 +230,17 @@ class CarsFilter {
     int? Function()? toYear,
     Set<String>? dealTypes,
     Set<String>? bodyTypes,
-    Set<String>? specGrades,
+    Set<String>? conditions,
+    Set<String>? regionalSpecs,
     Set<String>? transmissions,
     Set<String>? drivetrains,
     Set<String>? fuels,
     Set<int>? cylinders,
+    Set<String>? engineSizes,
+    Set<int>? doors,
+    Set<int>? seats,
+    Set<String>? sellerTypes,
+    bool? warrantyOnly,
     Set<String>? exteriorColors,
     Set<String>? interiorColors,
     Set<String>? regions,
@@ -197,11 +258,17 @@ class CarsFilter {
         toYear: toYear != null ? toYear() : this.toYear,
         dealTypes: dealTypes ?? this.dealTypes,
         bodyTypes: bodyTypes ?? this.bodyTypes,
-        specGrades: specGrades ?? this.specGrades,
+        conditions: conditions ?? this.conditions,
+        regionalSpecs: regionalSpecs ?? this.regionalSpecs,
         transmissions: transmissions ?? this.transmissions,
         drivetrains: drivetrains ?? this.drivetrains,
         fuels: fuels ?? this.fuels,
         cylinders: cylinders ?? this.cylinders,
+        engineSizes: engineSizes ?? this.engineSizes,
+        doors: doors ?? this.doors,
+        seats: seats ?? this.seats,
+        sellerTypes: sellerTypes ?? this.sellerTypes,
+        warrantyOnly: warrantyOnly ?? this.warrantyOnly,
         exteriorColors: exteriorColors ?? this.exteriorColors,
         interiorColors: interiorColors ?? this.interiorColors,
         regions: regions ?? this.regions,
@@ -223,11 +290,17 @@ class GalleryListing {
     this.price,
     required this.mileage,
     required this.bodyType,
+    required this.condition,
     required this.cylinders,
+    required this.engineLitres,
     required this.transmission,
     required this.fuel,
     required this.drivetrain,
-    required this.specGrade,
+    required this.doors,
+    required this.seats,
+    required this.regionalSpec,
+    required this.hasWarranty,
+    required this.sellerType,
     required this.keys,
     required this.exteriorColor,
     required this.exteriorSwatch,
@@ -254,11 +327,27 @@ class GalleryListing {
   final double? price; // null => "Ask for price"
   final String mileage;
   final String bodyType;
+
+  /// 'New' | 'Used' — see [CarSpecs.conditions].
+  final String condition;
+
+  /// `0` for a pure EV — see [CarSpecs.cylinders].
   final int cylinders;
+
+  /// Displacement in litres; `0.0` for a pure EV.
+  final double engineLitres;
   final String transmission;
   final String fuel;
   final String drivetrain;
-  final String specGrade;
+  final int doors;
+  final int seats;
+  final String regionalSpec;
+
+  /// Still covered by an agency/dealer warranty.
+  final bool hasWarranty;
+
+  /// 'Owner' | 'Dealer' | 'Showroom' — see [CarSpecs.sellerTypes].
+  final String sellerType;
   final int keys;
   final String exteriorColor;
   final Color exteriorSwatch;
@@ -361,11 +450,17 @@ abstract final class GalleryData {
       price: null,
       mileage: '200,000+',
       bodyType: 'Sedan',
+      condition: 'Used',
       cylinders: 4,
+      engineLitres: 2.5,
       transmission: 'Automatic',
       fuel: 'Petrol',
       drivetrain: 'Front-wheel drive',
-      specGrade: 'Second grade',
+      doors: 4,
+      seats: 5,
+      regionalSpec: 'GCC',
+      hasWarranty: false,
+      sellerType: 'Owner',
       keys: 1,
       exteriorColor: 'Silver',
       exteriorSwatch: Color(0xFFC0C4CC),
@@ -395,11 +490,17 @@ abstract final class GalleryData {
       price: 6200,
       mileage: '48,000',
       bodyType: 'Sedan',
+      condition: 'Used',
       cylinders: 4,
+      engineLitres: 2.5,
       transmission: 'Automatic',
       fuel: 'Petrol',
       drivetrain: 'Front-wheel drive',
-      specGrade: 'First grade',
+      doors: 4,
+      seats: 5,
+      regionalSpec: 'GCC',
+      hasWarranty: true,
+      sellerType: 'Owner',
       keys: 2,
       exteriorColor: 'Silver',
       exteriorSwatch: Color(0xFFC0C4CC),
@@ -428,11 +529,17 @@ abstract final class GalleryData {
       price: 3200,
       mileage: '180,000',
       bodyType: 'Sedan',
+      condition: 'Used',
       cylinders: 4,
+      engineLitres: 2.5,
       transmission: 'Automatic',
       fuel: 'Petrol',
       drivetrain: 'Front-wheel drive',
-      specGrade: 'Second grade',
+      doors: 4,
+      seats: 5,
+      regionalSpec: 'GCC',
+      hasWarranty: false,
+      sellerType: 'Owner',
       keys: 1,
       exteriorColor: 'Maroon',
       exteriorSwatch: Color(0xFF7B2D3B),
@@ -461,11 +568,17 @@ abstract final class GalleryData {
       price: 8000,
       mileage: '76,000',
       bodyType: 'Sedan',
+      condition: 'Used',
       cylinders: 4,
+      engineLitres: 2.5,
       transmission: 'Automatic',
       fuel: 'Petrol',
       drivetrain: 'Front-wheel drive',
-      specGrade: 'First grade',
+      doors: 4,
+      seats: 5,
+      regionalSpec: 'American',
+      hasWarranty: false,
+      sellerType: 'Owner',
       keys: 2,
       exteriorColor: 'White',
       exteriorSwatch: Color(0xFFF3F4F6),
@@ -494,11 +607,17 @@ abstract final class GalleryData {
       price: 3200,
       mileage: '210,000',
       bodyType: 'Sedan',
+      condition: 'Used',
       cylinders: 4,
+      engineLitres: 2.5,
       transmission: 'Automatic',
       fuel: 'Petrol',
       drivetrain: 'Front-wheel drive',
-      specGrade: 'Second grade',
+      doors: 4,
+      seats: 5,
+      regionalSpec: 'American',
+      hasWarranty: false,
+      sellerType: 'Owner',
       keys: 1,
       exteriorColor: 'Gray',
       exteriorSwatch: Color(0xFF9CA3AF),
@@ -525,11 +644,17 @@ abstract final class GalleryData {
       price: 9300,
       mileage: '130,000',
       bodyType: 'SUV',
+      condition: 'Used',
       cylinders: 8,
+      engineLitres: 5.6,
       transmission: 'Automatic',
       fuel: 'Petrol',
       drivetrain: 'Four-wheel drive',
-      specGrade: 'First grade',
+      doors: 5,
+      seats: 8,
+      regionalSpec: 'GCC',
+      hasWarranty: false,
+      sellerType: 'Dealer',
       keys: 2,
       exteriorColor: 'Black',
       exteriorSwatch: Color(0xFF17181A),
@@ -557,11 +682,17 @@ abstract final class GalleryData {
       price: 12500,
       mileage: '98,000',
       bodyType: 'SUV',
+      condition: 'Used',
       cylinders: 8,
+      engineLitres: 5.6,
       transmission: 'Automatic',
       fuel: 'Petrol',
       drivetrain: 'Four-wheel drive',
-      specGrade: 'First grade',
+      doors: 5,
+      seats: 7,
+      regionalSpec: 'GCC',
+      hasWarranty: false,
+      sellerType: 'Owner',
       keys: 2,
       exteriorColor: 'White',
       exteriorSwatch: Color(0xFFF3F4F6),
@@ -588,11 +719,17 @@ abstract final class GalleryData {
       price: 9800,
       mileage: '64,000',
       bodyType: 'Sedan',
+      condition: 'Used',
       cylinders: 6,
+      engineLitres: 3.5,
       transmission: 'Automatic',
       fuel: 'Petrol',
       drivetrain: 'Front-wheel drive',
-      specGrade: 'First grade',
+      doors: 4,
+      seats: 5,
+      regionalSpec: 'Japanese',
+      hasWarranty: false,
+      sellerType: 'Owner',
       keys: 2,
       exteriorColor: 'Blue',
       exteriorSwatch: Color(0xFF1E3A5F),
@@ -609,6 +746,162 @@ abstract final class GalleryData {
       sellerAds: 2,
       sellerFollowers: 5,
       description: 'Lexus ES350 — lady driven, agency maintained, GCC.',
+    ),
+    GalleryListing(
+      id: 'g9',
+      make: 'Toyota',
+      model: 'Hilux',
+      trim: 'GLX',
+      year: 2022,
+      price: 7400,
+      mileage: '85,000',
+      bodyType: 'Pickup',
+      condition: 'Used',
+      cylinders: 4,
+      engineLitres: 2.4,
+      transmission: 'Manual',
+      fuel: 'Diesel',
+      drivetrain: 'Four-wheel drive',
+      doors: 4,
+      seats: 5,
+      regionalSpec: 'GCC',
+      hasWarranty: false,
+      sellerType: 'Dealer',
+      keys: 2,
+      exteriorColor: 'White',
+      exteriorSwatch: Color(0xFFF3F4F6),
+      interiorColor: 'Gray',
+      interiorSwatch: Color(0xFF6B7280),
+      region: 'Ibri, Ad Dhahirah',
+      postedMinutesAgo: 40,
+      dealType: 'Sale or exchange',
+      photoCount: 15,
+      icon: Icons.local_shipping_rounded,
+      tint: Color(0xFF9AA4B2),
+      sellerName: 'Al Dhahirah Motors',
+      sellerJoined: '3/4/2021',
+      sellerAds: 47,
+      sellerFollowers: 130,
+      description:
+          'Hilux 2.4L diesel manual, double cab 4×4. Work-ready, new '
+          'tyres, full service history.',
+    ),
+    GalleryListing(
+      id: 'g10',
+      make: 'Toyota',
+      model: 'RAV4',
+      trim: 'Limited',
+      year: 2023,
+      price: 10200,
+      mileage: '39,000',
+      bodyType: 'Crossover',
+      condition: 'Used',
+      cylinders: 4,
+      engineLitres: 2.5,
+      transmission: 'CVT',
+      fuel: 'Hybrid',
+      drivetrain: 'All-wheel drive',
+      doors: 5,
+      seats: 5,
+      regionalSpec: 'Japanese',
+      hasWarranty: true,
+      sellerType: 'Showroom',
+      keys: 2,
+      exteriorColor: 'Blue',
+      exteriorSwatch: Color(0xFF1E3A5F),
+      interiorColor: 'Black',
+      interiorSwatch: Color(0xFF17181A),
+      region: 'Barka, South Al Batinah',
+      postedMinutesAgo: 55,
+      dealType: 'Sale only',
+      photoCount: 19,
+      icon: Icons.directions_car_filled_rounded,
+      tint: Color(0xFF41536B),
+      sellerName: 'Batinah Auto Showroom',
+      sellerJoined: '17/8/2022',
+      sellerAds: 62,
+      sellerFollowers: 210,
+      description:
+          'RAV4 Hybrid AWD, agency warranty valid until 2027. Very low '
+          'fuel consumption, one owner.',
+    ),
+    GalleryListing(
+      id: 'g11',
+      make: 'Tesla',
+      model: 'Model Y',
+      trim: '',
+      year: 2024,
+      price: 14500,
+      mileage: '18,000',
+      bodyType: 'Crossover',
+      condition: 'Used',
+      cylinders: 0,
+      engineLitres: 0.0,
+      transmission: 'Single-speed',
+      fuel: 'Electric',
+      drivetrain: 'All-wheel drive',
+      doors: 5,
+      seats: 5,
+      regionalSpec: 'American',
+      hasWarranty: true,
+      sellerType: 'Owner',
+      keys: 2,
+      exteriorColor: 'White',
+      exteriorSwatch: Color(0xFFF3F4F6),
+      interiorColor: 'White',
+      interiorSwatch: Color(0xFFEDEDED),
+      region: 'Muscat, Muscat',
+      postedMinutesAgo: 70,
+      dealType: 'Sale only',
+      photoCount: 13,
+      icon: Icons.directions_car_filled_rounded,
+      tint: Color(0xFFB6BEC9),
+      sellerName: 'Rashid Al Harthy',
+      sellerJoined: '9/1/2024',
+      sellerAds: 1,
+      sellerFollowers: 3,
+      description:
+          'Model Y Long Range, home charger included, battery warranty '
+          'transferable.',
+    ),
+    GalleryListing(
+      id: 'g12',
+      make: 'Nissan',
+      model: 'Patrol',
+      trim: 'Platinum',
+      year: 2025,
+      price: 21900,
+      mileage: '0',
+      bodyType: 'SUV',
+      condition: 'New',
+      cylinders: 8,
+      engineLitres: 5.6,
+      transmission: 'Automatic',
+      fuel: 'Petrol',
+      drivetrain: 'Four-wheel drive',
+      doors: 5,
+      seats: 8,
+      regionalSpec: 'GCC',
+      hasWarranty: true,
+      sellerType: 'Showroom',
+      keys: 2,
+      exteriorColor: 'Black',
+      exteriorSwatch: Color(0xFF17181A),
+      interiorColor: 'Beige',
+      interiorSwatch: Color(0xFFD9C9A8),
+      region: 'Sohar, North Al Batinah',
+      postedMinutesAgo: 90,
+      dealType: 'Sale only',
+      photoCount: 24,
+      icon: Icons.airport_shuttle_rounded,
+      tint: Color(0xFF3F4756),
+      sellerName: 'Sohar Prime Motors',
+      sellerJoined: '5/2/2019',
+      sellerAds: 88,
+      sellerFollowers: 340,
+      description:
+          'Brand new Patrol Platinum 2025, zero km, 3-year agency '
+          'warranty. Registration and insurance handled for you.',
     ),
   ];
 

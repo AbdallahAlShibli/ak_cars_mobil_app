@@ -6,13 +6,18 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/app_state.dart';
 import '../../data/car_catalog.dart';
+import '../../data/car_spec_options.dart';
 import '../../data/gallery_data.dart';
 import '../../data/oman_locations.dart';
 
 /// Post a car ad — collects the full set of details the cars filter facets
-/// on (make/model/sub-model, body, year, specs, transmission, drive line,
-/// fuel, cylinders, colors, region/city, deal type, mileage, price) plus a
-/// 5–15 photo gallery. Publishes into the gallery feed.
+/// on (make/model/sub-model, condition, body, year, specs, transmission,
+/// drive line, fuel, engine, cylinders, doors/seats, warranty, seller type,
+/// colors, region/city, deal type, mileage, price) plus a 5–15 photo
+/// gallery. Publishes into the gallery feed.
+///
+/// Every option list comes from [CarSpecs] — the same catalog the filter
+/// renders — so a seller can never publish a value buyers cannot filter by.
 class PostAdScreen extends ConsumerStatefulWidget {
   const PostAdScreen({super.key});
 
@@ -40,12 +45,17 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
   int? _year;
 
   // ---- specifications (mirror the filter facets) ------------------------
+  String? _condition;
   String? _bodyType;
-  String? _specGrade;
+  String? _regionalSpec;
   String? _transmission;
   String? _drivetrain;
   String? _fuel;
   int? _cylinders;
+  int? _doors;
+  int? _seats;
+  bool _hasWarranty = false;
+  String? _sellerType;
 
   // ---- colors -----------------------------------------------------------
   String? _exteriorColor;
@@ -61,37 +71,24 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
 
   final _price = TextEditingController();
   final _mileage = TextEditingController();
+  final _engine = TextEditingController();
   final _description = TextEditingController();
 
-  // Option lists — kept aligned with the labels the cars filter recognises.
-  static const _bodyTypes = ['Sedan', 'SUV', 'Pickup', 'Coupe', 'Hatchback', 'Van'];
-  static const _specGrades = ['First grade', 'Second grade'];
-  static const _transmissions = ['Automatic', 'Manual'];
-  static const _drivetrains = [
-    'Front-wheel drive', 'Rear-wheel drive', 'Four-wheel drive',
-  ];
-  static const _fuels = ['Petrol', 'Diesel', 'Electric', 'Hybrid'];
-  static const _cylinderOptions = [3, 4, 5, 6, 8, 10, 12];
-  static const _dealTypes = ['Sale only', 'Sale or exchange'];
-  static const _colorOptions = <String, Color>{
-    'White': Color(0xFFF3F4F6),
-    'Black': Color(0xFF17181A),
-    'Silver': Color(0xFFC0C4CC),
-    'Gray': Color(0xFF9CA3AF),
-    'Blue': Color(0xFF1E3A5F),
-    'Red': Color(0xFF9B1C31),
-    'Maroon': Color(0xFF7B2D3B),
-    'Beige': Color(0xFFD9C9A8),
-    'Brown': Color(0xFF6B4A2F),
-    'Gold': Color(0xFFC9A24B),
-    'Green': Color(0xFF2F5D3A),
-    'Orange': Color(0xFFC96B1E),
-  };
+  /// Engine displacement in litres; a pure EV has none.
+  double? get _engineLitres {
+    if (_fuel == 'Electric') return 0.0;
+    final text = _engine.text.trim().replaceAll(',', '.');
+    if (text.isEmpty) return null;
+    final value = double.tryParse(text);
+    if (value == null || value <= 0 || value > 12) return null;
+    return value;
+  }
 
   @override
   void dispose() {
     _price.dispose();
     _mileage.dispose();
+    _engine.dispose();
     _description.dispose();
     super.dispose();
   }
@@ -101,12 +98,17 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
       _make != null &&
       _model != null &&
       _year != null &&
+      _condition != null &&
       _bodyType != null &&
-      _specGrade != null &&
+      _regionalSpec != null &&
       _transmission != null &&
       _drivetrain != null &&
       _fuel != null &&
       _cylinders != null &&
+      _engineLitres != null &&
+      _doors != null &&
+      _seats != null &&
+      _sellerType != null &&
       _exteriorColor != null &&
       _interiorColor != null &&
       _governorate != null &&
@@ -133,11 +135,17 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
       price: _askForPrice ? null : double.tryParse(_price.text.trim()),
       mileage: _mileage.text.trim().isEmpty ? '—' : _mileage.text.trim(),
       bodyType: _bodyType!,
+      condition: _condition!,
       cylinders: _cylinders!,
+      engineLitres: _engineLitres!,
       transmission: _transmission!,
       fuel: _fuel!,
       drivetrain: _drivetrain!,
-      specGrade: _specGrade!,
+      doors: _doors!,
+      seats: _seats!,
+      regionalSpec: _regionalSpec!,
+      hasWarranty: _hasWarranty,
+      sellerType: _sellerType!,
       keys: 2,
       exteriorColor: _exteriorColor!,
       exteriorSwatch: _exteriorSwatch!,
@@ -232,17 +240,23 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
     );
   }
 
+  /// Picks a value from the shared [CarSpecs] catalog.
+  Future<T?> _pickSpec<T>(String title, List<SpecOption<T>> options) async {
+    final chosen =
+        await _pickFromList<SpecOption<T>>(title, options, (o) => o.en);
+    return chosen?.value;
+  }
+
   Future<void> _pickColor(String title, bool exterior) async {
-    final entries = _colorOptions.entries.toList();
-    final chosen = await _pickFromList<MapEntry<String, Color>>(
+    final chosen = await _pickFromList<SpecOption<String>>(
       title,
-      entries,
-      (e) => e.key,
-      leading: (e) => Container(
+      CarSpecs.colors,
+      (o) => o.en,
+      leading: (o) => Container(
         width: 22,
         height: 22,
         decoration: BoxDecoration(
-          color: e.value,
+          color: CarSpecs.swatchOf(o.value),
           shape: BoxShape.circle,
           border: Border.all(color: AppColors.border),
         ),
@@ -251,11 +265,11 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
     if (chosen == null) return;
     setState(() {
       if (exterior) {
-        _exteriorColor = chosen.key;
-        _exteriorSwatch = chosen.value;
+        _exteriorColor = chosen.value;
+        _exteriorSwatch = CarSpecs.swatchOf(chosen.value);
       } else {
-        _interiorColor = chosen.key;
-        _interiorSwatch = chosen.value;
+        _interiorColor = chosen.value;
+        _interiorSwatch = CarSpecs.swatchOf(chosen.value);
       }
     });
   }
@@ -550,23 +564,33 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   // ----------------------------------------- specifications
                   _sectionTitle('SPECIFICATIONS'),
                   _field(
+                    Icons.auto_awesome_outlined,
+                    'Condition',
+                    _condition,
+                    () async {
+                      final v =
+                          await _pickSpec('Condition', CarSpecs.conditions);
+                      if (v != null) setState(() => _condition = v);
+                    },
+                  ),
+                  _field(
                     Icons.directions_car_filled_outlined,
                     'Body type',
                     _bodyType,
                     () async {
-                      final v = await _pickFromList(
-                          'Body type', _bodyTypes, (v) => v);
+                      final v =
+                          await _pickSpec('Body type', CarSpecs.bodyTypes);
                       if (v != null) setState(() => _bodyType = v);
                     },
                   ),
                   _field(
-                    Icons.workspace_premium_outlined,
-                    'Spec grade',
-                    _specGrade,
+                    Icons.public_outlined,
+                    'Regional spec',
+                    _regionalSpec,
                     () async {
-                      final v = await _pickFromList(
-                          'Spec grade', _specGrades, (v) => v);
-                      if (v != null) setState(() => _specGrade = v);
+                      final v =
+                          await _pickSpec('Regional spec', CarSpecs.regionalSpecs);
+                      if (v != null) setState(() => _regionalSpec = v);
                     },
                   ),
                   _field(
@@ -574,8 +598,8 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     'Transmission',
                     _transmission,
                     () async {
-                      final v = await _pickFromList(
-                          'Transmission', _transmissions, (v) => v);
+                      final v = await _pickSpec(
+                          'Transmission', CarSpecs.transmissions);
                       if (v != null) setState(() => _transmission = v);
                     },
                   ),
@@ -584,8 +608,8 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     'Drive line',
                     _drivetrain,
                     () async {
-                      final v = await _pickFromList(
-                          'Drive line', _drivetrains, (v) => v);
+                      final v =
+                          await _pickSpec('Drive line', CarSpecs.drivetrains);
                       if (v != null) setState(() => _drivetrain = v);
                     },
                   ),
@@ -594,20 +618,71 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     'Fuel type',
                     _fuel,
                     () async {
-                      final v =
-                          await _pickFromList('Fuel type', _fuels, (v) => v);
-                      if (v != null) setState(() => _fuel = v);
+                      final v = await _pickSpec('Fuel type', CarSpecs.fuels);
+                      if (v == null) return;
+                      setState(() {
+                        _fuel = v;
+                        if (v == 'Electric') {
+                          _cylinders = 0;
+                          _engine.clear();
+                        } else if (_cylinders == 0) {
+                          _cylinders = null;
+                        }
+                      });
+                    },
+                  ),
+                  // An EV has no displacement and no cylinders — don't ask.
+                  if (_fuel != 'Electric') ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: TextField(
+                        controller: _engine,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          hintText: 'Engine size, e.g. 2.5',
+                          suffixText: 'L',
+                          prefixIcon: Icon(Icons.settings_suggest_outlined),
+                        ),
+                      ),
+                    ),
+                    _field(
+                      Icons.settings_input_component_outlined,
+                      'Cylinders',
+                      _cylinders == null
+                          ? null
+                          : '$_cylinders ${_cylinders == 1 ? 'cylinder' : 'cylinders'}',
+                      () async {
+                        final v = await _pickSpec('Cylinders',
+                            CarSpecs.cylinders.where((o) => o.value > 0).toList());
+                        if (v != null) setState(() => _cylinders = v);
+                      },
+                    ),
+                  ],
+                  _field(
+                    Icons.sensor_door_outlined,
+                    'Doors',
+                    _doors == null ? null : '$_doors doors',
+                    () async {
+                      final v = await _pickSpec('Doors', CarSpecs.doors);
+                      if (v != null) setState(() => _doors = v);
                     },
                   ),
                   _field(
-                    Icons.settings_input_component_outlined,
-                    'Cylinders',
-                    _cylinders == null ? null : '$_cylinders-cylinder',
+                    Icons.event_seat_outlined,
+                    'Seats',
+                    _seats == null
+                        ? null
+                        : (_seats == 8 ? '8+ seats' : '$_seats seats'),
                     () async {
-                      final v = await _pickFromList('Cylinders',
-                          _cylinderOptions, (v) => '$v-cylinder');
-                      if (v != null) setState(() => _cylinders = v);
+                      final v = await _pickSpec('Seats', CarSpecs.seats);
+                      if (v != null) setState(() => _seats = v);
                     },
+                  ),
+                  _WarrantyToggle(
+                    value: _hasWarranty,
+                    onChanged: (v) => setState(() => _hasWarranty = v),
                   ),
                   const SizedBox(height: 6),
                   // ------------------------------------------------ colors
@@ -667,9 +742,19 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     'Deal type',
                     _dealType,
                     () async {
-                      final v = await _pickFromList(
-                          'Deal type', _dealTypes, (v) => v);
+                      final v =
+                          await _pickSpec('Deal type', CarSpecs.dealTypes);
                       if (v != null) setState(() => _dealType = v);
+                    },
+                  ),
+                  _field(
+                    Icons.storefront_outlined,
+                    'Seller type',
+                    _sellerType,
+                    () async {
+                      final v =
+                          await _pickSpec('Seller type', CarSpecs.sellerTypes);
+                      if (v != null) setState(() => _sellerType = v);
                     },
                   ),
                   const SizedBox(height: 6),
@@ -759,6 +844,52 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Still under warranty" — a yes/no fact buyers filter on, so it is a
+/// switch, not something buried in the free-text description.
+class _WarrantyToggle extends StatelessWidget {
+  const _WarrantyToggle({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onChanged(!value);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: value ? AppColors.brand : AppColors.border, width: 1.5),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.verified_user_outlined,
+                  size: 18, color: value ? AppColors.brand : AppColors.ink3),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Still under warranty',
+                  style:
+                      TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Switch(value: value, onChanged: onChanged),
+            ],
+          ),
         ),
       ),
     );

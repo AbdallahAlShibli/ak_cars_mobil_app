@@ -160,8 +160,8 @@ void main() {
     expect(find.text('Cylinders'), findsOneWidget);
     // Make and Model section opens first ⇒ its Select Car button shows.
     expect(find.text('Select Car'), findsOneWidget);
-    // Apply bar previews the live result count (whole feed = 8).
-    expect(find.text('Show 8 results'), findsOneWidget);
+    // Apply bar previews the live result count (whole feed = 12).
+    expect(find.text('Show 12 results'), findsOneWidget);
     // City lives near the end of the lazy accordion list — scroll to it.
     await tester.scrollUntilVisible(find.text('City'), 200,
         scrollable: find.byType(Scrollable).first);
@@ -175,12 +175,12 @@ void main() {
       const CarsFilterScreen(initial: CarsFilter()),
       locale: 'en',
     );
-    // Expand Body Type, pick SUV ⇒ 2 SUVs in the seed feed.
+    // Expand Body Type, pick SUV ⇒ 3 SUVs in the seed feed.
     await tester.tap(find.text('Body Type'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('SUV'));
     await tester.pump();
-    expect(find.text('Show 2 results'), findsOneWidget);
+    expect(find.text('Show 3 results'), findsOneWidget);
   });
 
   testWidgets('Cars filter: Select Car opens the make brand grid',
@@ -205,8 +205,8 @@ void main() {
       dark: true,
     );
     expect(find.text('Filters'), findsOneWidget);
-    // SUV pre-selected ⇒ 2 SUVs in the seed feed (Armada, Patrol).
-    expect(find.text('Show 2 results'), findsOneWidget);
+    // SUV pre-selected ⇒ 3 SUVs in the seed feed (Armada, 2 Patrols).
+    expect(find.text('Show 3 results'), findsOneWidget);
   });
 
   testWidgets('Cars filter Price section uses Min/Max input fields',
@@ -238,6 +238,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Camry LE'), findsOneWidget);
     expect(find.text('Camry XSE'), findsOneWidget);
+  });
+
+  testWidgets('Cars filter offers the whole spec catalog, not just the '
+      'values present in the feed', (tester) async {
+    await pumpScreen(
+      tester,
+      const CarsFilterScreen(initial: CarsFilter()),
+      locale: 'en',
+    );
+    await tester.scrollUntilVisible(find.text('Fuel Type'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Fuel Type'));
+    await tester.pumpAndSettle();
+    // All five fuels, including ones nobody is currently selling.
+    for (final fuel in [
+      'Petrol',
+      'Diesel',
+      'Hybrid',
+      'Plug-in Hybrid',
+      'Electric',
+    ]) {
+      expect(find.text(fuel), findsOneWidget, reason: '$fuel option missing');
+    }
+
+    await tester.scrollUntilVisible(find.text('Transmission'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Transmission'));
+    await tester.pumpAndSettle();
+    expect(find.text('Manual'), findsOneWidget);
+    expect(find.text('CVT'), findsOneWidget);
+    expect(find.text('Dual-clutch (DCT)'), findsOneWidget);
   });
 
   testWidgets('Parts shop is translated to Arabic', (tester) async {
