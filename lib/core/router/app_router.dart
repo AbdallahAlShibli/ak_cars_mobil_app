@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/app_state.dart';
+import '../../state/app_state.dart';
 import '../../features/auth/register_screen.dart';
 import '../../features/cars/cars_screen.dart';
 import '../../features/cars/listing_detail_screen.dart';
 import '../../features/cars/make_filter_screen.dart';
+import '../../features/cars/my_ads_screen.dart';
 import '../../features/cars/post_ad_screen.dart';
 import '../../features/cars/results_screen.dart';
 import '../../features/challenge/challenge_screen.dart';
@@ -57,6 +58,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/add-car',
         builder: (context, state) => const AddCarScreen(),
       ),
+      // Same screen as /add-car, prefilled with the saved car.
+      GoRoute(
+        path: '/garage/edit/:id',
+        builder: (context, state) =>
+            AddCarScreen(carId: state.pathParameters['id']!),
+      ),
       GoRoute(
         path: '/cars/make/:make',
         builder: (context, state) => MakeFilterScreen(
@@ -82,6 +89,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/post-ad',
         builder: (context, state) => const PostAdScreen(),
+      ),
+      GoRoute(
+        path: '/my-ads',
+        builder: (context, state) => const MyAdsScreen(),
       ),
       GoRoute(
         path: '/cart',

@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/gallery_data.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 import 'cars_filter_screen.dart';
 import 'listing_card.dart';
 
@@ -45,7 +45,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
   }
 
   List<GalleryListing> _results(List<GalleryListing> feed) =>
-      _filter.apply(feed);
+      _filter.apply(feed, ref.read(specCatalogProvider));
 
   /// Trim quick-chips reflect the filter's Sub-Model facet. Options are
   /// derived ignoring the trim constraint itself (so picking one never
@@ -53,12 +53,13 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
   List<String> _trims(List<GalleryListing> feed) {
     final model = _filter.model;
     if (model != null) {
-      final known = GalleryData.trimsFor(model);
+      final known = ref.read(vehicleCatalogProvider).trimsFor(model);
       if (known.isNotEmpty) return ['All', ...known];
     }
     final base = _filter.copyWith(trims: const {});
+    final specs = ref.read(specCatalogProvider);
     final seen = <String>{};
-    for (final l in feed.where(base.matches)) {
+    for (final l in feed.where((l) => base.matches(l, specs))) {
       if (l.trim.isNotEmpty) seen.add(l.trim);
     }
     return ['All', ...(seen.toList()..sort())];

@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
-import '../../data/app_state.dart';
-import '../../data/models.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Per-request chat with the provider (simulated replies until the
 /// real-time backend lands in Phase 2).
@@ -23,58 +24,35 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
-  Timer? _replyTimer;
   bool _typing = false;
 
-  static const _replies = [
-    'Hello! Your car is with us — work is going well.',
-    'We expect it to be ready by 4 pm today.',
-    'Sure, we will send photos once we finish.',
-    'You are welcome! Anything else you need?',
-  ];
-  int _replyIndex = 0;
 
   @override
   void dispose() {
-    _replyTimer?.cancel();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty) return;
     HapticFeedback.selectionClick();
-    ref.read(chatProvider.notifier).add(
-          widget.requestId,
-          ChatMessage(
-            id: DateTime.now().microsecondsSinceEpoch.toString(),
-            fromUser: true,
-            text: text,
-            time: DateTime.now(),
-          ),
-        );
+    final isArabic = S.of(context).isAr;
+    final chat = ref.read(chatProvider.notifier);
+
+    await chat.send(widget.requestId, text);
+    if (!mounted) return;
     _input.clear();
     _scrollDown();
 
+    // The repository resolves this when the provider next replies — a canned
+    // answer today, an inbound socket frame once the chat backend lands.
     setState(() => _typing = true);
-    _replyTimer?.cancel();
-    _replyTimer = Timer(const Duration(milliseconds: 1400), () {
-      if (!mounted) return;
-      setState(() => _typing = false);
-      ref.read(chatProvider.notifier).add(
-            widget.requestId,
-            ChatMessage(
-              id: DateTime.now().microsecondsSinceEpoch.toString(),
-              fromUser: false,
-              text: _replies[_replyIndex % _replies.length],
-              time: DateTime.now(),
-            ),
-          );
-      _replyIndex++;
-      _scrollDown();
-    });
+    await chat.awaitProviderReply(widget.requestId, isArabic: isArabic);
+    if (!mounted) return;
+    setState(() => _typing = false);
+    _scrollDown();
   }
 
   void _scrollDown() {
@@ -91,6 +69,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final request = ref
         .watch(requestsProvider)
         .firstWhereOrNull((r) => r.id == widget.requestId);
@@ -102,11 +81,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(request?.offering.provider.name ?? 'Chat',
+            Text(request?.offering.provider.name.of(s) ??
+                    s.t('محادثة', 'Chat'),
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w800)),
             Text(
-              _typing ? 'typing…' : 'Request #${widget.requestId}',
+              _typing
+                  ? s.t('يكتب…', 'typing…')
+                  : s.t('الطلب #${widget.requestId}',
+                      'Request #${widget.requestId}'),
               style: TextStyle(
                 fontSize: 11,
                 color: _typing ? AppColors.good : AppColors.ink3,
@@ -121,10 +104,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           children: [
             Expanded(
               child: messages.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
-                        'Say hello — ask about your car anytime.',
-                        style: TextStyle(
+                        s.t('ابدأ المحادثة — اسأل عن سيارتك في أي وقت.',
+                            'Say hello — ask about your car anytime.'),
+                        style: const TextStyle(
                             fontSize: 13, color: AppColors.ink3),
                       ),
                     )
@@ -147,7 +131,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(
-                        hintText: 'Write a message…',
+                        hintText: s.t('اكتب رسالة…', 'Write a message…'),
                         fillColor: AppColors.field,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(999),

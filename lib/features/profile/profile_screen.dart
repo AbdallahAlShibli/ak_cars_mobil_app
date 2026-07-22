@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/utils/contact.dart';
+import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/models.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Rule 11: details, cars, requests, orders, ads, payments — one hub.
 class ProfileScreen extends ConsumerWidget {
@@ -14,189 +18,571 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final ak = AkColors.of(context);
     final s = S.of(context);
     final auth = ref.watch(authProvider);
     final garage = ref.watch(garageProvider);
     final requests = ref.watch(requestsProvider);
-    final cart = ref.watch(cartProvider);
-
     final orders = ref.watch(ordersProvider);
+    final ads = ref.watch(myAdsProvider);
+    final cart = ref.watch(cartProvider);
+    final settings = ref.watch(settingsProvider);
+
     final activeCount = requests
         .where((r) =>
             r.status != RequestStatus.completed &&
             r.status != RequestStatus.disputed)
         .length;
+    final openOrders = orders.where((o) => o.status.held).length;
     // Held payments = active service requests + unconfirmed shop orders.
-    final heldCount =
-        activeCount + orders.where((o) => o.status.held).length;
+    final heldCount = activeCount + openOrders;
 
     return Scaffold(
-      appBar: AppBar(title: Text(s.navProfile)),
+      backgroundColor: ak.bg,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 90),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 90),
           children: [
-            AppCard(
-              gradient: AppColors.brandGradient,
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.16),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        (auth.profile?.name.isNotEmpty ?? false)
-                            ? auth.profile!.name[0].toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 19,
-                        ),
-                      ),
-                    ),
+            // ------------------------------------------------- header row
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    s.navProfile,
+                    style: const TextStyle(
+                        fontSize: 19, fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          auth.profile?.name ?? s.t('زائر', 'Guest'),
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Icon(
-                              auth.isRegistered
-                                  ? Icons.verified_rounded
-                                  : Icons.info_outline_rounded,
-                              size: 13,
-                              color: const Color(0xFFD8D2C6),
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                auth.isRegistered
-                                    ? s.t('${auth.profile!.region} · حساب موثّق',
-                                        '${auth.profile!.region} · Verified account')
-                                    : s.t('لم يتم التسجيل بعد · اضغط لإكمال البيانات',
-                                        'Not registered yet · Tap to complete details'),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontSize: 11.5,
-                                    color: Color(0xFFD8D2C6)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!auth.isRegistered)
-                    GestureDetector(
-                      onTap: () => context.push('/register'),
-                      child: const Icon(Icons.arrow_forward_rounded,
-                          color: Colors.white),
-                    ),
-                ],
-              ),
+                ),
+                _CircleButton(
+                  icon: Icons.settings_outlined,
+                  tooltip: s.settings,
+                  onTap: () => context.push('/settings'),
+                ),
+              ],
             ),
+            const SizedBox(height: 15),
+            _IdentityCard(auth: auth),
+            if (!auth.isRegistered) ...[
+              const SizedBox(height: 10),
+              _RegisterPrompt(onTap: () => context.push('/register')),
+            ],
             const SizedBox(height: 14),
-            AppCard(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              child: Column(
-                children: [
-                  _MenuRow(
+            // ----------------------------------------------- stat tiles
+            Row(
+              children: [
+                Expanded(
+                  child: _StatTile(
                     icon: Icons.directions_car_filled_rounded,
-                    label: s.t('سياراتي', 'My cars'),
-                    trailing: StatusBadge('${garage.length}'),
+                    value: '${garage.length}',
+                    label: s.t('المرآب', 'Garage'),
                     onTap: () => context.push('/garage'),
                   ),
-                  _MenuRow(
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatTile(
                     icon: Icons.build_rounded,
-                    label: s.t('طلبات الصيانة', 'Service requests'),
-                    trailing: activeCount > 0
-                        ? StatusBadge.good(
-                            s.t('$activeCount نشط', '$activeCount active'))
-                        : null,
+                    value: '$activeCount',
+                    label: s.t('نشط', 'Active'),
+                    highlight: activeCount > 0,
                     onTap: () => context.push('/requests'),
                   ),
-                  _MenuRow(
-                    icon: Icons.inventory_2_outlined,
-                    label: s.t('طلبات المتجر', 'Shop orders'),
-                    trailing: cart.isNotEmpty
-                        ? StatusBadge(s.t('${cart.length} في السلة',
-                            '${cart.length} in cart'))
-                        : null,
-                    onTap: () => context.push('/orders'),
-                  ),
-                  _MenuRow(
-                    icon: Icons.campaign_outlined,
-                    label: s.t('إعلاناتي', 'My car ads'),
-                    onTap: () => context.go('/cars'),
-                  ),
-                  _MenuRow(
-                    icon: Icons.credit_card_rounded,
-                    label: s.t('المدفوعات', 'Payments'),
-                    warm: true,
-                    trailing: heldCount > 0
-                        ? StatusBadge.warn(
-                            s.t('$heldCount محتجز', '$heldCount held'))
-                        : null,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatTile(
+                    icon: Icons.lock_clock_outlined,
+                    value: '$heldCount',
+                    label: s.t('محتجز', 'Held'),
+                    warm: heldCount > 0,
                     onTap: () => context.push('/payments'),
-                    last: true,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            AppCard(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              child: Column(
-                children: [
+            const SizedBox(height: 18),
+            SandSectionHeader(s.t('نشاطي', 'My activity')),
+            const SizedBox(height: 10),
+            _MenuGroup(
+              children: [
+                _MenuRow(
+                  icon: Icons.directions_car_filled_rounded,
+                  label: s.t('سياراتي', 'My cars'),
+                  trailing: garage.isEmpty
+                      ? null
+                      : StatusBadge('${garage.length}'),
+                  onTap: () => context.push('/garage'),
+                ),
+                _MenuRow(
+                  icon: Icons.build_rounded,
+                  label: s.t('طلبات الصيانة', 'Service requests'),
+                  trailing: activeCount > 0
+                      ? StatusBadge.good(
+                          s.t('$activeCount نشط', '$activeCount active'))
+                      : null,
+                  onTap: () => context.push('/requests'),
+                ),
+                _MenuRow(
+                  icon: Icons.inventory_2_outlined,
+                  label: s.t('طلبات المتجر', 'Shop orders'),
+                  // Was showing the CART count on the ORDERS row.
+                  trailing: openOrders > 0
+                      ? StatusBadge.good(
+                          s.t('$openOrders جارٍ', '$openOrders open'))
+                      : (orders.isEmpty ? null : StatusBadge('${orders.length}')),
+                  onTap: () => context.push('/orders'),
+                ),
+                if (cart.isNotEmpty)
                   _MenuRow(
-                    icon: Icons.manage_accounts_outlined,
-                    label: s.t('بياناتي', 'My details'),
-                    gray: true,
-                    onTap: () => context.push('/register'),
+                    icon: Icons.shopping_bag_outlined,
+                    label: s.t('سلة المشتريات', 'Shopping cart'),
+                    trailing: StatusBadge.warn(s.t(
+                        '${cart.length} قطعة', '${cart.length} items')),
+                    onTap: () => context.push('/cart'),
                   ),
-                  _MenuRow(
-                    icon: Icons.settings_outlined,
-                    label: s.t('الإعدادات — اللغة والمظهر',
-                        'Settings — language & appearance'),
-                    gray: true,
-                    trailing: Text(
-                      'العربية / EN',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: AkColors.of(context).inkSub),
-                    ),
-                    onTap: () => context.push('/settings'),
+                _MenuRow(
+                  icon: Icons.campaign_outlined,
+                  label: s.t('إعلاناتي', 'My car ads'),
+                  trailing:
+                      ads.isEmpty ? null : StatusBadge('${ads.length}'),
+                  // Was context.go('/cars') — the whole market, not my ads.
+                  onTap: () => context.push('/my-ads'),
+                ),
+                _MenuRow(
+                  icon: Icons.credit_card_rounded,
+                  label: s.t('المدفوعات', 'Payments'),
+                  warm: true,
+                  trailing: heldCount > 0
+                      ? StatusBadge.warn(
+                          s.t('$heldCount محتجز', '$heldCount held'))
+                      : null,
+                  onTap: () => context.push('/payments'),
+                  last: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SandSectionHeader(s.t('الحساب', 'Account')),
+            const SizedBox(height: 10),
+            _MenuGroup(
+              children: [
+                _MenuRow(
+                  icon: Icons.manage_accounts_outlined,
+                  label: auth.isRegistered
+                      ? s.t('بياناتي', 'My details')
+                      : s.t('أكمل بياناتك', 'Complete your details'),
+                  gray: true,
+                  onTap: () => context.push('/register'),
+                ),
+                _MenuRow(
+                  icon: Icons.language_rounded,
+                  label: s.t('اللغة والمظهر', 'Language & appearance'),
+                  gray: true,
+                  // Reflects the live setting instead of a fixed label.
+                  trailing: Text(
+                    settings.isArabic ? 'العربية' : 'English',
+                    style: TextStyle(fontSize: 12, color: ak.inkSub),
                   ),
+                  onTap: () => context.push('/settings'),
+                ),
+                _MenuRow(
+                  icon: Icons.support_agent_rounded,
+                  label: s.t('الدعم', 'Support'),
+                  gray: true,
+                  // Was a no-op onTap.
+                  onTap: () => _openSupport(context, s),
+                ),
+                if (auth.isRegistered)
                   _MenuRow(
-                    icon: Icons.support_agent_rounded,
-                    label: s.t('الدعم', 'Support'),
+                    icon: Icons.logout_rounded,
+                    label: s.t('تسجيل الخروج', 'Sign out'),
+                    danger: true,
+                    onTap: () => _confirmSignOut(context, ref, s, ak),
+                    last: true,
+                  )
+                else
+                  _MenuRow(
+                    icon: Icons.info_outline_rounded,
+                    label: s.t('عن التطبيق', 'About AK Cars'),
                     gray: true,
-                    onTap: () {},
+                    trailing: Text('v1.0.0',
+                        style: TextStyle(fontSize: 12, color: ak.inkFaint)),
+                    onTap: () => _showAbout(context, s),
                     last: true,
                   ),
-                ],
-              ),
+              ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------- actions
+
+  Future<void> _openSupport(BuildContext context, S s) async {
+    final ak = AkColors.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: ak.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                s.t('كيف نساعدك؟', 'How can we help?'),
+                style: const TextStyle(
+                    fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                s.t('فريق دعم AK Cars متاح من 8 صباحاً حتى 8 مساءً.',
+                    'AK Cars support is available 8am – 8pm.'),
+                style: TextStyle(fontSize: 12.5, color: ak.inkSub),
+              ),
+              const SizedBox(height: 14),
+              _SupportOption(
+                icon: Icons.chat_rounded,
+                color: const Color(0xFF25A55A),
+                label: s.t('واتساب', 'WhatsApp'),
+                subtitle: '+968 9200 0000',
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Contact.whatsapp(context, '96892000000',
+                      message: s.t('مرحباً، أحتاج مساعدة في تطبيق AK Cars.',
+                          'Hi, I need help with the AK Cars app.'));
+                },
+              ),
+              const SizedBox(height: 10),
+              _SupportOption(
+                icon: Icons.phone_rounded,
+                color: ak.ink,
+                label: s.t('اتصال هاتفي', 'Call us'),
+                subtitle: '+968 2400 0000',
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Contact.call(context, '+96824000000');
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAbout(BuildContext context, S s) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('AK Cars'),
+        content: Text(
+          s.t('سوق ومنصة خدمات السيارات في سلطنة عُمان.\nالإصدار 1.0.0',
+              'Car marketplace and services platform for Oman.\nVersion 1.0.0'),
+          style: const TextStyle(height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(s.t('حسناً', 'OK')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmSignOut(
+    BuildContext context,
+    WidgetRef ref,
+    S s,
+    AkColors ak,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(s.t('تسجيل الخروج؟', 'Sign out?')),
+        content: Text(s.t(
+            'ستحتاج إلى إدخال بياناتك مرة أخرى قبل إجراء أي معاملة. سياراتك وطلباتك تبقى محفوظة.',
+            'You will need to enter your details again before transacting. Your cars and requests stay saved.')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(s.t('إلغاء', 'Cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: ak.danger,
+              minimumSize: const Size(0, 44),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(s.t('خروج', 'Sign out')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed ?? false) {
+      HapticFeedback.mediumImpact();
+      ref.read(authProvider.notifier).signOut();
+    }
+  }
+}
+
+/// Identity header. The ink gradient is light-theme only — in dark it would
+/// invert to near-white, so dark uses a raised surface instead.
+class _IdentityCard extends ConsumerWidget {
+  const _IdentityCard({required this.auth});
+
+  final AuthState auth;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final locations = ref.watch(locationCatalogProvider);
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final profile = auth.profile;
+    final initial = (profile?.name.trim().isNotEmpty ?? false)
+        ? profile!.name.trim().characters.first.toUpperCase()
+        : '?';
+    final fg = dark ? ak.ink : const Color(0xFFF6F3EE);
+    final fgSub = dark ? ak.inkSub : const Color(0xFFD8D2C6);
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        context.push('/register');
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: dark
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [ak.surfaceDim, ak.surface],
+                )
+              : AppColors.brandGradient,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: dark ? ak.border : Colors.transparent),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: dark
+                    ? ak.surface
+                    : Colors.white.withValues(alpha: 0.16),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: dark ? ak.border : Colors.white.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  initial,
+                  style: TextStyle(
+                    color: fg,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    profile?.name ?? s.t('زائر', 'Guest'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: fg,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  if (auth.isRegistered) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.verified_rounded, size: 13, color: fgSub),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            // Region is stored as a canonical English key,
+                            // and can be empty on a profile saved before the
+                            // field was required — no dangling " · " then.
+                            [
+                              if (profile!.region.trim().isNotEmpty)
+                                locations.localized(profile.region, s.isAr),
+                              s.t('حساب موثّق', 'Verified account'),
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11.5, color: fgSub),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (profile.phone.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        profile.phone,
+                        style: AppTheme.numeric(
+                            size: 11, weight: FontWeight.w600, color: fgSub),
+                      ),
+                    ],
+                  ] else
+                    Text(
+                      s.t('لم يتم التسجيل بعد', 'Not registered yet'),
+                      style: TextStyle(fontSize: 11.5, color: fgSub),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // A pencil on a guest card promised an editor for details that
+            // do not exist yet — a guest is starting registration.
+            Icon(
+              auth.isRegistered
+                  ? Icons.edit_outlined
+                  : Icons.chevron_right_rounded,
+              size: auth.isRegistered ? 17 : 20,
+              color: fgSub,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Amber call-to-action shown until the user completes registration —
+/// transactions are gated behind it, so it should not be a quiet menu row.
+class _RegisterPrompt extends StatelessWidget {
+  const _RegisterPrompt({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    return SandCard(
+      color: ak.amberBgSoft,
+      border: Border.all(color: ak.amberBorder),
+      padding: const EdgeInsets.all(13),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline_rounded, size: 19, color: ak.amberText),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              s.t('أكمل بياناتك لطلب الخدمات وشراء القطع ونشر الإعلانات.',
+                  'Complete your details to request services, buy parts and post ads.'),
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.45,
+                fontWeight: FontWeight.w600,
+                color: ak.amberText,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          InkPill(label: s.t('إكمال', 'Complete'), onTap: onTap),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.onTap,
+    this.highlight = false,
+    this.warm = false,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final VoidCallback onTap;
+  final bool highlight;
+  final bool warm;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final accent = warm
+        ? ak.amberText
+        : highlight
+            ? ak.success
+            : ak.ink;
+    return SandCard(
+      radius: 16,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      onTap: onTap,
+      child: Column(
+        children: [
+          Icon(icon, size: 18, color: accent),
+          const SizedBox(height: 6),
+          Text(value,
+              style: AppTheme.numeric(size: 18, color: accent)),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: ak.inkSub,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Rounded group that clips its children's ink splashes to the card radius.
+class _MenuGroup extends StatelessWidget {
+  const _MenuGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: ak.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: ak.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Column(children: children),
       ),
     );
   }
@@ -210,6 +596,7 @@ class _MenuRow extends StatelessWidget {
     this.trailing,
     this.gray = false,
     this.warm = false,
+    this.danger = false,
     this.last = false,
   });
 
@@ -219,21 +606,23 @@ class _MenuRow extends StatelessWidget {
   final Widget? trailing;
   final bool gray;
   final bool warm;
+  final bool danger;
   final bool last;
 
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 11),
         decoration: BoxDecoration(
           border: last
               ? null
-              : Border(
-                  bottom: BorderSide(color: ak.divider, width: 1),
-                ),
+              : Border(bottom: BorderSide(color: ak.divider, width: 1)),
         ),
         child: Row(
           children: [
@@ -241,26 +630,124 @@ class _MenuRow extends StatelessWidget {
               icon,
               size: 36,
               radius: 11,
-              background: warm ? ak.amberSoft : ak.surfaceDim,
-              foreground: warm
-                  ? ak.amberText
-                  : gray
-                      ? ak.inkSub
-                      : ak.ink,
+              background: danger
+                  ? ak.dangerSoft
+                  : warm
+                      ? ak.amberSoft
+                      : ak.surfaceDim,
+              foreground: danger
+                  ? ak.danger
+                  : warm
+                      ? ak.amberText
+                      : gray
+                          ? ak.inkSub
+                          : ak.ink,
             ),
             const SizedBox(width: 11),
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
-                    fontSize: 13.5, fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: danger ? ak.danger : ak.ink,
+                ),
               ),
             ),
+            const SizedBox(width: 8),
             trailing ??
-                Icon(Icons.chevron_right_rounded, color: ak.inkFaint),
+                Icon(Icons.chevron_right_rounded, size: 20, color: ak.inkFaint),
           ],
         ),
       ),
     );
+  }
+}
+
+class _SupportOption extends StatelessWidget {
+  const _SupportOption({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    return SandCard(
+      radius: 16,
+      padding: const EdgeInsets.all(12),
+      onTap: onTap,
+      child: Row(
+        children: [
+          IconTile(icon,
+              size: 40,
+              radius: 12,
+              background: color.withValues(alpha: 0.12),
+              foreground: color),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w700)),
+                Text(subtitle,
+                    style: AppTheme.numeric(
+                        size: 11, weight: FontWeight.w600, color: ak.inkSub)),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 20, color: ak.inkFaint),
+        ],
+      ),
+    );
+  }
+}
+
+class _CircleButton extends StatelessWidget {
+  const _CircleButton({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final button = GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: ak.surface,
+          shape: BoxShape.circle,
+          border: Border.all(color: ak.border),
+        ),
+        child: Icon(icon, size: 18, color: ak.ink),
+      ),
+    );
+    return tooltip == null
+        ? button
+        : Tooltip(message: tooltip!, child: button);
   }
 }

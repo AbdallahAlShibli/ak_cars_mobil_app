@@ -7,9 +7,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/sand_widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/mock_data.dart';
-import '../../data/settings_state.dart';
+import '../../state/app_state.dart';
 
 /// Settings (handoff #4a): language segmented pill (Arabic | English),
 /// theme preview cards (cream default / dark) + follow-system toggle,
@@ -263,6 +261,7 @@ class SettingsScreen extends ConsumerWidget {
       builder: (sheetContext) {
         final ak = AkColors.of(sheetContext);
         final current = ref.read(regionProvider);
+        final regions = ref.read(serviceRegionsProvider);
         return SafeArea(
           child: ListView(
             shrinkWrap: true,
@@ -274,7 +273,7 @@ class SettingsScreen extends ConsumerWidget {
                     fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
-              for (final r in MockData.regions)
+              for (final r in regions)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(r, style: const TextStyle(fontSize: 13.5)),

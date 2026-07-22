@@ -1,32 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/car_catalog.dart';
+import '../../data/models/models.dart';
+import '../../state/catalog_state.dart';
 
 /// Make drill-in — choose model (searchable tiles) and year range,
 /// then jump to results. Mirrors the reference marketplace flow.
-class MakeFilterScreen extends StatefulWidget {
+class MakeFilterScreen extends ConsumerStatefulWidget {
   const MakeFilterScreen({super.key, required this.makeName});
 
   final String makeName;
 
   @override
-  State<MakeFilterScreen> createState() => _MakeFilterScreenState();
+  ConsumerState<MakeFilterScreen> createState() => _MakeFilterScreenState();
 }
 
-class _MakeFilterScreenState extends State<MakeFilterScreen> {
+class _MakeFilterScreenState extends ConsumerState<MakeFilterScreen> {
   final _search = TextEditingController();
   String? _model;
   int? _fromYear;
   int? _toYear;
 
-  CarMake get _make => CarCatalog.makes.firstWhere(
-        (m) => m.name == widget.makeName,
-        orElse: () => CarCatalog.makes.first,
-      );
+  VehicleCatalog get _catalog => ref.read(vehicleCatalogProvider);
+
+  CarMake get _make =>
+      _catalog.makeNamed(widget.makeName) ??
+      (_catalog.makes.isEmpty
+          ? const CarMake('', [])
+          : _catalog.makes.first);
 
   List<String> get _models {
     final q = _search.text.trim().toLowerCase();
@@ -52,6 +58,7 @@ class _MakeFilterScreenState extends State<MakeFilterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(_make.name)),
       body: SafeArea(
@@ -61,16 +68,16 @@ class _MakeFilterScreenState extends State<MakeFilterScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
                 children: [
-                  const Text('Choose model',
-                      style: TextStyle(
+                  Text(s.t('اختر الموديل', 'Choose model'),
+                      style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _search,
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      hintText: 'Search…',
-                      prefixIcon: Icon(Icons.search_rounded),
+                    decoration: InputDecoration(
+                      hintText: s.t('ابحث…', 'Search…'),
+                      prefixIcon: const Icon(Icons.search_rounded),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -140,8 +147,8 @@ class _MakeFilterScreenState extends State<MakeFilterScreen> {
                     },
                   ),
                   const SizedBox(height: 22),
-                  const Text('Choose year',
-                      style: TextStyle(
+                  Text(s.t('اختر السنة', 'Choose year'),
+                      style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 10),
                   Row(
@@ -149,14 +156,14 @@ class _MakeFilterScreenState extends State<MakeFilterScreen> {
                       Expanded(
                         child: DropdownButtonFormField<int>(
                           initialValue: _fromYear,
-                          hint: const Text('From'),
+                          hint: Text(s.t('من', 'From')),
                           decoration: const InputDecoration(
                             prefixIcon: Icon(
                                 Icons.calendar_today_outlined,
                                 size: 17),
                           ),
                           items: [
-                            for (final y in CarCatalog.years)
+                            for (final y in _catalog.years)
                               if (_toYear == null || y <= _toYear!)
                                 DropdownMenuItem(
                                     value: y, child: Text('$y')),
@@ -179,14 +186,14 @@ class _MakeFilterScreenState extends State<MakeFilterScreen> {
                       Expanded(
                         child: DropdownButtonFormField<int>(
                           initialValue: _toYear,
-                          hint: const Text('To'),
+                          hint: Text(s.t('إلى', 'To')),
                           decoration: const InputDecoration(
                             prefixIcon: Icon(
                                 Icons.calendar_today_outlined,
                                 size: 17),
                           ),
                           items: [
-                            for (final y in CarCatalog.years)
+                            for (final y in _catalog.years)
                               if (_fromYear == null || y >= _fromYear!)
                                 DropdownMenuItem(
                                     value: y, child: Text('$y')),
@@ -204,8 +211,9 @@ class _MakeFilterScreenState extends State<MakeFilterScreen> {
               child: FilledButton(
                 onPressed: _showResults,
                 child: Text(_model == null
-                    ? 'All ${_make.name} results'
-                    : 'Show $_model results'),
+                    ? s.t('كل نتائج ${_make.name}',
+                        'All ${_make.name} results')
+                    : s.t('عرض نتائج $_model', 'Show $_model results')),
               ),
             ),
           ],

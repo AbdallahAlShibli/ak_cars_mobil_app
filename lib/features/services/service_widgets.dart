@@ -1,84 +1,222 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
-import '../../data/mock_data.dart';
-import '../../data/models.dart';
+import '../../di/providers.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
-void _openCategory(BuildContext context, ServiceCategory category) {
+/// Offerings split by whether their provider sits in the selected [region].
+///
+/// [local] is what the region filter selects — it is the only group shown
+/// unless the user asks to widen the search. [nearby] is everything else,
+/// closest-first, so widening reads as "a bit further out" rather than a
+/// random national list.
+typedef RegionSplit = ({
+  List<ServiceOffering> local,
+  List<ServiceOffering> nearby,
+});
+
+RegionSplit splitByRegion(Iterable<ServiceOffering> offerings, String region) {
+  int byPrice(ServiceOffering a, ServiceOffering b) =>
+      (a.price ?? 999).compareTo(b.price ?? 999);
+
+  final local = <ServiceOffering>[];
+  final nearby = <ServiceOffering>[];
+  for (final offering in offerings) {
+    (offering.provider.region == region ? local : nearby).add(offering);
+  }
+  local.sort((a, b) {
+    final price = byPrice(a, b);
+    return price != 0
+        ? price
+        : a.provider.distanceKm.compareTo(b.provider.distanceKm);
+  });
+  nearby.sort((a, b) {
+    final distance = a.provider.distanceKm.compareTo(b.provider.distanceKm);
+    return distance != 0 ? distance : byPrice(a, b);
+  });
+  return (local: local, nearby: nearby);
+}
+
+void _openCategory(BuildContext context, WidgetRef ref,
+    ServiceCategory category) {
   HapticFeedback.selectionClick();
-  final offerings = MockData.offeringsFor(category.id)
-    ..sort((a, b) => (a.price ?? 999).compareTo(b.price ?? 999));
-  if (offerings.isEmpty) return;
-  if (offerings.length == 1) {
-    context.push('/service/${offerings.first.id}');
+  final region = ref.read(regionProvider);
+  final split = splitByRegion(
+    ref.read(serviceMarketplaceRepositoryProvider).offeringsFor(category.id),
+    region,
+  );
+  if (split.local.isEmpty && split.nearby.isEmpty) return;
+  if (split.local.length == 1 && split.nearby.isEmpty) {
+    context.push('/service/${split.local.first.id}');
     return;
   }
   // Multiple workshops offer this — let the user compare.
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (sheetContext) => SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(sheetContext).size.height * 0.75,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                category.name.replaceAll('\n', ' '),
-                style: const TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.w800),
+    builder: (sheetContext) {
+      final s = S.of(sheetContext);
+      final ak = AkColors.of(sheetContext);
+      final regionLabel = ref
+          .read(locationCatalogProvider)
+          .localized(region, s.isAr);
+      // With nothing in the selected governorate there is no filter left to
+      // honour, so the wider list opens straight away.
+      var widened = split.local.isEmpty;
+      return StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final shown = widened
+              ? [...split.local, ...split.nearby]
+              : split.local;
+          // Rows are offers; the headline counts the workshops behind them,
+          // which is what the chip and the region picker also count.
+          final workshops =
+              shown.map((o) => o.provider.id).toSet().length;
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(sheetContext).size.height * 0.75,
               ),
-              const SizedBox(height: 2),
-              Text(
-                '${offerings.length} workshops — compare and choose',
-                style: TextStyle(
-                    fontSize: 12, color: AkColors.of(sheetContext).inkSub),
-              ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: offerings.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 9),
-                  itemBuilder: (context, i) => _ProviderOfferRow(
-                    offering: offerings[i],
-                    cheapest: i == 0 && offerings[i].price != null,
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      context.push('/service/${offerings[i].id}');
-                    },
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      category.name.of(s).replaceAll('\n', ' '),
+                      style: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widened
+                          ? s.t('${s.workshops(workshops)} في $regionLabel وما حولها',
+                              '${s.workshops(workshops)} in and around $regionLabel')
+                          : s.t('${s.workshops(workshops)} في $regionLabel',
+                              '${s.workshops(workshops)} in $regionLabel'),
+                      style: TextStyle(fontSize: 12, color: ak.inkSub),
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: shown.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 9),
+                        itemBuilder: (context, i) => _ProviderOfferRow(
+                          offering: shown[i],
+                          cheapest: i == 0 && shown[i].price != null,
+                          outsideRegion: shown[i].provider.region != region,
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            context.push('/service/${shown[i].id}');
+                          },
+                        ),
+                      ),
+                    ),
+                    if (split.nearby.isNotEmpty && !widened) ...[
+                      const SizedBox(height: 6),
+                      WidenSearchButton(
+                        workshops: split.nearby
+                            .map((o) => o.provider.id)
+                            .toSet()
+                            .length,
+                        regionLabel: regionLabel,
+                        onTap: () => setSheetState(() => widened = true),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-    ),
+            ),
+          );
+        },
+      );
+    },
   );
 }
 
-class _ProviderOfferRow extends StatelessWidget {
+/// "Look beyond {region}" call to action — the single, explicit way results
+/// from another governorate ever enter a list.
+class WidenSearchButton extends StatelessWidget {
+  const WidenSearchButton({
+    super.key,
+    required this.workshops,
+    required this.regionLabel,
+    required this.onTap,
+  });
+
+  /// Distinct workshops that widening would add — not offers, so the number
+  /// matches what the region chip and picker count.
+  final int workshops;
+  final String regionLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final ak = AkColors.of(context);
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: ak.surfaceDim,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: ak.border),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.travel_explore_rounded, size: 18, color: ak.inkSub),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                s.t('ابحث خارج $regionLabel · ${s.workshops(workshops)} أخرى',
+                    'Look beyond $regionLabel · ${s.workshops(workshops)} more'),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: ak.inkSub,
+                ),
+              ),
+            ),
+            Icon(Icons.expand_more_rounded, size: 18, color: ak.inkFaint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProviderOfferRow extends ConsumerWidget {
   const _ProviderOfferRow({
     required this.offering,
     required this.onTap,
     this.cheapest = false,
+    this.outsideRegion = false,
   });
 
   final ServiceOffering offering;
   final VoidCallback onTap;
   final bool cheapest;
 
+  /// Marks a row the region filter did not select, so a widened list still
+  /// reads clearly row by row.
+  final bool outsideRegion;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final ak = AkColors.of(context);
+    final locations = ref.watch(locationCatalogProvider);
     final p = offering.provider;
     return GestureDetector(
       onTap: () {
@@ -105,7 +243,7 @@ class _ProviderOfferRow extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          p.name,
+                          p.name.of(s),
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                               fontSize: 13.5,
@@ -120,11 +258,25 @@ class _ProviderOfferRow extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    '${p.area}, ${p.region}'
-                    '${offering.durationMin != null ? ' · ${offering.durationMin} min' : ''}',
-                    style: TextStyle(
-                        fontSize: 11.5, color: ak.inkFaint),
+                  Row(
+                    children: [
+                      if (outsideRegion) ...[
+                        Icon(Icons.explore_outlined,
+                            size: 12, color: ak.inkFaint),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          '${locations.localized(p.area, s.isAr)}${s.t('، ', ', ')}${locations.localized(p.region, s.isAr)}'
+                          ' · ${p.distanceKm.toStringAsFixed(0)} ${s.km}'
+                          '${offering.durationMin != null ? s.t(' · ${offering.durationMin} دقيقة', ' · ${offering.durationMin} min') : ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11.5, color: ak.inkFaint),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 5),
                   Row(
@@ -142,7 +294,7 @@ class _ProviderOfferRow extends StatelessWidget {
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            'Best price',
+                            s.t('أفضل سعر', 'Best price'),
                             style: TextStyle(
                               fontSize: 9.5,
                               fontWeight: FontWeight.w800,
@@ -157,8 +309,8 @@ class _ProviderOfferRow extends StatelessWidget {
             ),
             Text(
               offering.price != null
-                  ? 'OMR ${offering.price!.toStringAsFixed(0)}'
-                  : 'Quote',
+                  ? '${s.omr} ${offering.price!.toStringAsFixed(0)}'
+                  : s.t('عرض سعر', 'Quote'),
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
@@ -174,7 +326,7 @@ class _ProviderOfferRow extends StatelessWidget {
 
 /// Big "Car service" package card (reference style) — the first card is
 /// brand-filled and can carry a promo ribbon like "FREE OIL".
-class ServicePackageCard extends StatelessWidget {
+class ServicePackageCard extends ConsumerWidget {
   const ServicePackageCard({
     super.key,
     required this.category,
@@ -187,10 +339,21 @@ class ServicePackageCard extends StatelessWidget {
   final double height;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final ak = AkColors.of(context);
+    // Scoped to the selected governorate so the card agrees with the chip
+    // above it and with the sheet it opens. A category nobody local offers
+    // says so rather than quoting a price the user cannot actually book.
+    final region = ref.watch(regionProvider);
+    final marketplace = ref.watch(serviceMarketplaceRepositoryProvider);
+    final providerCount =
+        marketplace.providerCountFor(category.id, region: region);
+    final local = providerCount > 0;
+    final fromPrice = marketplace.fromPriceFor(category.id,
+        region: local ? region : null);
     return GestureDetector(
-      onTap: () => _openCategory(context, category),
+      onTap: () => _openCategory(context, ref, category),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -213,23 +376,33 @@ class ServicePackageCard extends StatelessWidget {
                         ? ak.onPrimary.withValues(alpha: 0.7)
                         : ak.ink),
                 const Spacer(),
-                Text(
-                  category.name,
-                  style: TextStyle(
-                    fontSize: 19,
-                    height: 1.15,
-                    fontWeight: FontWeight.w800,
-                    color: filled ? ak.onPrimary : ak.ink,
+                // The card is a fixed 148×150, so the two-line title has to
+                // be allowed to shrink rather than push past the bottom.
+                Flexible(
+                  child: Text(
+                    category.name.of(s),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 19,
+                      height: 1.15,
+                      fontWeight: FontWeight.w800,
+                      color: filled ? ak.onPrimary : ak.ink,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   [
-                    if (category.fromPrice != null)
-                      'from OMR ${category.fromPrice!.toStringAsFixed(0)}'
+                    if (fromPrice != null)
+                      s.t('من ${fromPrice.toStringAsFixed(0)} ${s.omr}',
+                          'from ${s.omr} ${fromPrice.toStringAsFixed(0)}')
                     else if (category.note != null)
-                      category.note!,
-                    '${MockData.providerCountFor(category.id)} workshops',
+                      category.note!.of(s),
+                    if (local)
+                      s.workshops(providerCount)
+                    else
+                      s.t('خارج المحافظة', 'outside your area'),
                   ].join(' · '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -256,7 +429,7 @@ class ServicePackageCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  category.badge!,
+                  category.badge!.of(s),
                   style: const TextStyle(
                     fontSize: 9.5,
                     fontWeight: FontWeight.w800,
@@ -273,17 +446,18 @@ class ServicePackageCard extends StatelessWidget {
 }
 
 /// Small "Other service" tile — icon that visualises the service + label.
-class OtherServiceTile extends StatelessWidget {
+class OtherServiceTile extends ConsumerWidget {
   const OtherServiceTile({super.key, required this.category});
 
   final ServiceCategory category;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final ak = AkColors.of(context);
     final danger = category.emergency;
     return GestureDetector(
-      onTap: () => _openCategory(context, category),
+      onTap: () => _openCategory(context, ref, category),
       child: Container(
         width: 96,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
@@ -300,7 +474,7 @@ class OtherServiceTile extends StatelessWidget {
                 size: 30, color: danger ? ak.danger : ak.ink),
             const SizedBox(height: 8),
             Text(
-              category.name.replaceAll('\n', ' '),
+              category.name.of(s).replaceAll('\n', ' '),
               textAlign: TextAlign.center,
               maxLines: 2,
               style: TextStyle(
@@ -318,22 +492,25 @@ class OtherServiceTile extends StatelessWidget {
 }
 
 /// "Car service" + "Other service" rails, shared by Home and Services.
-class ServiceRails extends StatelessWidget {
+class ServiceRails extends ConsumerWidget {
   const ServiceRails({super.key, this.packageHeight = 150});
 
   final double packageHeight;
 
   @override
-  Widget build(BuildContext context) {
-    final primaries = MockData.primaryCategories;
-    final others = MockData.otherCategories;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
+    final marketplace = ref.watch(serviceMarketplaceRepositoryProvider);
+    final primaries = marketplace.primaryCategories;
+    final others = marketplace.otherCategories;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text('Car service',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Text(s.t('صيانة السيارات', 'Car service'),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w800)),
         ),
         const SizedBox(height: 14),
         SizedBox(
@@ -352,10 +529,11 @@ class ServiceRails extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text('Other services',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Text(s.t('خدمات أخرى', 'Other services'),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w800)),
         ),
         const SizedBox(height: 10),
         SizedBox(

@@ -4,10 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/models.dart';
+import '../../di/providers.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Rule 10: provider's photo proof → user approval → payment release.
 class ApprovalScreen extends ConsumerWidget {
@@ -17,6 +19,7 @@ class ApprovalScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final request = ref
         .watch(requestsProvider)
         .where((r) => r.id == requestId)
@@ -24,15 +27,18 @@ class ApprovalScreen extends ConsumerWidget {
 
     if (request == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Review')),
-        body: const Center(child: Text('Request not found')),
+        appBar: AppBar(title: Text(s.t('مراجعة', 'Review'))),
+        body: Center(
+            child: Text(s.t('الطلب غير موجود', 'Request not found'))),
       );
     }
 
     final completed = request.status == RequestStatus.completed;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Work completed — review')),
+      appBar: AppBar(
+          title: Text(
+              s.t('اكتمل العمل — للمراجعة', 'Work completed — review'))),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -50,24 +56,27 @@ class ApprovalScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(request.offering.provider.name,
+                        Text(request.offering.provider.name.of(s),
                             style: const TextStyle(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w700)),
-                        const Text('Marked done · Tue 10:20 am',
-                            style: TextStyle(
+                        Text(
+                            s.t('اكتمل · الثلاثاء 10:20 ص',
+                                'Marked done · Tue 10:20 am'),
+                            style: const TextStyle(
                                 fontSize: 11.5, color: AppColors.ink3)),
                       ],
                     ),
                   ),
                   completed
-                      ? const StatusBadge.good('Approved')
-                      : const StatusBadge.warn('Awaiting you'),
+                      ? StatusBadge.good(s.t('تمت الموافقة', 'Approved'))
+                      : StatusBadge.warn(s.t('بانتظارك', 'Awaiting you')),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-            const SectionHeader("Provider's proof photos"),
+            SectionHeader(
+                s.t('صور الإثبات من المزود', "Provider's proof photos")),
             const SizedBox(height: 9),
             Row(
               children: [
@@ -92,10 +101,11 @@ class ApprovalScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 14),
-            const AppCard(
+            AppCard(
               child: Text(
-                '"New oil and genuine filter installed — old filter shown in photo 2. 10-point check passed, tyre pressure adjusted."',
-                style: TextStyle(
+                s.t('"تم تركيب زيت جديد وفلتر أصلي — الفلتر القديم في الصورة 2. اجتاز فحص الـ10 نقاط، وتم ضبط ضغط الإطارات."',
+                    '"New oil and genuine filter installed — old filter shown in photo 2. 10-point check passed, tyre pressure adjusted."'),
+                style: const TextStyle(
                     fontSize: 12.5, color: AppColors.ink2, height: 1.6),
               ),
             ),
@@ -104,11 +114,11 @@ class ApprovalScreen extends ConsumerWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Total to release',
-                      style:
-                          TextStyle(fontSize: 12.5, color: AppColors.ink2)),
+                  Text(s.t('المبلغ المُحرَّر', 'Total to release'),
+                      style: const TextStyle(
+                          fontSize: 12.5, color: AppColors.ink2)),
                   Text(
-                    'OMR ${request.total.toStringAsFixed(2)}',
+                    '${s.omr} ${request.total.toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
@@ -119,10 +129,12 @@ class ApprovalScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 10),
-            const Center(
+            Center(
               child: Text(
-                'Auto-releases in 48h if no action is taken',
-                style: TextStyle(fontSize: 11.5, color: AppColors.ink3),
+                s.t('يُحرَّر تلقائياً خلال 48 ساعة إذا لم تتخذ أي إجراء',
+                    'Auto-releases in 48h if no action is taken'),
+                style:
+                    const TextStyle(fontSize: 11.5, color: AppColors.ink3),
               ),
             ),
             const SizedBox(height: 18),
@@ -132,29 +144,31 @@ class ApprovalScreen extends ConsumerWidget {
               ),
               onPressed: completed
                   ? null
-                  : () {
-                      ref
+                  : () async {
+                      await ref
                           .read(requestsProvider.notifier)
                           .setStatus(request.id, RequestStatus.completed);
-                      ref.read(notificationsProvider.notifier).push(
-                            title: 'Payment released',
-                            body:
-                                'OMR ${request.total.toStringAsFixed(2)} released to ${request.offering.provider.name} for #${request.id}.',
-                            icon: Icons.lock_open_rounded,
-                            route: '/payments',
+                      if (!context.mounted) return;
+                      ref.read(notificationsProvider.notifier).adopt(
+                            await ref
+                                .read(notificationRepositoryProvider)
+                                .notifyRequestApproved(request),
                           );
+                      if (!context.mounted) return;
                       HapticFeedback.heavyImpact();
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                'Payment released to the provider — thank you')),
+                        SnackBar(
+                            content: Text(s.t(
+                                'تم تحرير الدفعة للمزود — شكراً لك',
+                                'Payment released to the provider — thank you'))),
                       );
                       context.go('/home');
                     },
               icon: const Icon(Icons.lock_open_rounded, size: 18),
               label: Text(completed
-                  ? 'Payment released'
-                  : 'Approve & release payment'),
+                  ? s.t('تم تحرير الدفعة', 'Payment released')
+                  : s.t('الموافقة وتحرير الدفعة',
+                      'Approve & release payment')),
             ),
             const SizedBox(height: 10),
             OutlinedButton(
@@ -169,13 +183,14 @@ class ApprovalScreen extends ConsumerWidget {
                           .read(requestsProvider.notifier)
                           .setStatus(request.id, RequestStatus.disputed);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                'Dispute opened — our team will review both sides')),
+                        SnackBar(
+                            content: Text(s.t(
+                                'تم فتح نزاع — سيراجع فريقنا الطرفين',
+                                'Dispute opened — our team will review both sides'))),
                       );
                       context.go('/home');
                     },
-              child: const Text('Report a problem'),
+              child: Text(s.t('الإبلاغ عن مشكلة', 'Report a problem')),
             ),
           ],
         ),

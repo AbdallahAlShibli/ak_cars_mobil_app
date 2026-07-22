@@ -7,8 +7,8 @@ import 'package:intl/intl.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/models.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Shop orders — live lifecycle: placed → prepared → delivered →
 /// buyer confirms receipt → escrow released to the store.
@@ -182,7 +182,7 @@ class _OrderCard extends ConsumerWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${item.product.name} × ${item.qty}',
+                      '${item.product.name.of(s)} × ${item.qty}',
                       style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                     ),
                   ),

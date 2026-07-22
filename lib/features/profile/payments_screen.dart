@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/models.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 String _orderStatusLabel(S s, OrderStatus status) => switch (status) {
       OrderStatus.placed => s.t('تم الطلب', 'Placed'),
@@ -30,19 +30,29 @@ class PaymentsScreen extends ConsumerWidget {
       for (final r in requests)
         if (r.status != RequestStatus.completed &&
             r.status != RequestStatus.disputed)
-          (s.t('خدمة #${r.id}', 'Service #${r.id}'), r.offering.name, r.total, 0),
+          (
+            s.t('خدمة #${r.id}', 'Service #${r.id}'),
+            r.offering.name.of(s),
+            r.total,
+            0
+          ),
       for (final r in requests)
         if (r.status == RequestStatus.disputed)
           (
             s.t('خدمة #${r.id}', 'Service #${r.id}'),
-            s.t('${r.offering.name} · لدى الإدارة',
-                '${r.offering.name} · with admin'),
+            s.t('${r.offering.name.ar} · لدى الإدارة',
+                '${r.offering.name.en} · with admin'),
             r.total,
             2
           ),
       for (final r in requests)
         if (r.status == RequestStatus.completed)
-          (s.t('خدمة #${r.id}', 'Service #${r.id}'), r.offering.name, r.total, 1),
+          (
+            s.t('خدمة #${r.id}', 'Service #${r.id}'),
+            r.offering.name.of(s),
+            r.total,
+            1
+          ),
       for (final o in orders)
         (
           s.t('طلب ${o.id}', 'Order ${o.id}'),

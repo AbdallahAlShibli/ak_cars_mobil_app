@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/mock_data.dart';
-import '../../data/models.dart';
-import '../../data/oman_locations.dart';
+import '../../di/providers.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 import 'service_widgets.dart';
 
 /// Services — search across all workshops, "Car service" package cards,
@@ -24,6 +24,11 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   final _search = TextEditingController();
   String _query = '';
 
+  /// The governorate the user explicitly asked to search beyond. Held as a
+  /// region rather than a bool so changing the filter resets the widening —
+  /// picking a new governorate always starts from "just this one".
+  String? _widenedFrom;
+
   @override
   void initState() {
     super.initState();
@@ -39,66 +44,125 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   }
 
   Future<void> _pickRegion() async {
+    final locations = ref.read(locationCatalogProvider);
+    final isAr = S.of(context).isAr;
+    final marketplace = ref.read(serviceMarketplaceRepositoryProvider);
+    // Only governorates the marketplace actually serves — offering an empty
+    // one would leave the user with a filter that can never match.
+    final regions = marketplace.providerRegions;
+    final current = ref.read(regionProvider);
     final region = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
-          ),
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              for (final r in OmanLocations.governorates.keys)
-                ListTile(
-                  leading: const Icon(Icons.location_on_outlined),
-                  title: Text(r),
-                  onTap: () => Navigator.pop(context, r),
+      builder: (context) {
+        final s = S.of(context);
+        final ak = AkColors.of(context);
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.7,
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+              children: [
+                Text(
+                  s.t('أين تحتاج الخدمة؟', 'Where do you need service?'),
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w800),
                 ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  s.t('سنعرض ورش هذه المحافظة فقط',
+                      'We\'ll show workshops in this governorate only'),
+                  style: TextStyle(fontSize: 12, color: ak.inkSub),
+                ),
+                const SizedBox(height: 14),
+                for (final r in regions) ...[
+                  _RegionOption(
+                    label: locations.localized(r, isAr),
+                    workshops: marketplace.providers
+                        .where((p) => p.region == r)
+                        .length,
+                    selected: r == current,
+                    onTap: () => Navigator.pop(context, r),
+                  ),
+                  const SizedBox(height: 9),
+                ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
-    if (region != null) {
+    if (region != null && region != ref.read(regionProvider)) {
       ref.read(regionProvider.notifier).state = region;
+      // A new filter starts narrow again.
+      setState(() => _widenedFrom = null);
     }
   }
 
-  List<ServiceOffering> _results(String region) {
-    final q = _query.toLowerCase();
-    final list = MockData.offerings.where((o) {
+  /// Offerings matching the search box, split into the selected [region] and
+  /// the wider country. Only the first group is shown until the user taps
+  /// "Look beyond", so the chip always describes what is on screen.
+  RegionSplit _results(String region) {
+    final q = _query.trim().toLowerCase();
+    final isAr = S.of(context).isAr;
+    final locations = ref.read(locationCatalogProvider);
+    bool hit(L text) =>
+        text.ar.contains(q) || text.en.toLowerCase().contains(q);
+    final marketplace = ref.read(serviceMarketplaceRepositoryProvider);
+    final matches = marketplace.offerings.where((o) {
       if (q.isEmpty) return true;
-      final category = MockData.categories
+      final category = marketplace.categories
           .firstWhere((c) => c.id == o.categoryId)
-          .name
-          .replaceAll('\n', ' ')
-          .toLowerCase();
-      return o.name.toLowerCase().contains(q) ||
-          o.provider.name.toLowerCase().contains(q) ||
-          o.provider.region.toLowerCase().contains(q) ||
-          category.contains(q);
-    }).toList()
-      ..sort((a, b) {
-        final aLocal = a.provider.region == region ? 0 : 1;
-        final bLocal = b.provider.region == region ? 0 : 1;
-        return aLocal != bLocal
-            ? aLocal.compareTo(bLocal)
-            : (a.price ?? 999).compareTo(b.price ?? 999);
-      });
-    return list;
+          .name;
+      // Place names are searchable in the displayed language too, not just by
+      // their canonical English key.
+      bool place(String key) =>
+          key.toLowerCase().contains(q) ||
+          locations.localized(key, isAr).toLowerCase().contains(q);
+      return hit(o.name) ||
+          hit(o.provider.name) ||
+          place(o.provider.region) ||
+          place(o.provider.area) ||
+          hit(L(category.ar.replaceAll('\n', ' '),
+              category.en.replaceAll('\n', ' ')));
+    });
+    return splitByRegion(matches, region);
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final region = ref.watch(regionProvider);
     final car = ref.watch(primaryCarProvider);
     final searching = _query.trim().isNotEmpty;
     final results = _results(region);
+    final regionLabel =
+        ref.watch(locationCatalogProvider).localized(region, s.isAr);
+    // Nothing in the selected governorate leaves no filter to honour, so the
+    // wider list opens on its own rather than showing a dead end.
+    final widened = _widenedFrom == region || results.local.isEmpty;
+    // The chip counts workshops in the governorate, matching the picker —
+    // not the offers below it, which are a longer list.
+    final regionWorkshops = ref
+        .watch(serviceMarketplaceRepositoryProvider)
+        .providers
+        .where((p) => p.region == region)
+        .length;
+    // Unsearched, the page is a shortlist; searching shows the full set.
+    final limit = searching ? 25 : 6;
+    // Each group is capped on its own. Capping the combined list instead let
+    // a governorate with a full shortlist swallow every result from beyond
+    // it, so "Look beyond" changed the header and nothing else.
+    final shown = [
+      ...results.local.take(limit),
+      if (widened) ...results.nearby.take(searching ? limit : 4),
+    ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Services')),
+      appBar: AppBar(title: Text(s.navServices)),
       body: SafeArea(
         child: _loading
             ? ListView(
@@ -133,8 +197,8 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                       controller: _search,
                       onChanged: (v) => setState(() => _query = v),
                       decoration: InputDecoration(
-                        hintText:
-                            'Search services or workshops…',
+                        hintText: s.t('ابحث عن خدمة أو ورشة…',
+                            'Search services or workshops…'),
                         prefixIcon: const Icon(Icons.search_rounded),
                         suffixIcon: searching
                             ? IconButton(
@@ -156,14 +220,20 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                       spacing: 7,
                       runSpacing: 7,
                       children: [
+                        // The chip carries the count so a short list reads as
+                        // "this is all there is here", not as a broken page.
                         SelectChip(
-                          label: region,
+                          label: widened
+                              ? s.t('$regionLabel وما حولها',
+                                  '$regionLabel & around')
+                              : '$regionLabel · ${s.workshops(regionWorkshops)}',
                           icon: Icons.location_on_outlined,
                           selected: true,
                           onTap: _pickRegion,
                         ),
                         SelectChip(
-                          label: car?.label ?? 'Add your car',
+                          label: car?.label ??
+                              s.t('أضف سيارتك', 'Add your car'),
                           icon: Icons.directions_car_outlined,
                           selected: true,
                           onTap: () => context
@@ -176,9 +246,13 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                   if (!searching) ...[
                     const ServiceRails(),
                     const SizedBox(height: 22),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20),
-                      child: SectionHeader('Popular near you'),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: SectionHeader(widened
+                          ? s.t('الأكثر طلباً في $regionLabel وما حولها',
+                              'Popular in & around $regionLabel')
+                          : s.t('الأكثر طلباً في $regionLabel',
+                              'Popular in $regionLabel')),
                     ),
                     const SizedBox(height: 10),
                   ] else ...[
@@ -186,7 +260,13 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                       padding:
                           const EdgeInsets.symmetric(horizontal: 20),
                       child: Text(
-                        '${results.length} results for "${_query.trim()}"',
+                        widened
+                            ? s.t(
+                                '${s.resultsCount(shown.length)} في $regionLabel وما حولها',
+                                '${s.resultsCount(shown.length)} in & around $regionLabel')
+                            : s.t(
+                                '${s.resultsCount(shown.length)} في $regionLabel',
+                                '${s.resultsCount(shown.length)} in $regionLabel'),
                         style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w600,
@@ -195,27 +275,44 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                     ),
                     const SizedBox(height: 10),
                   ],
-                  if (searching && results.isEmpty)
+                  // Widening was already applied above when the governorate
+                  // was empty, so this line explains why the list is wider.
+                  if (widened && results.local.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 40),
-                      child: Center(
-                        child: Column(
-                          children: [
-                            Icon(Icons.search_off_rounded,
-                                size: 40,
-                                color: AkColors.of(context).inkFaint),
-                            const SizedBox(height: 8),
-                            Text('No services match your search',
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: AkColors.of(context).inkSub)),
-                          ],
-                        ),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                      child: _Notice(
+                        icon: Icons.travel_explore_rounded,
+                        text: searching
+                            ? s.t(
+                                'لا نتائج في $regionLabel — إليك الأقرب إليها',
+                                'Nothing in $regionLabel — here are the closest')
+                            : s.t(
+                                'لا توجد ورش في $regionLabel بعد — إليك الأقرب إليها',
+                                'No workshops in $regionLabel yet — here are the closest'),
+                      ),
+                    ),
+                  if (shown.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 24),
+                      child: Column(
+                        children: [
+                          Icon(Icons.search_off_rounded,
+                              size: 40,
+                              color: AkColors.of(context).inkFaint),
+                          const SizedBox(height: 8),
+                          Text(
+                              s.t('لا توجد خدمات تطابق بحثك',
+                                  'No services match your search'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: AkColors.of(context).inkSub)),
+                        ],
                       ),
                     )
                   else
-                    for (final (i, o)
-                        in results.take(searching ? 25 : 6).indexed) ...[
+                    for (final (i, o) in shown.indexed) ...[
                       Padding(
                         padding:
                             const EdgeInsets.symmetric(horizontal: 20),
@@ -227,6 +324,35 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                       ),
                       const SizedBox(height: 10),
                     ],
+                  // The one way an out-of-region workshop enters the list —
+                  // the user asking for it.
+                  if (!widened && results.nearby.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: WidenSearchButton(
+                        workshops: results.nearby
+                            .map((o) => o.provider.id)
+                            .toSet()
+                            .length,
+                        regionLabel: regionLabel,
+                        onTap: () =>
+                            setState(() => _widenedFrom = region),
+                      ),
+                    ),
+                  ],
+                  if (_widenedFrom == region) ...[
+                    const SizedBox(height: 4),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () =>
+                            setState(() => _widenedFrom = null),
+                        icon: const Icon(Icons.filter_alt_rounded, size: 16),
+                        label: Text(s.t('اعرض $regionLabel فقط',
+                            'Show only $regionLabel')),
+                      ),
+                    ),
+                  ],
                 ],
               ),
       ),
@@ -234,16 +360,20 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   }
 }
 
-class _OfferingCard extends StatelessWidget {
+class _OfferingCard extends ConsumerWidget {
   const _OfferingCard({required this.offering, required this.localRegion});
 
   final ServiceOffering offering;
   final String localRegion;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final ak = AkColors.of(context);
-    final category = MockData.categories
+    final locations = ref.watch(locationCatalogProvider);
+    final category = ref
+        .watch(serviceMarketplaceRepositoryProvider)
+        .categories
         .firstWhere((c) => c.id == offering.categoryId);
     final local = offering.provider.region == localRegion;
 
@@ -264,7 +394,7 @@ class _OfferingCard extends StatelessWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(offering.name,
+                      child: Text(offering.name.of(s),
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                               fontSize: 13.5,
@@ -279,8 +409,8 @@ class _OfferingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${offering.provider.name} · ${offering.provider.area}'
-                  '${local ? '' : ' · ${offering.provider.region}'}',
+                  '${offering.provider.name.of(s)} · ${locations.localized(offering.provider.area, s.isAr)}'
+                  '${local ? '' : ' · ${locations.localized(offering.provider.region, s.isAr)}'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -294,21 +424,136 @@ class _OfferingCard extends StatelessWidget {
             children: [
               Text(
                 offering.price != null
-                    ? 'OMR ${offering.price!.toStringAsFixed(0)}'
-                    : 'Quote',
+                    ? '${s.omr} ${offering.price!.toStringAsFixed(0)}'
+                    : s.t('عرض سعر', 'Quote'),
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w800,
                   color: ak.ink,
                 ),
               ),
+              // Distance is the honest version of "near you" once results can
+              // come from further out.
               if (local)
-                const StatusBadge.good('Near you')
+                StatusBadge.good(
+                    '${offering.provider.distanceKm.toStringAsFixed(0)} ${s.km}')
               else
-                const SizedBox(height: 18),
+                SizedBox(
+                  height: 18,
+                  child: Row(
+                    children: [
+                      Icon(Icons.explore_outlined,
+                          size: 11, color: ak.inkFaint),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${offering.provider.distanceKm.toStringAsFixed(0)} ${s.km}',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: ak.inkFaint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Quiet inline explainer — used when the page had to widen the search on the
+/// user's behalf, so the wider list never arrives unannounced.
+class _Notice extends StatelessWidget {
+  const _Notice({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: ak.surfaceDim,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: ak.inkSub),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                  fontSize: 12, height: 1.35, color: ak.inkSub),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One governorate in the region picker, with the workshop count up front so
+/// the choice is informed before it is made.
+class _RegionOption extends StatelessWidget {
+  const _RegionOption({
+    required this.label,
+    required this.workshops,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int workshops;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final ak = AkColors.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: selected ? ak.surfaceDim : ak.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? ak.ink : ak.border,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.location_on_outlined,
+                size: 18,
+                color: selected ? ak.ink : ak.inkFaint),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700),
+              ),
+            ),
+            Text(
+              s.workshops(workshops),
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: ak.inkFaint),
+            ),
+          ],
+        ),
       ),
     );
   }

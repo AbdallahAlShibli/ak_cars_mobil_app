@@ -9,9 +9,8 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/contact.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/mock_data.dart';
-import '../../data/models.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 import 'shop_filter_sheet.dart';
 
 const _categoryIcons = {
@@ -39,18 +38,20 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final filter = ref.watch(shopFilterProvider);
+    final q = _query.trim().toLowerCase();
     final products = ref
         .watch(filteredProductsProvider)
         .where((p) =>
-            _query.trim().isEmpty ||
-            p.name.toLowerCase().contains(_query.trim().toLowerCase()))
+            q.isEmpty ||
+            p.name.ar.contains(q) ||
+            p.name.en.toLowerCase().contains(q))
         .toList();
     final cart = ref.watch(cartProvider);
     final cartItems = ref.watch(cartItemsProvider);
     final cartTotal = ref.watch(cartTotalProvider);
     final searching = _query.trim().isNotEmpty;
 
-    final bestSellers = [...MockData.products]
+    final bestSellers = [...ref.watch(productsProvider)]
       ..sort((a, b) => b.rating.compareTo(a.rating));
 
     return Scaffold(
@@ -219,11 +220,11 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                               .set(filter.copyWith(
                                   categoryId: () => null)),
                         ),
-                        for (final e in MockData.partCategories.entries)
+                        for (final e in ref.watch(partCategoriesProvider).entries)
                           _CategoryAvatar(
                             icon: _categoryIcons[e.key] ??
                                 Icons.category_outlined,
-                            label: e.value,
+                            label: e.value.of(s),
                             selected: filter.categoryId == e.key,
                             onTap: () => ref
                                 .read(shopFilterProvider.notifier)
@@ -493,6 +494,7 @@ class _BestSellerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
+    final s = S.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -516,7 +518,7 @@ class _BestSellerCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(product.name,
+                  Text(product.name.of(s),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -615,7 +617,7 @@ class _ProductCard extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            product.name,
+            product.name.of(s),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style:
@@ -685,7 +687,8 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final p = widget.product;
-    final provider = MockData.providers
+    final provider = ref
+        .watch(shopSellersProvider)
         .where((x) => x.id == p.providerId)
         .firstOrNull;
 
@@ -778,7 +781,7 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                   ),
                   const SizedBox(height: 14),
                   // ---------------------------------- name + rating
-                  Text(p.name,
+                  Text(p.name.of(s),
                       style: const TextStyle(
                           fontSize: 17, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 5),
@@ -813,7 +816,7 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    p.details,
+                    p.details(s),
                     style: TextStyle(
                         fontSize: 12.5,
                         color: ak.inkSub,
@@ -844,7 +847,7 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                                       children: [
                                         Flexible(
                                           child: Text(
-                                            provider.name,
+                                            provider.name.of(s),
                                             overflow:
                                                 TextOverflow.ellipsis,
                                             style: const TextStyle(
@@ -904,8 +907,8 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
                                     context,
                                     '96892000000',
                                     message: s.t(
-                                        'مرحباً، أستفسر عن "${p.name}" في متجر AK Cars.',
-                                        'Hi, I am asking about "${p.name}" on AK Cars shop.'),
+                                        'مرحباً، أستفسر عن "${p.name.ar}" في متجر AK Cars.',
+                                        'Hi, I am asking about "${p.name.en}" on AK Cars shop.'),
                                   ),
                                   icon: const Icon(Icons.chat_rounded,
                                       size: 15),

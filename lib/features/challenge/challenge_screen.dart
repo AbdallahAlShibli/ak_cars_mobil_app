@@ -8,7 +8,8 @@ import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/sand_widgets.dart';
-import '../../data/challenge_state.dart';
+import '../../data/models/models.dart';
+import '../../state/challenge_state.dart';
 
 final _fmt = intl.NumberFormat('#,###', 'en');
 
@@ -321,7 +322,7 @@ class _ChallengeCard extends ConsumerWidget {
               ),
               const SizedBox(width: 12),
               GestureDetector(
-                onTap: () {
+                onTap: () async {
                   if (!challenge.allDone) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -332,10 +333,10 @@ class _ChallengeCard extends ConsumerWidget {
                     return;
                   }
                   HapticFeedback.mediumImpact();
-                  final ok = ref
+                  final ok = await ref
                       .read(challengeProvider.notifier)
                       .completeChallenge();
-                  if (ok) {
+                  if (ok && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(s.t(

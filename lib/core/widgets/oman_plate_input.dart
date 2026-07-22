@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/car_catalog.dart';
+import '../../state/catalog_state.dart';
+import '../i18n/strings.dart';
 import '../theme/app_colors.dart';
 
 /// Yellow Omani private plate: [ number | letter(s) | عُمان ].
@@ -131,16 +133,17 @@ class OmanPlateInput extends StatelessWidget {
 
 /// Plate letters picker — one or two letters, order preserved.
 /// Use with `showModalBottomSheet<String>`.
-class PlateLettersPicker extends StatefulWidget {
+class PlateLettersPicker extends ConsumerStatefulWidget {
   const PlateLettersPicker({super.key, required this.initial});
 
   final String initial;
 
   @override
-  State<PlateLettersPicker> createState() => _PlateLettersPickerState();
+  ConsumerState<PlateLettersPicker> createState() =>
+      _PlateLettersPickerState();
 }
 
-class _PlateLettersPickerState extends State<PlateLettersPicker> {
+class _PlateLettersPickerState extends ConsumerState<PlateLettersPicker> {
   late final List<String> _picked = widget.initial.split('');
 
   void _toggle(String letter) {
@@ -157,6 +160,9 @@ class _PlateLettersPickerState extends State<PlateLettersPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    final plateLetters = ref.watch(vehicleCatalogProvider).plateLetters;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
@@ -164,13 +170,14 @@ class _PlateLettersPickerState extends State<PlateLettersPicker> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Plate letters',
+            Text(s.t('حروف اللوحة', 'Plate letters'),
                 style:
-                    TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                    const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
-            const Text(
-              'Pick one or two letters — order matters.',
-              style: TextStyle(fontSize: 12, color: AppColors.ink2),
+            Text(
+              s.t('اختر حرفاً أو حرفين — الترتيب مهم.',
+                  'Pick one or two letters — order matters.'),
+              style: TextStyle(fontSize: 12, color: ak.inkSub),
             ),
             const SizedBox(height: 14),
             Center(
@@ -179,11 +186,11 @@ class _PlateLettersPickerState extends State<PlateLettersPicker> {
                 child: Text(
                   _picked.isEmpty ? '—' : _picked.join(),
                   key: ValueKey(_picked.join()),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 6,
-                    color: AppColors.brandDark,
+                    color: ak.ink,
                   ),
                 ),
               ),
@@ -193,7 +200,7 @@ class _PlateLettersPickerState extends State<PlateLettersPicker> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final l in CarCatalog.plateLetters)
+                for (final l in plateLetters)
                   GestureDetector(
                     onTap: () => _toggle(l),
                     child: AnimatedContainer(
@@ -201,14 +208,12 @@ class _PlateLettersPickerState extends State<PlateLettersPicker> {
                       width: 46,
                       height: 46,
                       decoration: BoxDecoration(
-                        color: _picked.contains(l)
-                            ? AppColors.ink
-                            : AppColors.card,
+                        color:
+                            _picked.contains(l) ? ak.primary : ak.surface,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: _picked.contains(l)
-                                ? AppColors.ink
-                                : AppColors.border),
+                            color:
+                                _picked.contains(l) ? ak.primary : ak.border),
                       ),
                       child: Center(
                         child: Text(
@@ -216,9 +221,8 @@ class _PlateLettersPickerState extends State<PlateLettersPicker> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
-                            color: _picked.contains(l)
-                                ? Colors.white
-                                : AppColors.ink,
+                            color:
+                                _picked.contains(l) ? ak.onPrimary : ak.ink,
                           ),
                         ),
                       ),
@@ -232,8 +236,8 @@ class _PlateLettersPickerState extends State<PlateLettersPicker> {
                   ? null
                   : () => Navigator.pop(context, _picked.join()),
               child: Text(_picked.isEmpty
-                  ? 'Pick at least one letter'
-                  : 'Use "${_picked.join()}"'),
+                  ? s.t('اختر حرفاً واحداً على الأقل', 'Pick at least one letter')
+                  : s.t('استخدم "${_picked.join()}"', 'Use "${_picked.join()}"')),
             ),
           ],
         ),

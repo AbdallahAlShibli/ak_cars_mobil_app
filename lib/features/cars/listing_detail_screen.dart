@@ -4,12 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/contact.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/car_catalog.dart';
-import '../../data/gallery_data.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Listing detail — photo carousel with counter, share/favorite,
 /// "Ask about price" chip, full spec table, description, report,
@@ -42,12 +42,13 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
   }
 
   Future<void> _reportAd(BuildContext context) async {
-    const reasons = [
-      'Misleading information',
-      'Wrong price',
-      'Already sold',
-      'Prohibited content',
-      'Suspected fraud',
+    final s = S.of(context);
+    final reasons = [
+      s.t('معلومات مضللة', 'Misleading information'),
+      s.t('سعر خاطئ', 'Wrong price'),
+      s.t('تم بيعها بالفعل', 'Already sold'),
+      s.t('محتوى محظور', 'Prohibited content'),
+      s.t('اشتباه احتيال', 'Suspected fraud'),
     ];
     final reason = await showModalBottomSheet<String>(
       context: context,
@@ -58,9 +59,9 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Report this ad',
-                  style:
-                      TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              Text(s.t('الإبلاغ عن هذا الإعلان', 'Report this ad'),
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),
               for (final r in reasons)
                 ListTile(
@@ -78,53 +79,81 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
     if (reason != null && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Reported: "$reason" — our team will review it')),
+            content: Text(s.t('تم الإبلاغ: "$reason" — سيراجعه فريقنا',
+                'Reported: "$reason" — our team will review it'))),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final listing = GalleryData.listings
+    final s = S.of(context);
+    final specCatalog = ref.watch(specCatalogProvider);
+    final locations = ref.watch(locationCatalogProvider);
+    // The user's own ads are part of the feed, so search it rather than the
+    // platform listings alone.
+    final listing = ref
+        .watch(galleryFeedProvider)
         .firstWhereOrNull((l) => l.id == widget.listingId);
     if (listing == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('Listing not found')),
+        body: Center(
+            child: Text(s.t('الإعلان غير موجود', 'Listing not found'))),
       );
     }
 
     final favorites = ref.watch(favoritesProvider);
     final fav = favorites.contains(listing.id);
-    final related = GalleryData.related(listing);
+    final related = ref.watch(relatedListingsProvider(listing));
+
+    String spec(String value) => specCatalog.localized(value, s.isAr);
 
     final specs = <(String, String, Color?)>[
-      ('Car name', listing.displayTitle, null),
-      ('Condition', listing.condition, null),
-      ('Mileage', '${listing.mileage} km', null),
-      ('Deal type', listing.dealType, null),
-      ('Body type', listing.bodyType, null),
+      (s.t('اسم السيارة', 'Car name'), listing.displayTitle, null),
+      (s.t('الحالة', 'Condition'), spec(listing.condition), null),
+      (s.t('الممشى', 'Mileage'), '${listing.mileage} ${s.km}', null),
+      (s.t('نوع الصفقة', 'Deal type'), spec(listing.dealType), null),
+      (s.t('نوع الهيكل', 'Body type'), spec(listing.bodyType), null),
       (
-        'Engine',
+        s.t('المحرك', 'Engine'),
         listing.engineLitres == 0
-            ? 'Electric'
-            : '${listing.engineLitres.toStringAsFixed(1)} L',
+            ? s.t('كهربائي', 'Electric')
+            : s.t('${listing.engineLitres.toStringAsFixed(1)} لتر',
+                '${listing.engineLitres.toStringAsFixed(1)} L'),
         null,
       ),
-      ('Cylinders', listing.cylinders == 0 ? '—' : '${listing.cylinders}', null),
-      ('Transmission', listing.transmission, null),
-      ('Doors', '${listing.doors}', null),
-      ('Seats', '${listing.seats}', null),
-      ('Keys', '${listing.keys}', null),
-      ('Regional spec', listing.regionalSpec, null),
-      ('Warranty', listing.hasWarranty ? 'Under warranty' : 'None', null),
-      ('Seller type', listing.sellerType, null),
-      ('Drivetrain', listing.drivetrain, null),
-      ('Fuel type', listing.fuel, null),
-      ('Exterior color', listing.exteriorColor, listing.exteriorSwatch),
-      ('Interior color', listing.interiorColor, listing.interiorSwatch),
-      ('Published', '14/7/2026', null),
-      ('Region', listing.region, null),
+      (
+        s.t('الإسطوانات', 'Cylinders'),
+        listing.cylinders == 0 ? '—' : '${listing.cylinders}',
+        null
+      ),
+      (s.t('ناقل الحركة', 'Transmission'), spec(listing.transmission), null),
+      (s.t('الأبواب', 'Doors'), '${listing.doors}', null),
+      (s.t('المقاعد', 'Seats'), '${listing.seats}', null),
+      (s.t('المفاتيح', 'Keys'), '${listing.keys}', null),
+      (s.t('المواصفات الإقليمية', 'Regional spec'),
+          spec(listing.regionalSpec), null),
+      (
+        s.t('الضمان', 'Warranty'),
+        listing.hasWarranty
+            ? s.t('تحت الضمان', 'Under warranty')
+            : s.t('لا يوجد', 'None'),
+        null
+      ),
+      (s.t('نوع البائع', 'Seller type'), spec(listing.sellerType), null),
+      (s.t('نظام الدفع', 'Drivetrain'), spec(listing.drivetrain), null),
+      (s.t('نوع الوقود', 'Fuel type'), spec(listing.fuel), null),
+      (s.t('اللون الخارجي', 'Exterior color'),
+          spec(listing.exteriorColor), listing.exteriorSwatch),
+      (s.t('اللون الداخلي', 'Interior color'),
+          spec(listing.interiorColor), listing.interiorSwatch),
+      (s.t('تاريخ النشر', 'Published'), '14/7/2026', null),
+      (
+        s.t('المنطقة', 'Region'),
+        locations.localizedRegion(listing.region, s.isAr),
+        null
+      ),
     ];
 
     return Scaffold(
@@ -146,7 +175,8 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                 actions: [
                   _RoundButton(
                     icon: Icons.share_rounded,
-                    onTap: () => _demo('Listing link copied to share'),
+                    onTap: () => _demo(s.t('تم نسخ رابط الإعلان للمشاركة',
+                        'Listing link copied to share')),
                   ),
                   const SizedBox(width: 8),
                   _RoundButton(
@@ -239,7 +269,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                         children: [
                           if (listing.price != null)
                             Text(
-                              'OMR ${listing.price!.toStringAsFixed(0)}',
+                              '${s.omr} ${listing.price!.toStringAsFixed(0)}',
                               style: const TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w800,
@@ -251,8 +281,9 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                               onTap: () => Contact.whatsapp(
                                 context,
                                 '96892000000',
-                                message:
-                                    'Hi, what is the price of your ${listing.displayTitle} on AK Cars?',
+                                message: s.t(
+                                    'مرحباً، كم سعر سيارتك ${listing.displayTitle} على AK Cars؟',
+                                    'Hi, what is the price of your ${listing.displayTitle} on AK Cars?'),
                               ),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
@@ -263,9 +294,9 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                                   borderRadius:
                                       BorderRadius.circular(999),
                                 ),
-                                child: const Text(
-                                  'Ask about price',
-                                  style: TextStyle(
+                                child: Text(
+                                  s.t('اسأل عن السعر', 'Ask about price'),
+                                  style: const TextStyle(
                                     color: AppColors.brand,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
@@ -274,7 +305,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                               ),
                             ),
                           const Spacer(),
-                          StatusBadge(listing.dealType),
+                          StatusBadge(spec(listing.dealType)),
                         ],
                       ),
                     ),
@@ -286,8 +317,8 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Details',
-                                style: TextStyle(
+                            Text(s.details,
+                                style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800)),
                             const SizedBox(height: 6),
@@ -325,10 +356,13 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                                         ),
                                       ),
                                     ],
-                                    Text(s.$2,
-                                        style: const TextStyle(
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w700)),
+                                    Flexible(
+                                      child: Text(s.$2,
+                                          textAlign: TextAlign.end,
+                                          style: const TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w700)),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -344,8 +378,8 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Description',
-                                style: TextStyle(
+                            Text(s.t('الوصف', 'Description'),
+                                style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800)),
                             const SizedBox(height: 8),
@@ -378,7 +412,9 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                                 onTap: () => setState(
                                     () => _expanded = !_expanded),
                                 child: Text(
-                                  _expanded ? 'Show less' : 'Show more',
+                                  _expanded
+                                      ? s.t('عرض أقل', 'Show less')
+                                      : s.t('عرض المزيد', 'Show more'),
                                   style: const TextStyle(
                                     color: AppColors.brand,
                                     fontSize: 13,
@@ -396,15 +432,16 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                       delayMs: 140,
                       child: AppCard(
                         onTap: () => _reportAd(context),
-                        child: const Row(
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.flag_outlined,
+                            const Icon(Icons.flag_outlined,
                                 size: 17, color: AppColors.bad),
-                            SizedBox(width: 8),
+                            const SizedBox(width: 8),
                             Text(
-                              'Report this ad',
-                              style: TextStyle(
+                              s.t('الإبلاغ عن هذا الإعلان',
+                                  'Report this ad'),
+                              style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.bad,
@@ -450,14 +487,16 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                                           fontWeight: FontWeight.w800)),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Joined ${listing.sellerJoined}',
+                                    s.t('انضم في ${listing.sellerJoined}',
+                                        'Joined ${listing.sellerJoined}'),
                                     style: const TextStyle(
                                         fontSize: 11.5,
                                         color: AppColors.ink3),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '${listing.sellerAds} ads  ·  ${listing.sellerFollowers} followers',
+                                    s.t('${listing.sellerAds} إعلانات  ·  ${listing.sellerFollowers} متابعين',
+                                        '${listing.sellerAds} ads  ·  ${listing.sellerFollowers} followers'),
                                     style: const TextStyle(
                                         fontSize: 11.5,
                                         fontWeight: FontWeight.w600,
@@ -474,9 +513,10 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                     ),
                     if (related.isNotEmpty) ...[
                       const SizedBox(height: 18),
-                      const Entrance(
+                      Entrance(
                         delayMs: 180,
-                        child: SectionHeader('Related ads'),
+                        child: SectionHeader(
+                            s.t('إعلانات مشابهة', 'Related ads')),
                       ),
                       const SizedBox(height: 10),
                       Entrance(
@@ -531,8 +571,9 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                                           ),
                                           child: Text(
                                             r.price != null
-                                                ? 'OMR ${r.price!.toStringAsFixed(0)}'
-                                                : 'Ask for price',
+                                                ? '${s.omr} ${r.price!.toStringAsFixed(0)}'
+                                                : s.t('اسأل عن السعر',
+                                                    'Ask for price'),
                                             style: const TextStyle(
                                               color: Colors.white,
                                               fontSize: 11,
@@ -584,7 +625,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                       onPressed: () =>
                           Contact.call(context, '+96892000000'),
                       icon: const Icon(Icons.phone_rounded, size: 17),
-                      label: const Text('Call'),
+                      label: Text(s.t('اتصال', 'Call')),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -596,8 +637,9 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                       onPressed: () => Contact.whatsapp(
                         context,
                         '96892000000',
-                        message:
-                            'Hi, I am interested in your ad on AK Cars.',
+                        message: s.t(
+                            'مرحباً، أنا مهتم بإعلانك على AK Cars.',
+                            'Hi, I am interested in your ad on AK Cars.'),
                       ),
                       icon: const Icon(Icons.chat_rounded, size: 17),
                       label: const Text('WhatsApp'),

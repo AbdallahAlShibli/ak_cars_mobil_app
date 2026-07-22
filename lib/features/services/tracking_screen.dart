@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/contact.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/models.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Rule 9/10: live tracking, call/chat, escrow visibility.
 class TrackingScreen extends ConsumerWidget {
@@ -17,6 +18,7 @@ class TrackingScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final request = ref
         .watch(requestsProvider)
         .where((r) => r.id == requestId)
@@ -24,8 +26,9 @@ class TrackingScreen extends ConsumerWidget {
 
     if (request == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Request')),
-        body: const Center(child: Text('Request not found')),
+        appBar: AppBar(title: Text(s.t('الطلب', 'Request'))),
+        body: Center(
+            child: Text(s.t('الطلب غير موجود', 'Request not found'))),
       );
     }
 
@@ -39,22 +42,35 @@ class TrackingScreen extends ConsumerWidget {
 
     final steps = [
       (
-        'Requested & paid',
-        'OMR ${request.total.toStringAsFixed(2)} held · waiting for provider'
+        s.t('تم الطلب والدفع', 'Requested & paid'),
+        s.t('${request.total.toStringAsFixed(2)} ر.ع محجوزة · بانتظار المزود',
+            'OMR ${request.total.toStringAsFixed(2)} held · waiting for provider')
       ),
-      ('Accepted by provider', request.offering.provider.name),
-      ('Work in progress', 'Scheduled for ${request.slot}'),
-      ('Provider uploads photo proof', 'You will get a notification'),
-      ('You approve → payment released', 'Or report a problem'),
+      (
+        s.t('قبله المزود', 'Accepted by provider'),
+        request.offering.provider.name.of(s)
+      ),
+      (
+        s.t('العمل جارٍ', 'Work in progress'),
+        s.t('مجدول في ${request.slot}', 'Scheduled for ${request.slot}')
+      ),
+      (
+        s.t('المزود يرفع صور الإثبات', 'Provider uploads photo proof'),
+        s.t('ستصلك إشعارات', 'You will get a notification')
+      ),
+      (
+        s.t('توافق → تُحرَّر الدفعة', 'You approve → payment released'),
+        s.t('أو أبلغ عن مشكلة', 'Or report a problem')
+      ),
     ];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Request #${request.id}'),
+        title: Text(s.t('الطلب #${request.id}', 'Request #${request.id}')),
         actions: [
           Padding(
             padding: const EdgeInsetsDirectional.only(end: 16),
-            child: Center(child: StatusBadge(request.status.label)),
+            child: Center(child: StatusBadge(request.status.label(s))),
           ),
         ],
       ),
@@ -75,12 +91,12 @@ class TrackingScreen extends ConsumerWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(request.offering.provider.name,
+                              Text(request.offering.provider.name.of(s),
                                   style: const TextStyle(
                                       fontSize: 13.5,
                                       fontWeight: FontWeight.w700)),
                               Text(
-                                '${request.offering.name} · ${request.car.label} · ${request.plate}',
+                                '${request.offering.name.of(s)} · ${request.car.label} · ${request.plate}',
                                 style: const TextStyle(
                                     fontSize: 11.5,
                                     color: AppColors.ink3),
@@ -112,7 +128,8 @@ class TrackingScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   EscrowBanner(
-                    'OMR ${request.total.toStringAsFixed(2)} held in escrow until your approval.',
+                    s.t('${request.total.toStringAsFixed(2)} ر.ع محفوظة كضمان حتى موافقتك.',
+                        'OMR ${request.total.toStringAsFixed(2)} held in escrow until your approval.'),
                   ),
                   if (request.status == RequestStatus.requested ||
                       request.status == RequestStatus.accepted ||
@@ -123,10 +140,11 @@ class TrackingScreen extends ConsumerWidget {
                         const Icon(Icons.autorenew_rounded,
                             size: 14, color: AppColors.ink3),
                         const SizedBox(width: 6),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Live — the provider updates this automatically.',
-                            style: TextStyle(
+                            s.t('مباشر — يحدّث المزود الحالة تلقائياً.',
+                                'Live — the provider updates this automatically.'),
+                            style: const TextStyle(
                                 fontSize: 11.5, color: AppColors.ink3),
                           ),
                         ),
@@ -134,8 +152,8 @@ class TrackingScreen extends ConsumerWidget {
                           onPressed: () => ref
                               .read(requestsProvider.notifier)
                               .advance(request.id),
-                          child: const Text('Skip ahead',
-                              style: TextStyle(fontSize: 12)),
+                          child: Text(s.t('تخطَّ للأمام', 'Skip ahead'),
+                              style: const TextStyle(fontSize: 12)),
                         ),
                       ],
                     ),
@@ -145,7 +163,8 @@ class TrackingScreen extends ConsumerWidget {
                     FilledButton(
                       onPressed: () =>
                           context.push('/approve/${request.id}'),
-                      child: const Text('Review completed work'),
+                      child: Text(s.t('راجع العمل المنجز',
+                          'Review completed work')),
                     ),
                   ],
                 ],
@@ -160,7 +179,7 @@ class TrackingScreen extends ConsumerWidget {
                       onPressed: () =>
                           Contact.call(context, '+96824000000'),
                       icon: const Icon(Icons.phone_outlined, size: 17),
-                      label: const Text('Call'),
+                      label: Text(s.t('اتصال', 'Call')),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -172,7 +191,7 @@ class TrackingScreen extends ConsumerWidget {
                           context.push('/chat/${request.id}'),
                       icon: const Icon(Icons.chat_bubble_outline_rounded,
                           size: 17),
-                      label: const Text('Chat'),
+                      label: Text(s.t('محادثة', 'Chat')),
                     ),
                   ),
                 ],

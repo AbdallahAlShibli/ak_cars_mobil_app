@@ -3,12 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
-import '../../data/app_state.dart';
-import '../../data/car_catalog.dart';
-import '../../data/car_spec_options.dart';
-import '../../data/gallery_data.dart';
-import '../../data/oman_locations.dart';
+import '../../di/providers.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Post a car ad — collects the full set of details the cars filter facets
 /// on (make/model/sub-model, condition, body, year, specs, transmission,
@@ -26,6 +25,11 @@ class PostAdScreen extends ConsumerStatefulWidget {
 }
 
 class _PostAdScreenState extends ConsumerState<PostAdScreen> {
+  /// Reference catalogs, warmed at bootstrap.
+  SpecCatalog get _specs => ref.read(specCatalogProvider);
+  VehicleCatalog get _vehicles => ref.read(vehicleCatalogProvider);
+  LocationCatalog get _locations => ref.read(locationCatalogProvider);
+
   // ---- photos (5 min / 15 max) ------------------------------------------
   static const int _minPhotos = 5;
   static const int _maxPhotos = 15;
@@ -123,7 +127,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
         _ => Icons.directions_car_filled_rounded,
       };
 
-  void _publish() {
+  Future<void> _publish() async {
     if (!_canPublish) return;
     final profile = ref.read(authProvider).profile;
     final ad = GalleryListing(
@@ -166,12 +170,10 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
           : _description.text.trim(),
     );
     ref.read(myAdsProvider.notifier).add(ad);
-    ref.read(notificationsProvider.notifier).push(
-          title: 'Your ad is live',
-          body: '${_year!} ${_make!.name} $_model is now in the gallery.',
-          icon: Icons.campaign_outlined,
-          route: '/cars/listing/${ad.id}',
+    ref.read(notificationsProvider.notifier).adopt(
+          await ref.read(notificationRepositoryProvider).notifyAdPublished(ad),
         );
+    if (!mounted) return;
     HapticFeedback.heavyImpact();
     context.pushReplacement('/cars/listing/${ad.id}');
   }
@@ -242,21 +244,23 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
 
   /// Picks a value from the shared [CarSpecs] catalog.
   Future<T?> _pickSpec<T>(String title, List<SpecOption<T>> options) async {
-    final chosen =
-        await _pickFromList<SpecOption<T>>(title, options, (o) => o.en);
+    final s = S.of(context);
+    final chosen = await _pickFromList<SpecOption<T>>(
+        title, options, (o) => s.t(o.ar, o.en));
     return chosen?.value;
   }
 
   Future<void> _pickColor(String title, bool exterior) async {
+    final s = S.of(context);
     final chosen = await _pickFromList<SpecOption<String>>(
       title,
-      CarSpecs.colors,
-      (o) => o.en,
+      _specs.colors,
+      (o) => s.t(o.ar, o.en),
       leading: (o) => Container(
         width: 22,
         height: 22,
         decoration: BoxDecoration(
-          color: CarSpecs.swatchOf(o.value),
+          color: _specs.swatchOf(o.value),
           shape: BoxShape.circle,
           border: Border.all(color: AppColors.border),
         ),
@@ -266,10 +270,10 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
     setState(() {
       if (exterior) {
         _exteriorColor = chosen.value;
-        _exteriorSwatch = CarSpecs.swatchOf(chosen.value);
+        _exteriorSwatch = _specs.swatchOf(chosen.value);
       } else {
         _interiorColor = chosen.value;
-        _interiorSwatch = CarSpecs.swatchOf(chosen.value);
+        _interiorSwatch = _specs.swatchOf(chosen.value);
       }
     });
   }
@@ -347,6 +351,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
 
   // ---------------------------------------------------------------- photos
   Widget _photosSection() {
+    final s = S.of(context);
     final enough = _photos.length >= _minPhotos;
     final canAdd = _photos.length < _maxPhotos;
     return Column(
@@ -355,14 +360,19 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
         Row(
           children: [
             Expanded(
-              child: Text('Photos (${_photos.length}/$_maxPhotos)',
+              child: Text(
+                  s.t('الصور (${_photos.length}/$_maxPhotos)',
+                      'Photos (${_photos.length}/$_maxPhotos)'),
                   style: const TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w800,
                       color: AppColors.ink2)),
             ),
             Text(
-              enough ? 'Ready' : 'Add ${_minPhotos - _photos.length} more',
+              enough
+                  ? s.t('جاهز', 'Ready')
+                  : s.t('أضف ${_minPhotos - _photos.length} صور أخرى',
+                      'Add ${_minPhotos - _photos.length} more'),
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
@@ -397,11 +407,11 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.add_a_photo_outlined,
+                      const Icon(Icons.add_a_photo_outlined,
                           size: 22, color: AppColors.brand),
                       const SizedBox(height: 5),
-                      const Text('Add photo',
-                          style: TextStyle(
+                      Text(s.t('أضف صورة', 'Add photo'),
+                          style: const TextStyle(
                               fontSize: 10.5,
                               color: AppColors.ink3,
                               fontWeight: FontWeight.w700)),
@@ -416,9 +426,11 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
         const SizedBox(height: 6),
         Text(
           _photos.isEmpty
-              ? 'Add at least $_minPhotos photos (up to $_maxPhotos). '
-                  'Uploads connect to storage in Phase 4.'
-              : 'First photo is used as the cover.',
+              ? s.t('أضف $_minPhotos صور على الأقل (حتى $_maxPhotos). يتم ربط الرفع بالتخزين في المرحلة 4.',
+                  'Add at least $_minPhotos photos (up to $_maxPhotos). '
+                  'Uploads connect to storage in Phase 4.')
+              : s.t('تُستخدم الصورة الأولى كصورة الغلاف.',
+                  'First photo is used as the cover.'),
           style: const TextStyle(fontSize: 11, color: AppColors.ink3),
         ),
       ],
@@ -454,8 +466,8 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                 color: Colors.black.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: const Text('Cover',
-                  style: TextStyle(
+              child: Text(S.of(context).t('الغلاف', 'Cover'),
+                  style: const TextStyle(
                       fontSize: 9,
                       color: Colors.white,
                       fontWeight: FontWeight.w700)),
@@ -486,8 +498,11 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
+    String? spec(String? value) =>
+        value == null ? null : _specs.localized(value, s.isAr);
     return Scaffold(
-      appBar: AppBar(title: const Text('Post a car ad')),
+      appBar: AppBar(title: Text(s.t('انشر إعلان سيارة', 'Post a car ad'))),
       body: SafeArea(
         child: Column(
           children: [
@@ -498,14 +513,16 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   _photosSection(),
                   const SizedBox(height: 14),
                   // ---------------------------------------------- vehicle
-                  _sectionTitle('VEHICLE'),
+                  _sectionTitle(s.t('السيارة', 'VEHICLE')),
                   _field(
                     Icons.factory_outlined,
-                    'Make',
+                    s.t('الشركة المصنعة', 'Make'),
                     _make?.name,
                     () async {
                       final m = await _pickFromList(
-                          'Pick a make', CarCatalog.makes, (m) => m.name);
+                          s.t('اختر الشركة المصنعة', 'Pick a make'),
+                          _vehicles.makes,
+                          (m) => m.name);
                       if (m != null) {
                         setState(() {
                           _make = m;
@@ -517,11 +534,13 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   ),
                   _field(
                     Icons.directions_car_outlined,
-                    'Model',
+                    s.t('الموديل', 'Model'),
                     _model,
                     () async {
-                      final m = await _pickFromList('Choose model',
-                          _make?.models ?? const <String>[], (m) => m);
+                      final m = await _pickFromList(
+                          s.t('اختر الموديل', 'Choose model'),
+                          _make?.models ?? const <String>[],
+                          (m) => m);
                       if (m != null) {
                         setState(() {
                           _model = m;
@@ -530,95 +549,107 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                       }
                     },
                     enabled: _make != null,
-                    hint: _make == null ? 'Select make first' : 'Model',
+                    hint: _make == null
+                        ? s.t('اختر الشركة أولاً', 'Select make first')
+                        : s.t('الموديل', 'Model'),
                   ),
                   _field(
                     Icons.layers_outlined,
-                    'Sub-model',
+                    s.t('الفئة الفرعية', 'Sub-model'),
                     _trim,
                     () async {
-                      final trims = GalleryData.trimsFor(_model ?? '');
+                      final trims = _vehicles.trimsFor(_model ?? '');
                       final t = await _pickFromList(
-                          'Sub-model — $_model', trims, (t) => t);
+                          s.t('الفئة الفرعية — $_model',
+                              'Sub-model — $_model'),
+                          trims,
+                          (t) => t);
                       if (t != null) setState(() => _trim = t);
                     },
                     enabled: _model != null &&
-                        GalleryData.trimsFor(_model ?? '').isNotEmpty,
+                        _vehicles.trimsFor(_model ?? '').isNotEmpty,
                     hint: _model == null
-                        ? 'Select model first'
-                        : (GalleryData.trimsFor(_model!).isEmpty
-                            ? 'No sub-models'
-                            : 'Optional'),
+                        ? s.t('اختر الموديل أولاً', 'Select model first')
+                        : (_vehicles.trimsFor(_model!).isEmpty
+                            ? s.t('لا توجد فئات فرعية', 'No sub-models')
+                            : s.t('اختياري', 'Optional')),
                   ),
                   _field(
                     Icons.calendar_today_outlined,
-                    'Year',
+                    s.t('سنة الصنع', 'Year'),
                     _year == null ? null : '$_year',
                     () async {
                       final y = await _pickFromList(
-                          'Made year', CarCatalog.years, (y) => '$y');
+                          s.t('سنة الصنع', 'Made year'),
+                          _vehicles.years,
+                          (y) => '$y');
                       if (y != null) setState(() => _year = y);
                     },
                   ),
                   const SizedBox(height: 6),
                   // ----------------------------------------- specifications
-                  _sectionTitle('SPECIFICATIONS'),
+                  _sectionTitle(s.t('المواصفات', 'SPECIFICATIONS')),
                   _field(
                     Icons.auto_awesome_outlined,
-                    'Condition',
-                    _condition,
+                    s.t('الحالة', 'Condition'),
+                    spec(_condition),
                     () async {
-                      final v =
-                          await _pickSpec('Condition', CarSpecs.conditions);
+                      final v = await _pickSpec(
+                          s.t('الحالة', 'Condition'), _specs.conditions);
                       if (v != null) setState(() => _condition = v);
                     },
                   ),
                   _field(
                     Icons.directions_car_filled_outlined,
-                    'Body type',
-                    _bodyType,
+                    s.t('نوع الهيكل', 'Body type'),
+                    spec(_bodyType),
                     () async {
-                      final v =
-                          await _pickSpec('Body type', CarSpecs.bodyTypes);
+                      final v = await _pickSpec(
+                          s.t('نوع الهيكل', 'Body type'),
+                          _specs.bodyTypes);
                       if (v != null) setState(() => _bodyType = v);
                     },
                   ),
                   _field(
                     Icons.public_outlined,
-                    'Regional spec',
-                    _regionalSpec,
+                    s.t('المواصفات الإقليمية', 'Regional spec'),
+                    spec(_regionalSpec),
                     () async {
-                      final v =
-                          await _pickSpec('Regional spec', CarSpecs.regionalSpecs);
+                      final v = await _pickSpec(
+                          s.t('المواصفات الإقليمية', 'Regional spec'),
+                          _specs.regionalSpecs);
                       if (v != null) setState(() => _regionalSpec = v);
                     },
                   ),
                   _field(
                     Icons.settings_outlined,
-                    'Transmission',
-                    _transmission,
+                    s.t('ناقل الحركة', 'Transmission'),
+                    spec(_transmission),
                     () async {
                       final v = await _pickSpec(
-                          'Transmission', CarSpecs.transmissions);
+                          s.t('ناقل الحركة', 'Transmission'),
+                          _specs.transmissions);
                       if (v != null) setState(() => _transmission = v);
                     },
                   ),
                   _field(
                     Icons.open_with_rounded,
-                    'Drive line',
-                    _drivetrain,
+                    s.t('نظام الدفع', 'Drive line'),
+                    spec(_drivetrain),
                     () async {
-                      final v =
-                          await _pickSpec('Drive line', CarSpecs.drivetrains);
+                      final v = await _pickSpec(
+                          s.t('نظام الدفع', 'Drive line'),
+                          _specs.drivetrains);
                       if (v != null) setState(() => _drivetrain = v);
                     },
                   ),
                   _field(
                     Icons.local_gas_station_outlined,
-                    'Fuel type',
-                    _fuel,
+                    s.t('نوع الوقود', 'Fuel type'),
+                    spec(_fuel),
                     () async {
-                      final v = await _pickSpec('Fuel type', CarSpecs.fuels);
+                      final v = await _pickSpec(
+                          s.t('نوع الوقود', 'Fuel type'), _specs.fuels);
                       if (v == null) return;
                       setState(() {
                         _fuel = v;
@@ -640,43 +671,55 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
                         onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          hintText: 'Engine size, e.g. 2.5',
-                          suffixText: 'L',
-                          prefixIcon: Icon(Icons.settings_suggest_outlined),
+                        decoration: InputDecoration(
+                          hintText: s.t('سعة المحرك، مثال 2.5',
+                              'Engine size, e.g. 2.5'),
+                          suffixText: s.t('لتر', 'L'),
+                          prefixIcon:
+                              const Icon(Icons.settings_suggest_outlined),
                         ),
                       ),
                     ),
                     _field(
                       Icons.settings_input_component_outlined,
-                      'Cylinders',
+                      s.t('الإسطوانات', 'Cylinders'),
                       _cylinders == null
                           ? null
-                          : '$_cylinders ${_cylinders == 1 ? 'cylinder' : 'cylinders'}',
+                          : s.t('$_cylinders إسطوانات',
+                              '$_cylinders ${_cylinders == 1 ? 'cylinder' : 'cylinders'}'),
                       () async {
-                        final v = await _pickSpec('Cylinders',
-                            CarSpecs.cylinders.where((o) => o.value > 0).toList());
+                        final v = await _pickSpec(
+                            s.t('الإسطوانات', 'Cylinders'),
+                            _specs.cylinders
+                                .where((o) => o.value > 0)
+                                .toList());
                         if (v != null) setState(() => _cylinders = v);
                       },
                     ),
                   ],
                   _field(
                     Icons.sensor_door_outlined,
-                    'Doors',
-                    _doors == null ? null : '$_doors doors',
+                    s.t('الأبواب', 'Doors'),
+                    _doors == null
+                        ? null
+                        : s.t('$_doors أبواب', '$_doors doors'),
                     () async {
-                      final v = await _pickSpec('Doors', CarSpecs.doors);
+                      final v = await _pickSpec(
+                          s.t('الأبواب', 'Doors'), _specs.doors);
                       if (v != null) setState(() => _doors = v);
                     },
                   ),
                   _field(
                     Icons.event_seat_outlined,
-                    'Seats',
+                    s.t('المقاعد', 'Seats'),
                     _seats == null
                         ? null
-                        : (_seats == 8 ? '8+ seats' : '$_seats seats'),
+                        : (_seats == 8
+                            ? s.t('8+ مقاعد', '8+ seats')
+                            : s.t('$_seats مقاعد', '$_seats seats')),
                     () async {
-                      final v = await _pickSpec('Seats', CarSpecs.seats);
+                      final v = await _pickSpec(
+                          s.t('المقاعد', 'Seats'), _specs.seats);
                       if (v != null) setState(() => _seats = v);
                     },
                   ),
@@ -686,33 +729,37 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   ),
                   const SizedBox(height: 6),
                   // ------------------------------------------------ colors
-                  _sectionTitle('COLORS'),
+                  _sectionTitle(s.t('الألوان', 'COLORS')),
                   _field(
                     Icons.palette_outlined,
-                    'Exterior color',
-                    _exteriorColor,
-                    () => _pickColor('Exterior color', true),
+                    s.t('اللون الخارجي', 'Exterior color'),
+                    spec(_exteriorColor),
+                    () => _pickColor(
+                        s.t('اللون الخارجي', 'Exterior color'), true),
                     swatch: _exteriorSwatch,
                   ),
                   _field(
                     Icons.chair_outlined,
-                    'Interior color',
-                    _interiorColor,
-                    () => _pickColor('Interior color', false),
+                    s.t('اللون الداخلي', 'Interior color'),
+                    spec(_interiorColor),
+                    () => _pickColor(
+                        s.t('اللون الداخلي', 'Interior color'), false),
                     swatch: _interiorSwatch,
                   ),
                   const SizedBox(height: 6),
                   // ---------------------------------------- location & deal
-                  _sectionTitle('LOCATION & DEAL'),
+                  _sectionTitle(s.t('الموقع والصفقة', 'LOCATION & DEAL')),
                   _field(
                     Icons.map_outlined,
-                    'Governorate',
-                    _governorate,
+                    s.t('المحافظة', 'Governorate'),
+                    _governorate == null
+                        ? null
+                        : _locations.localized(_governorate!, s.isAr),
                     () async {
                       final g = await _pickFromList(
-                          'Governorate',
-                          OmanLocations.governorates.keys.toList(),
-                          (g) => g);
+                          s.t('المحافظة', 'Governorate'),
+                          _locations.governorates.keys.toList(),
+                          (g) => _locations.localized(g, s.isAr));
                       if (g != null) {
                         setState(() {
                           _governorate = g;
@@ -723,43 +770,49 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   ),
                   _field(
                     Icons.location_on_outlined,
-                    'Wilayat',
-                    _wilayat,
+                    s.t('الولاية', 'Wilayat'),
+                    _wilayat == null
+                        ? null
+                        : _locations.localized(_wilayat!, s.isAr),
                     () async {
                       final w = await _pickFromList(
-                          'Wilayat — $_governorate',
-                          OmanLocations.wilayatsOf(_governorate ?? ''),
-                          (w) => w);
+                          s.t('الولاية — ${_locations.localized(_governorate ?? '', s.isAr)}',
+                              'Wilayat — $_governorate'),
+                          _locations.wilayatsOf(_governorate ?? ''),
+                          (w) => _locations.localized(w, s.isAr));
                       if (w != null) setState(() => _wilayat = w);
                     },
                     enabled: _governorate != null,
                     hint: _governorate == null
-                        ? 'Select governorate first'
-                        : 'Wilayat',
+                        ? s.t('اختر المحافظة أولاً',
+                            'Select governorate first')
+                        : s.t('الولاية', 'Wilayat'),
                   ),
                   _field(
                     Icons.swap_horiz_rounded,
-                    'Deal type',
-                    _dealType,
+                    s.t('نوع الصفقة', 'Deal type'),
+                    spec(_dealType),
                     () async {
-                      final v =
-                          await _pickSpec('Deal type', CarSpecs.dealTypes);
+                      final v = await _pickSpec(
+                          s.t('نوع الصفقة', 'Deal type'),
+                          _specs.dealTypes);
                       if (v != null) setState(() => _dealType = v);
                     },
                   ),
                   _field(
                     Icons.storefront_outlined,
-                    'Seller type',
-                    _sellerType,
+                    s.t('نوع البائع', 'Seller type'),
+                    spec(_sellerType),
                     () async {
-                      final v =
-                          await _pickSpec('Seller type', CarSpecs.sellerTypes);
+                      final v = await _pickSpec(
+                          s.t('نوع البائع', 'Seller type'),
+                          _specs.sellerTypes);
                       if (v != null) setState(() => _sellerType = v);
                     },
                   ),
                   const SizedBox(height: 6),
                   // -------------------------------------- price & details
-                  _sectionTitle('PRICE & DETAILS'),
+                  _sectionTitle(s.t('السعر والتفاصيل', 'PRICE & DETAILS')),
                   Row(
                     children: [
                       Expanded(
@@ -770,8 +823,8 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                           onChanged: (_) => setState(() {}),
                           decoration: InputDecoration(
                             hintText: _askForPrice
-                                ? 'Buyers will ask you'
-                                : 'Price (OMR)',
+                                ? s.t('سيسألك المشترون', 'Buyers will ask you')
+                                : s.t('السعر (ر.ع)', 'Price (OMR)'),
                             prefixIcon:
                                 const Icon(Icons.payments_outlined),
                           ),
@@ -797,7 +850,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                                 width: 1.5),
                           ),
                           child: Text(
-                            'Ask for price',
+                            s.t('اسأل عن السعر', 'Ask for price'),
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -815,18 +868,19 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     controller: _mileage,
                     keyboardType: TextInputType.number,
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      hintText: 'Mileage (km)',
-                      prefixIcon: Icon(Icons.speed_rounded),
+                    decoration: InputDecoration(
+                      hintText: s.t('الممشى (كم)', 'Mileage (km)'),
+                      prefixIcon: const Icon(Icons.speed_rounded),
                     ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _description,
                     maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Description — condition, options, service history…',
+                    decoration: InputDecoration(
+                      hintText: s.t(
+                          'الوصف — الحالة، الإضافات، سجل الصيانة…',
+                          'Description — condition, options, service history…'),
                     ),
                   ),
                 ],
@@ -837,10 +891,12 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
               child: FilledButton(
                 onPressed: _canPublish ? _publish : null,
                 child: Text(_canPublish
-                    ? 'Publish ad'
+                    ? s.t('نشر الإعلان', 'Publish ad')
                     : _photos.length < _minPhotos
-                        ? 'Add at least $_minPhotos photos'
-                        : 'Complete the details above'),
+                        ? s.t('أضف $_minPhotos صور على الأقل',
+                            'Add at least $_minPhotos photos')
+                        : s.t('أكمل التفاصيل أعلاه',
+                            'Complete the details above')),
               ),
             ),
           ],
@@ -880,11 +936,12 @@ class _WarrantyToggle extends StatelessWidget {
               Icon(Icons.verified_user_outlined,
                   size: 18, color: value ? AppColors.brand : AppColors.ink3),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Still under warranty',
-                  style:
-                      TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                  S.of(context).t('لا تزال تحت الضمان',
+                      'Still under warranty'),
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w600),
                 ),
               ),
               Switch(value: value, onChanged: onChanged),

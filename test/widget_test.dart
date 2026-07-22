@@ -1,19 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:ak_cars_mobil_app/data/settings_state.dart';
-import 'package:ak_cars_mobil_app/main.dart';
+import 'package:ak_cars_mobil_app/app/ak_cars_app.dart';
+
+import 'helpers/test_harness.dart';
 
 void main() {
   testWidgets('App boots to the Sand & Ink splash screen (Arabic default)',
       (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
+    final container = await createTestContainer();
 
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [sharedPrefsProvider.overrideWithValue(prefs)],
+      UncontrolledProviderScope(
+        container: container,
         child: const AkCarsApp(),
       ),
     );

@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
+import '../../state/app_state.dart';
 
 /// Cart & checkout — quantities, summary, escrow-backed payment.
 class CartScreen extends ConsumerStatefulWidget {
@@ -21,21 +21,13 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
   Future<void> _checkout() async {
     final items = ref.read(cartItemsProvider);
-    final total = ref.read(cartTotalProvider);
     setState(() => _paying = true);
     await Future.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
-    final order = ref.read(ordersProvider.notifier).place(items, total);
+    // Placing the order raises the "funds held" notification itself.
+    await ref.read(ordersProvider.notifier).place(items);
     ref.read(cartProvider.notifier).clear();
-    final s = S.of(context);
-    ref.read(notificationsProvider.notifier).push(
-          title: s.t('تم إنشاء الطلب ${order.id}', 'Order ${order.id} placed'),
-          body: s.t(
-              'تم احتجاز ${total.toStringAsFixed(2)} ر.ع — تُحرّر عند تأكيد الاستلام.',
-              'OMR ${total.toStringAsFixed(2)} held — released when you confirm receipt.'),
-          icon: Icons.inventory_2_outlined,
-          route: '/orders',
-        );
+    if (!mounted) return;
     HapticFeedback.heavyImpact();
     context.pushReplacement('/orders');
   }
@@ -107,7 +99,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(item.product.name,
+                                      Text(item.product.name.of(s),
                                           maxLines: 1,
                                           overflow:
                                               TextOverflow.ellipsis,

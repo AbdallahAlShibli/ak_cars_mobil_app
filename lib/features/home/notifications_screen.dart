@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
+import '../../state/app_state.dart';
 
 /// Notifications — fed by booking, escrow, order, and ad events.
 class NotificationsScreen extends ConsumerStatefulWidget {
@@ -81,19 +81,20 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                               crossAxisAlignment:
                                   CrossAxisAlignment.start,
                               children: [
-                                Text(n.title,
+                                Text(n.title.of(s),
                                     style: const TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w700)),
                                 const SizedBox(height: 2),
-                                Text(n.body,
+                                Text(n.body.of(s),
                                     style: TextStyle(
                                         fontSize: 12,
                                         color: ak.inkSub,
                                         height: 1.4)),
                                 const SizedBox(height: 4),
                                 Text(
-                                  DateFormat('d MMM · h:mm a')
+                                  DateFormat('d MMM · h:mm a',
+                                          s.isAr ? 'ar' : 'en')
                                       .format(n.time),
                                   style: TextStyle(
                                       fontSize: 10.5, color: ak.inkFaint),

@@ -3,12 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/contact.dart';
 import '../../core/widgets/car_media.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/gallery_data.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Marketplace listing card: photo, title, price / "Ask for price",
 /// time-ago, WhatsApp | Call actions, favorite heart. Hero image → detail.
@@ -19,6 +20,7 @@ class ListingCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final favorites = ref.watch(favoritesProvider);
     final fav = favorites.contains(listing.id);
 
@@ -69,8 +71,8 @@ class ListingCard extends ConsumerWidget {
                 const SizedBox(height: 5),
                 Text(
                   listing.price != null
-                      ? 'OMR ${listing.price!.toStringAsFixed(0)}'
-                      : 'Ask for price',
+                      ? '${s.omr} ${listing.price!.toStringAsFixed(0)}'
+                      : s.t('اسأل عن السعر', 'Ask for price'),
                   style: TextStyle(
                     fontSize: listing.price != null ? 18 : 15,
                     fontWeight: FontWeight.w800,
@@ -83,7 +85,7 @@ class ListingCard extends ConsumerWidget {
                     const Icon(Icons.schedule_rounded,
                         size: 12, color: AppColors.ink3),
                     const SizedBox(width: 4),
-                    Text(listing.postedLabel,
+                    Text(listing.postedLabel(s),
                         style: const TextStyle(
                             fontSize: 11, color: AppColors.ink3)),
                   ],
@@ -98,8 +100,9 @@ class ListingCard extends ConsumerWidget {
                       onTap: () => Contact.whatsapp(
                         context,
                         '96892000000',
-                        message:
-                            'Hi, I am interested in your ${listing.displayTitle} on AK Cars.',
+                        message: s.t(
+                            'مرحباً، أنا مهتم بسيارتك ${listing.displayTitle} على AK Cars.',
+                            'Hi, I am interested in your ${listing.displayTitle} on AK Cars.'),
                       ),
                     ),
                     Container(
@@ -110,7 +113,7 @@ class ListingCard extends ConsumerWidget {
                     ),
                     _ContactAction(
                       icon: Icons.phone_rounded,
-                      label: 'Call',
+                      label: s.t('اتصال', 'Call'),
                       color: AppColors.brand,
                       onTap: () => Contact.call(context, '+96892000000'),
                     ),

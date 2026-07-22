@@ -4,12 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/oman_plate_input.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/mock_data.dart';
-import '../../data/models.dart';
+import '../../data/repositories/service_marketplace_repository.dart';
+import '../../data/services/service_marketplace_service.dart';
+import '../../di/providers.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 import 'service_detail_screen.dart';
 
 /// Time & place:
@@ -28,13 +31,19 @@ class BookingScreen extends ConsumerStatefulWidget {
 
 class _BookingScreenState extends ConsumerState<BookingScreen> {
   late Fulfillment _fulfillment;
-  String _slot = MockData.slots.first;
+  late String _slot;
   late final TextEditingController _plateNumber;
   String _plateLetters = 'A';
   bool _confirming = false;
 
+  ServiceMarketplaceRepository get _marketplace =>
+      ref.read(serviceMarketplaceRepositoryProvider);
+
   ServiceOffering get _offering =>
-      MockData.offerings.firstWhere((o) => o.id == widget.offeringId);
+      _marketplace.offeringById(widget.offeringId)!;
+
+  BookingAvailability get _availability =>
+      _marketplace.availabilityFor(_offering.provider.id);
 
   bool get _isEmergency => _offering.categoryId == 'sos';
 
@@ -43,6 +52,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   @override
   void initState() {
     super.initState();
+    _slot = _availability.slots.isEmpty ? '' : _availability.slots.first;
     final car = ref.read(primaryCarProvider);
     // Same plate as registered with the car — prefilled and editable.
     final (number, letters) = OmanPlateInput.parse(car?.plate);
@@ -67,23 +77,28 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     super.dispose();
   }
 
+  /// Running total, computed with the same rule the repository prices the
+  /// request with, so what the button says is what gets charged.
   double get _total {
-    final addOns =
-        MockData.addOnsByProvider[_offering.provider.id] ?? const <AddOn>[];
     final selected = ref.read(selectedAddOnsProvider);
-    final addOnTotal = addOns
-        .where((a) => selected.contains(a.id))
-        .fold<double>(0, (sum, a) => sum + a.price);
-    final pickup = _fulfillment == Fulfillment.pickup
-        ? _offering.provider.pickupFee
-        : 0.0;
-    return (_offering.price ?? 0) + addOnTotal + pickup;
+    return calculateRequestTotal(
+      offering: _offering,
+      addOns: _marketplace
+          .addOnsFor(_offering.provider.id)
+          .where((a) => selected.contains(a.id)),
+      fulfillment: _fulfillment,
+    );
   }
 
-  String get _slotLabel {
-    if (!_needsSlot) return 'ASAP · provider heads to you';
+  String _slotLabel(S s) {
+    if (!_needsSlot) {
+      return s.t('في أقرب وقت · المزود في طريقه إليك',
+          'ASAP · provider heads to you');
+    }
     final tomorrow = DateTime.now().add(const Duration(days: 1));
-    return '${DateFormat('EEE d MMM').format(tomorrow)} · $_slot';
+    final date =
+        DateFormat('EEE d MMM', s.isAr ? 'ar' : 'en').format(tomorrow);
+    return '$date · $_slot';
   }
 
   Future<void> _pickPlateLetters() async {
@@ -97,12 +112,14 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   }
 
   Future<void> _confirm() async {
+    final s = S.of(context);
     // Rule 8: plate number is mandatory on every service request.
     if (_plateNumber.text.trim().isEmpty) {
       HapticFeedback.vibrate();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Enter the car plate number to continue')),
+        SnackBar(
+            content: Text(s.t('أدخل رقم لوحة السيارة للمتابعة',
+                'Enter the car plate number to continue'))),
       );
       return;
     }
@@ -111,50 +128,42 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     if (!mounted) return;
 
     final car = ref.read(primaryCarProvider) ??
-        Car(id: 'adhoc', make: 'Selected', model: 'car', year: 2020);
+        const Car(id: 'adhoc', make: 'Selected', model: 'car', year: 2020);
     final plate =
         '${_plateNumber.text.trim()} $_plateLetters'.toUpperCase();
-    final addOns =
-        (MockData.addOnsByProvider[_offering.provider.id] ?? const <AddOn>[])
-            .where((a) => ref.read(selectedAddOnsProvider).contains(a.id))
-            .toList();
 
-    final request = ServiceRequest(
-      id: '${1042 + ref.read(requestsProvider).length}',
-      offering: _offering,
-      car: car,
-      plate: plate,
-      fulfillment: _fulfillment,
-      slot: _slotLabel,
-      addOns: addOns,
-      total: _total,
-      status: RequestStatus.requested,
-    );
-    ref.read(requestsProvider.notifier).add(request);
+    // The repository prices and stores the booking and raises the
+    // "funds held in escrow" notification.
+    final request = await ref.read(requestsProvider.notifier).place(
+          CreateServiceRequestDraft(
+            offering: _offering,
+            car: car,
+            plate: plate,
+            fulfillment: _fulfillment,
+            slot: _slotLabel(s),
+            addOnIds: ref.read(selectedAddOnsProvider),
+          ),
+        );
+
     // Keep the garage in sync — the plate entered here becomes the
     // car's registered plate.
     if (car.id != 'adhoc' && car.plate != plate) {
       ref.read(garageProvider.notifier).setPlate(car.id, plate);
     }
     ref.read(selectedAddOnsProvider.notifier).state = {};
-    ref.read(notificationsProvider.notifier).push(
-          title: 'Request #${request.id} sent',
-          body:
-              'OMR ${request.total.toStringAsFixed(2)} held in escrow — waiting for ${request.offering.provider.name} to accept.',
-          icon: Icons.schedule_send_outlined,
-          route: '/track/${request.id}',
-        );
+    if (!mounted) return;
     HapticFeedback.heavyImpact();
     context.go('/track/${request.id}');
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final provider = _offering.provider;
     final car = ref.watch(primaryCarProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Time & place')),
+      appBar: AppBar(title: Text(s.t('الوقت والمكان', 'Time & place'))),
       body: SafeArea(
         child: Column(
           children: [
@@ -169,15 +178,16 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                         color: AppColors.badSoft,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(Icons.warning_amber_rounded,
+                          const Icon(Icons.warning_amber_rounded,
                               color: AppColors.bad, size: 20),
-                          SizedBox(width: 10),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'Emergency request — the provider is dispatched to your location as soon as they accept.',
-                              style: TextStyle(
+                              s.t('طلب طارئ — سيتوجه المزود إلى موقعك فور قبول الطلب.',
+                                  'Emergency request — the provider is dispatched to your location as soon as they accept.'),
+                              style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF991B1B),
@@ -210,7 +220,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Tomorrow · ${DateFormat('EEE d MMM').format(DateTime.now().add(const Duration(days: 1)))}',
+                                '${s.t('غداً', 'Tomorrow')} · ${DateFormat('EEE d MMM', s.isAr ? 'ar' : 'en').format(DateTime.now().add(const Duration(days: 1)))}',
                                 style: const TextStyle(
                                     fontSize: 13.5,
                                     fontWeight: FontWeight.w700),
@@ -220,11 +230,11 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  for (final s in MockData.slots)
+                                  for (final s in _availability.slots)
                                     _SlotChip(
                                       label: s,
-                                      booked: MockData.bookedSlots
-                                          .contains(s),
+                                      booked:
+                                          !_availability.isAvailable(s),
                                       selected: _slot == s,
                                       onTap: () =>
                                           setState(() => _slot = s),
@@ -239,15 +249,16 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                               color: AppColors.card,
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: const Row(
+                            child: Row(
                               children: [
-                                Icon(Icons.bolt_rounded,
+                                const Icon(Icons.bolt_rounded,
                                     color: AppColors.brand, size: 20),
-                                SizedBox(width: 10),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    'No booking slot needed — average response time is 25 minutes.',
-                                    style: TextStyle(
+                                    s.t('لا حاجة لحجز موعد — متوسط زمن الاستجابة 25 دقيقة.',
+                                        'No booking slot needed — average response time is 25 minutes.'),
+                                    style: const TextStyle(
                                         fontSize: 12.5,
                                         fontWeight: FontWeight.w600),
                                   ),
@@ -259,21 +270,24 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      const Text('Car plate',
-                          style: TextStyle(
+                      Text(s.t('لوحة السيارة', 'Car plate'),
+                          style: const TextStyle(
                               fontSize: 13, fontWeight: FontWeight.w700)),
                       const SizedBox(width: 8),
                       if (car?.plate != null)
-                        const StatusBadge.good('From your garage')
+                        StatusBadge.good(
+                            s.t('من مرآبك', 'From your garage'))
                       else
-                        const StatusBadge.warn('Required'),
+                        StatusBadge.warn(s.t('مطلوبة', 'Required')),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(
                     car != null
-                        ? 'Registered to your ${car.label} — it updates your garage too.'
-                        : 'Enter the plate of the car for this request.',
+                        ? s.t('مسجلة لسيارتك ${car.label} — وسيتم تحديث مرآبك أيضاً.',
+                            'Registered to your ${car.label} — it updates your garage too.')
+                        : s.t('أدخل لوحة السيارة الخاصة بهذا الطلب.',
+                            'Enter the plate of the car for this request.'),
                     style: const TextStyle(
                         fontSize: 11.5, color: AppColors.ink3),
                   ),
@@ -288,24 +302,28 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                     child: Column(
                       children: [
                         _SummaryRow(
-                          label: _offering.name,
+                          label: _offering.name.of(s),
                           value: _offering.price != null
-                              ? 'OMR ${_offering.price!.toStringAsFixed(2)}'
-                              : 'Quote after inspection',
+                              ? '${s.omr} ${_offering.price!.toStringAsFixed(2)}'
+                              : s.t('عرض سعر بعد الفحص',
+                                  'Quote after inspection'),
                         ),
                         const SizedBox(height: 6),
                         _SummaryRow(
-                          label: 'Fulfillment',
+                          label: s.t('طريقة التنفيذ', 'Fulfillment'),
                           value: switch (_fulfillment) {
                             Fulfillment.pickup =>
-                              '${_fulfillment.label} · +OMR ${provider.pickupFee.toStringAsFixed(0)}',
+                              '${_fulfillment.label(s)} · +${s.omr} ${provider.pickupFee.toStringAsFixed(0)}',
                             Fulfillment.roadside =>
-                              '${_fulfillment.label} · ASAP',
-                            _ => '${_fulfillment.label} · free',
+                              '${_fulfillment.label(s)} · ${s.t('في أقرب وقت', 'ASAP')}',
+                            _ =>
+                              '${_fulfillment.label(s)} · ${s.t('مجاناً', 'free')}',
                           },
                         ),
                         const SizedBox(height: 6),
-                        _SummaryRow(label: 'When', value: _slotLabel),
+                        _SummaryRow(
+                            label: s.t('الموعد', 'When'),
+                            value: _slotLabel(s)),
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 10),
                           child: Divider(height: 1),
@@ -313,12 +331,12 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Total',
-                                style: TextStyle(
+                            Text(s.t('الإجمالي', 'Total'),
+                                style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700)),
                             Text(
-                              'OMR ${_total.toStringAsFixed(2)}',
+                              '${s.omr} ${_total.toStringAsFixed(2)}',
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
@@ -328,8 +346,9 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        const EscrowBanner(
-                          'Held safely — released only after you approve the finished work.',
+                        EscrowBanner(
+                          s.t('محفوظ بأمان — يُحرَّر فقط بعد موافقتك على العمل المنجز.',
+                              'Held safely — released only after you approve the finished work.'),
                         ),
                       ],
                     ),
@@ -352,8 +371,10 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                             strokeWidth: 2.5, color: Colors.white),
                       )
                     : Text(_isEmergency
-                        ? 'Request help now — OMR ${_total.toStringAsFixed(2)}'
-                        : 'Confirm & pay OMR ${_total.toStringAsFixed(2)}'),
+                        ? s.t('اطلب المساعدة الآن — ${_total.toStringAsFixed(2)} ر.ع',
+                            'Request help now — OMR ${_total.toStringAsFixed(2)}')
+                        : s.t('تأكيد ودفع ${_total.toStringAsFixed(2)} ر.ع',
+                            'Confirm & pay OMR ${_total.toStringAsFixed(2)}')),
               ),
             ),
           ],
@@ -380,12 +401,18 @@ class _FulfillmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final subtitle = switch (fulfillment) {
-      _ when !offered => 'Not offered by this provider',
-      Fulfillment.workshop => 'Free · pick a slot below',
-      Fulfillment.pickup =>
-        '+ OMR ${fee?.toStringAsFixed(0)} · offered by this provider',
-      Fulfillment.roadside => 'ASAP · avg 25 min response',
+      _ when !offered =>
+        s.t('غير متوفرة لدى هذا المزود', 'Not offered by this provider'),
+      Fulfillment.workshop =>
+        s.t('مجاناً · اختر موعداً بالأسفل', 'Free · pick a slot below'),
+      Fulfillment.pickup => s.t(
+          '+ ${fee?.toStringAsFixed(0)} ر.ع · متوفرة لدى هذا المزود',
+          '+ OMR ${fee?.toStringAsFixed(0)} · offered by this provider'),
+      Fulfillment.roadside => s.t(
+          'في أقرب وقت · متوسط الاستجابة 25 دقيقة',
+          'ASAP · avg 25 min response'),
     };
 
     return Opacity(
@@ -412,7 +439,7 @@ class _FulfillmentCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(fulfillment.label,
+                  Text(fulfillment.label(s),
                       style: const TextStyle(
                           fontSize: 13.5, fontWeight: FontWeight.w700)),
                   Text(subtitle,
@@ -468,7 +495,9 @@ class _SlotChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
-          booked ? '$label · full' : label,
+          booked
+              ? '$label · ${S.of(context).t('محجوز', 'full')}'
+              : label,
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w700,

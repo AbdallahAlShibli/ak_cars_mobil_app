@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
-import 'package:ak_cars_mobil_app/data/settings_state.dart';
 import 'package:ak_cars_mobil_app/features/challenge/challenge_screen.dart';
 import 'package:ak_cars_mobil_app/features/cars/cars_screen.dart';
 import 'package:ak_cars_mobil_app/features/garage/maintenance_screen.dart';
@@ -14,7 +12,9 @@ import 'package:ak_cars_mobil_app/features/home/home_screen.dart';
 import 'package:ak_cars_mobil_app/features/profile/profile_screen.dart';
 import 'package:ak_cars_mobil_app/features/settings/settings_screen.dart';
 import 'package:ak_cars_mobil_app/features/shop/shop_screen.dart';
-import 'package:ak_cars_mobil_app/data/gallery_data.dart';
+import 'package:ak_cars_mobil_app/data/models/models.dart';
+
+import 'helpers/test_harness.dart';
 
 /// Pumps a screen inside the real theme + localization stack. Any layout
 /// overflow or build exception fails the test.
@@ -24,16 +24,15 @@ Future<void> pumpScreen(
   String locale = 'ar',
   bool dark = false,
 }) async {
-  SharedPreferences.setMockInitialValues({});
-  final prefs = await SharedPreferences.getInstance();
+  final container = await createTestContainer();
   // Phone-sized surface like the design frames (402×874 logical).
   tester.view.physicalSize = const Size(402 * 3, 874 * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
 
   await tester.pumpWidget(
-    ProviderScope(
-      overrides: [sharedPrefsProvider.overrideWithValue(prefs)],
+    UncontrolledProviderScope(
+      container: container,
       child: MaterialApp(
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),

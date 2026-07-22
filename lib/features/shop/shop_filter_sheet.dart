@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/car_media.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/car_catalog.dart';
-import '../../data/mock_data.dart';
-import '../../data/models.dart';
+import '../../di/providers.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Rule 12: filter by car, category, provider, price and region.
 /// The car is selected exactly like registering a car — popup pickers
@@ -34,9 +34,7 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
     _draft = ref.read(shopFilterProvider);
     final car = _draft.car;
     if (car != null) {
-      _make = CarCatalog.makes
-          .where((m) => m.name == car.make)
-          .firstOrNull;
+      _make = _makes.where((m) => m.name == car.make).firstOrNull;
       _model = car.model;
       _fromYear = car.year;
     }
@@ -59,24 +57,14 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
     Navigator.pop(context);
   }
 
-  int get _resultCount => MockData.products.where((p) {
-        if (!p.fitsCar(_selectedCar)) return false;
-        if (_draft.categoryId != null &&
-            p.categoryId != _draft.categoryId) {
-          return false;
-        }
-        if (_draft.providerId != null &&
-            p.providerId != _draft.providerId) {
-          return false;
-        }
-        if (_draft.region != null && p.region != _draft.region) {
-          return false;
-        }
-        if (p.price < _draft.minPrice || p.price > _draft.maxPrice) {
-          return false;
-        }
-        return true;
-      }).length;
+  /// Live count for the "Show N results" button. Uses the same filter the
+  /// shop applies, against the draft's currently picked car.
+  int get _resultCount => ref
+      .read(shopRepositoryProvider)
+      .filter(_draft.copyWith(car: () => _selectedCar))
+      .length;
+
+  List<CarMake> get _makes => ref.read(vehicleCatalogProvider).makes;
 
   /// ------------------------------------------------ popup pickers
   /// (same experience as registering a new car)
@@ -87,9 +75,9 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => _PickerSheet<CarMake>(
-        title: 'Pick a make',
+        title: S.of(context).t('اختر الشركة المصنعة', 'Pick a make'),
         searchable: true,
-        optionsOf: (query) => CarCatalog.makes
+        optionsOf: (query) => _makes
             .where((m) => m.name.toLowerCase().contains(query))
             .toList(),
         itemBuilder: (context, make, onPick) => GestureDetector(
@@ -142,7 +130,8 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => _PickerSheet<String>(
-        title: 'Choose model — ${_make!.name}',
+        title: S.of(context).t('اختر الموديل — ${_make!.name}',
+            'Choose model — ${_make!.name}'),
         searchable: true,
         optionsOf: (query) => _make!.models
             .where((m) => m.toLowerCase().contains(query))
@@ -161,7 +150,7 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
   Future<void> _pickYear({required bool isFrom}) async {
     HapticFeedback.selectionClick();
     // Rule: "To" can never be older than "From".
-    final options = CarCatalog.years.where((y) {
+    final options = ref.read(vehicleCatalogProvider).years.where((y) {
       if (isFrom) return _toYear == null || y <= _toYear!;
       return _fromYear == null || y >= _fromYear!;
     }).toList();
@@ -169,7 +158,9 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => _PickerSheet<int>(
-        title: isFrom ? 'Made year — from' : 'Made year — to',
+        title: isFrom
+            ? S.of(context).t('سنة الصنع — من', 'Made year — from')
+            : S.of(context).t('سنة الصنع — إلى', 'Made year — to'),
         optionsOf: (_) => options,
         itemBuilder: (context, year, onPick) => _OptionRow(
           label: '$year',
@@ -193,6 +184,7 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final s = S.of(context);
     final myCar = ref.watch(primaryCarProvider);
 
     return SafeArea(
@@ -207,9 +199,9 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
           children: [
             Row(
               children: [
-                const Expanded(
-                  child: Text('Filters',
-                      style: TextStyle(
+                Expanded(
+                  child: Text(s.t('التصفية', 'Filters'),
+                      style: const TextStyle(
                           fontSize: 18, fontWeight: FontWeight.w800)),
                 ),
                 TextButton(
@@ -220,12 +212,13 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
                     _fromYear = null;
                     _toYear = null;
                   }),
-                  child: const Text('Reset'),
+                  child: Text(s.t('إعادة تعيين', 'Reset')),
                 ),
               ],
             ),
-            const Text('Shopping for car',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            Text(s.t('التسوق لسيارة', 'Shopping for car'),
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 7,
@@ -233,20 +226,19 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
               children: [
                 if (myCar != null)
                   SelectChip(
-                    label: 'My ${myCar.label}',
+                    label: s.t('سيارتي ${myCar.label}', 'My ${myCar.label}'),
                     selected: _make?.name == myCar.make &&
                         _model == myCar.model,
                     onTap: () => setState(() {
-                      _make = CarCatalog.makes
-                          .where((m) => m.name == myCar.make)
-                          .firstOrNull;
+                      _make =
+                          _makes.where((m) => m.name == myCar.make).firstOrNull;
                       _model = myCar.model;
                       _fromYear = myCar.year;
                       _toYear = null;
                     }),
                   ),
                 SelectChip(
-                  label: 'Any car',
+                  label: s.t('أي سيارة', 'Any car'),
                   selected: _make == null,
                   onTap: () => setState(() {
                     _make = null;
@@ -260,15 +252,17 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
             const SizedBox(height: 10),
             _PickerField(
               icon: Icons.factory_outlined,
-              label: 'Make',
+              label: s.t('الشركة المصنعة', 'Make'),
               value: _make?.name,
               onTap: _pickMake,
             ),
             _PickerField(
               icon: Icons.directions_car_outlined,
-              label: 'Model',
+              label: s.t('الموديل', 'Model'),
               value: _model,
-              hint: _make == null ? 'Select make first' : null,
+              hint: _make == null
+                  ? s.t('اختر الشركة أولاً', 'Select make first')
+                  : null,
               enabled: _make != null,
               onTap: _pickModel,
             ),
@@ -277,9 +271,9 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
                 Expanded(
                   child: _PickerField(
                     icon: Icons.calendar_today_outlined,
-                    label: 'Year from',
+                    label: s.t('السنة من', 'Year from'),
                     value: _fromYear == null ? null : '$_fromYear',
-                    hint: 'Optional',
+                    hint: s.t('اختياري', 'Optional'),
                     onTap: () => _pickYear(isFrom: true),
                   ),
                 ),
@@ -287,31 +281,32 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
                 Expanded(
                   child: _PickerField(
                     icon: Icons.event_outlined,
-                    label: 'Year to',
+                    label: s.t('السنة إلى', 'Year to'),
                     value: _toYear == null ? null : '$_toYear',
-                    hint: 'Optional',
+                    hint: s.t('اختياري', 'Optional'),
                     onTap: () => _pickYear(isFrom: false),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 6),
-            const Text('Category',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            Text(s.t('الفئة', 'Category'),
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 7,
               runSpacing: 7,
               children: [
                 SelectChip(
-                  label: 'All',
+                  label: s.t('الكل', 'All'),
                   selected: _draft.categoryId == null,
                   onTap: () => setState(() =>
                       _draft = _draft.copyWith(categoryId: () => null)),
                 ),
-                for (final e in MockData.partCategories.entries)
+                for (final e in ref.watch(partCategoriesProvider).entries)
                   SelectChip(
-                    label: e.value,
+                    label: e.value.of(s),
                     selected: _draft.categoryId == e.key,
                     onTap: () => setState(() =>
                         _draft = _draft.copyWith(categoryId: () => e.key)),
@@ -319,22 +314,23 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
               ],
             ),
             const SizedBox(height: 16),
-            const Text('Provider / store',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            Text(s.t('المزود / المتجر', 'Provider / store'),
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 7,
               runSpacing: 7,
               children: [
                 SelectChip(
-                  label: 'Any',
+                  label: s.t('أي', 'Any'),
                   selected: _draft.providerId == null,
                   onTap: () => setState(() =>
                       _draft = _draft.copyWith(providerId: () => null)),
                 ),
-                for (final p in MockData.providers.take(4))
+                for (final p in ref.watch(shopSellersProvider).take(4))
                   SelectChip(
-                    label: p.name,
+                    label: p.name.of(s),
                     selected: _draft.providerId == p.id,
                     onTap: () => setState(() =>
                         _draft = _draft.copyWith(providerId: () => p.id)),
@@ -345,11 +341,11 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Price range',
-                    style:
-                        TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                Text(s.t('نطاق السعر', 'Price range'),
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700)),
                 Text(
-                  'OMR ${_draft.minPrice.round()} — ${_draft.maxPrice.round()}',
+                  '${s.omr} ${_draft.minPrice.round()} — ${_draft.maxPrice.round()}',
                   style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
@@ -366,22 +362,24 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
               onChanged: (v) => setState(() => _draft =
                   _draft.copyWith(minPrice: v.start, maxPrice: v.end)),
             ),
-            const Text('Region',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            Text(s.t('المنطقة', 'Region'),
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 7,
               runSpacing: 7,
               children: [
                 SelectChip(
-                  label: 'All Oman',
+                  label: s.t('كل عُمان', 'All Oman'),
                   selected: _draft.region == null,
                   onTap: () => setState(
                       () => _draft = _draft.copyWith(region: () => null)),
                 ),
-                for (final r in MockData.regions)
+                for (final r in ref.watch(serviceRegionsProvider))
                   SelectChip(
-                    label: r,
+                    label:
+                        ref.watch(locationCatalogProvider).localized(r, s.isAr),
                     selected: _draft.region == r,
                     onTap: () => setState(
                         () => _draft = _draft.copyWith(region: () => r)),
@@ -391,7 +389,8 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
             const SizedBox(height: 18),
             FilledButton(
               onPressed: _apply,
-              child: Text('Show $_resultCount results'),
+              child: Text(s.t('عرض $_resultCount نتيجة',
+                  'Show $_resultCount results')),
             ),
           ],
         ),
@@ -584,9 +583,9 @@ class _PickerSheetState<T> extends State<_PickerSheet<T>> {
                 TextField(
                   onChanged: (v) =>
                       setState(() => _query = v.trim().toLowerCase()),
-                  decoration: const InputDecoration(
-                    hintText: 'Search…',
-                    prefixIcon: Icon(Icons.search_rounded),
+                  decoration: InputDecoration(
+                    hintText: S.of(context).t('ابحث…', 'Search…'),
+                    prefixIcon: const Icon(Icons.search_rounded),
                   ),
                 ),
                 const SizedBox(height: 12),

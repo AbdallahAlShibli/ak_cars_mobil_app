@@ -8,11 +8,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/car_media.dart';
-import '../../data/app_state.dart';
-import '../../data/car_catalog.dart';
-import '../../data/car_spec_options.dart';
-import '../../data/gallery_data.dart';
-import '../../data/oman_locations.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// Collapsible filter sections, in display order — the facets a used-car
 /// buyer actually narrows by, cheapest decisions first (what car, how old,
@@ -64,6 +61,11 @@ class CarsFilterScreen extends ConsumerStatefulWidget {
 }
 
 class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
+  /// Reference catalogs, warmed at bootstrap.
+  SpecCatalog get _specs => ref.read(specCatalogProvider);
+  VehicleCatalog get _vehicles => ref.read(vehicleCatalogProvider);
+  LocationCatalog get _locations => ref.read(locationCatalogProvider);
+
   late CarsFilter _draft;
   // Accordion allows several open at once (like the reference).
   final Set<_Section> _open = {_Section.makeModel};
@@ -75,7 +77,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
   }
 
   CarMake? get _make =>
-      CarCatalog.makes.firstWhereOrNull((m) => m.name == _draft.make);
+      _vehicles.makes.firstWhereOrNull((m) => m.name == _draft.make);
 
   // ---------------------------------------------------------------- pickers
   Future<void> _selectCar() async {
@@ -96,7 +98,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
       searchable: true,
       builder: (context, query) {
         final ak = AkColors.of(context);
-        final makes = CarCatalog.makes
+        final makes = _vehicles.makes
             .where((m) => m.name.toLowerCase().contains(query))
             .toList();
         return GridView.count(
@@ -167,7 +169,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
 
   Future<int?> _pickYear({required bool isFrom}) {
     final s = S.of(context);
-    final options = CarCatalog.years.where((y) {
+    final options = _vehicles.years.where((y) {
       if (isFrom) return _draft.toYear == null || y <= _draft.toYear!;
       return _draft.fromYear == null || y >= _draft.fromYear!;
     }).toList();
@@ -298,7 +300,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
       _Section.subModel => _draft.copyWith(trims: const {}),
       _ => _draft,
     };
-    return feed.where(base.matches).toList();
+    return feed.where((l) => base.matches(l, _specs)).toList();
   }
 
   @override
@@ -306,7 +308,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final feed = ref.watch(galleryFeedProvider);
-    final resultCount = _draft.apply(feed).length;
+    final resultCount = _draft.apply(feed, _specs).length;
 
     return Scaffold(
       backgroundColor: ak.bg,
@@ -417,7 +419,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.conditions,
+          options: _specs.conditions,
           selected: _draft.conditions,
           test: (l, v) => l.condition == v,
           onChanged: (set) =>
@@ -427,7 +429,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.bodyTypes,
+          options: _specs.bodyTypes,
           selected: _draft.bodyTypes,
           test: (l, v) => l.bodyType == v,
           onChanged: (set) =>
@@ -443,7 +445,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.regionalSpecs,
+          options: _specs.regionalSpecs,
           selected: _draft.regionalSpecs,
           test: (l, v) => l.regionalSpec == v,
           onChanged: (set) =>
@@ -453,7 +455,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.transmissions,
+          options: _specs.transmissions,
           selected: _draft.transmissions,
           test: (l, v) => l.transmission == v,
           onChanged: (set) =>
@@ -463,7 +465,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.fuels,
+          options: _specs.fuels,
           selected: _draft.fuels,
           test: (l, v) => l.fuel == v,
           onChanged: (set) =>
@@ -474,12 +476,12 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
           s: s,
           pool: pool,
           options: [
-            for (final b in CarSpecs.engineSizes)
+            for (final b in _specs.engineSizes)
               SpecOption(b.value, b.ar, b.en),
           ],
           selected: _draft.engineSizes,
           test: (l, v) =>
-              CarSpecs.bucketOf(v)?.contains(l.engineLitres) ?? false,
+              _specs.bucketOf(v)?.contains(l.engineLitres) ?? false,
           onChanged: (set) =>
               setState(() => _draft = _draft.copyWith(engineSizes: set)),
         );
@@ -487,7 +489,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<int>(
           s: s,
           pool: pool,
-          options: CarSpecs.cylinders,
+          options: _specs.cylinders,
           selected: _draft.cylinders,
           test: (l, v) => l.cylinders == v,
           onChanged: (set) =>
@@ -497,7 +499,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.drivetrains,
+          options: _specs.drivetrains,
           selected: _draft.drivetrains,
           test: (l, v) => l.drivetrain == v,
           onChanged: (set) =>
@@ -507,7 +509,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<int>(
           s: s,
           pool: pool,
-          options: CarSpecs.doors,
+          options: _specs.doors,
           selected: _draft.doors,
           test: (l, v) => l.doors == v,
           onChanged: (set) =>
@@ -517,7 +519,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<int>(
           s: s,
           pool: pool,
-          options: CarSpecs.seats,
+          options: _specs.seats,
           selected: _draft.seats,
           // The top option (8) reads as "8 or more".
           test: (l, v) => v == 8 ? l.seats >= 8 : l.seats == v,
@@ -528,7 +530,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.colors,
+          options: _specs.colors,
           selected: _draft.exteriorColors,
           test: (l, v) => l.exteriorColor == v,
           swatches: true,
@@ -539,7 +541,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.colors,
+          options: _specs.colors,
           selected: _draft.interiorColors,
           test: (l, v) => l.interiorColor == v,
           swatches: true,
@@ -572,7 +574,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.sellerTypes,
+          options: _specs.sellerTypes,
           selected: _draft.sellerTypes,
           test: (l, v) => l.sellerType == v,
           onChanged: (set) =>
@@ -583,7 +585,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
           s: s,
           pool: pool,
           options: [
-            for (final g in OmanLocations.governorates.keys)
+            for (final g in _locations.governorates.keys)
               SpecOption(g, g, g),
           ],
           selected: _draft.regions,
@@ -595,7 +597,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
                     ? _draft.cities
                     : _draft.cities
                         .where((c) => set.any((r) =>
-                            OmanLocations.wilayatsOf(r).contains(c)))
+                            _locations.wilayatsOf(r).contains(c)))
                         .toSet(),
               )),
         );
@@ -605,7 +607,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
         return _facet<String>(
           s: s,
           pool: pool,
-          options: CarSpecs.dealTypes,
+          options: _specs.dealTypes,
           selected: _draft.dealTypes,
           test: (l, v) => l.dealType == v,
           onChanged: (set) =>
@@ -652,7 +654,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
               selected: isSelected,
               enabled: count > 0 || isSelected,
               swatch: swatches && o.value is String
-                  ? CarSpecs.swatchOf(o.value as String)
+                  ? _specs.swatchOf(o.value as String)
                   : null,
               onTap: () => onChanged(_toggle(selected, o.value)),
             );
@@ -669,7 +671,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
           : s.t('اختر الطراز أولاً', 'Select a model first'));
     }
     // Prefer the catalog's trim list; fall back to trims seen in the feed.
-    var options = GalleryData.trimsFor(model);
+    var options = _vehicles.trimsFor(model);
     if (options.isEmpty) {
       options = pool
           .where((l) => l.model == model)
@@ -698,7 +700,7 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
     // wilayats would bury the section, so we show the ones with inventory.
     final regions = _draft.regions;
     final names = <String>{
-      for (final r in regions) ...OmanLocations.wilayatsOf(r),
+      for (final r in regions) ..._locations.wilayatsOf(r),
       if (regions.isEmpty) ...pool.map((l) => l.cityName),
       ..._draft.cities,
     }.toList()

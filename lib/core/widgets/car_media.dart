@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../data/car_catalog.dart';
+import '../../data/models/models.dart';
 import '../theme/app_colors.dart';
 
 /// Real brand logo in a white circle. Falls back to a monogram tile

@@ -5,7 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
-import '../../data/app_state.dart';
+import '../../state/app_state.dart';
 
 class _Slide {
   const _Slide(this.icon, this.title, this.body);

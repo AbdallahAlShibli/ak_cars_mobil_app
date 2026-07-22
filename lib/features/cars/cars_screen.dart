@@ -13,9 +13,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/contact.dart';
 import '../../core/widgets/car_media.dart';
 import '../../core/widgets/sand_widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/car_catalog.dart';
-import '../../data/gallery_data.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 import 'cars_filter_screen.dart';
 
 final _fmt = intl.NumberFormat('#,###', 'en');
@@ -72,7 +71,7 @@ class _CarsScreenState extends ConsumerState<CarsScreen> {
     for (final l in allFeed) {
       countsByMake[l.make] = (countsByMake[l.make] ?? 0) + 1;
     }
-    final makes = [...CarCatalog.makes]..sort((a, b) =>
+    final makes = [...ref.watch(vehicleCatalogProvider).makes]..sort((a, b) =>
         (countsByMake[b.name] ?? 0).compareTo(countsByMake[a.name] ?? 0));
     final topMakes = makes.take(4).toList();
 
@@ -463,13 +462,14 @@ class _MakeCard extends StatelessWidget {
   }
 }
 
-class _AdCard extends StatelessWidget {
+class _AdCard extends ConsumerWidget {
   const _AdCard({required this.listing});
 
   final GalleryListing listing;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final locations = ref.watch(locationCatalogProvider);
     final ak = AkColors.of(context);
     final s = S.of(context);
     final featured = listing.dealType != 'Sale only';
@@ -535,7 +535,7 @@ class _AdCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    s.t('ممشى ${listing.mileage} · ${listing.region}',
+                    s.t('ممشى ${listing.mileage} · ${locations.localizedRegion(listing.region, true)}',
                         '${listing.mileage} km · ${listing.region}'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

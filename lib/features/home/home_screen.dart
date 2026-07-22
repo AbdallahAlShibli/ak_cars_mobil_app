@@ -10,10 +10,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/car_media.dart';
 import '../../core/widgets/sand_widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/challenge_state.dart';
-import '../../data/gallery_data.dart';
-import '../../data/maintenance_state.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 final _fmt = intl.NumberFormat('#,###', 'en');
 

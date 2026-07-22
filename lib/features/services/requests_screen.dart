@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/app_state.dart';
-import '../../data/models.dart';
+import '../../state/app_state.dart';
+import '../../data/models/models.dart';
 
 /// All service requests — active and history.
 class RequestsScreen extends ConsumerWidget {
@@ -13,10 +14,11 @@ class RequestsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final requests = ref.watch(requestsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Service requests')),
+      appBar: AppBar(title: Text(s.t('طلبات الخدمة', 'Service requests'))),
       body: SafeArea(
         child: requests.isEmpty
             ? Center(
@@ -29,15 +31,16 @@ class RequestsScreen extends ConsumerWidget {
                         background: AppColors.field,
                         foreground: AppColors.ink3),
                     const SizedBox(height: 12),
-                    const Text('No service requests yet',
-                        style: TextStyle(
+                    Text(s.t('لا توجد طلبات خدمة بعد',
+                        'No service requests yet'),
+                        style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 16),
                     SizedBox(
                       width: 200,
                       child: FilledButton(
                         onPressed: () => context.go('/services'),
-                        child: const Text('Book a service'),
+                        child: Text(s.bookService),
                       ),
                     ),
                   ],
@@ -51,12 +54,12 @@ class RequestsScreen extends ConsumerWidget {
                   final r = requests[i];
                   final badge = switch (r.status) {
                     RequestStatus.completed =>
-                      const StatusBadge.good('Completed'),
+                      StatusBadge.good(s.t('مكتمل', 'Completed')),
                     RequestStatus.disputed =>
-                      const StatusBadge.bad('Disputed'),
+                      StatusBadge.bad(s.t('متنازع عليه', 'Disputed')),
                     RequestStatus.proofSubmitted =>
-                      const StatusBadge.warn('Review needed'),
-                    _ => StatusBadge(r.status.label),
+                      StatusBadge.warn(s.t('بحاجة لمراجعة', 'Review needed')),
+                    _ => StatusBadge(r.status.label(s)),
                   };
                   return Entrance(
                     delayMs: 40 * i,
@@ -88,14 +91,14 @@ class RequestsScreen extends ConsumerWidget {
                                   CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '#${r.id} · ${r.offering.name}',
+                                  '#${r.id} · ${r.offering.name.of(s)}',
                                   style: const TextStyle(
                                       fontSize: 13.5,
                                       fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '${r.offering.provider.name} · ${r.slot} · OMR ${r.total.toStringAsFixed(2)}',
+                                  '${r.offering.provider.name.of(s)} · ${r.slot} · ${s.omr} ${r.total.toStringAsFixed(2)}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
