@@ -17,6 +17,354 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-07-25 · Home page: the search pill now searches; three fabrications out
+
+**Baseline:** `228e1d2` (uncommitted working tree, on top of the entries below)
+**Request:** "check the main page and fix bugs and improve it. check the filter
+and the search feature and fix issues"
+
+### The headline bug: the search box was decorative
+The home pill rendered a magnifier, the hint "ابحث عن خدمة، قطعة، أو سيارة… /
+Search services, parts, cars…", and a filled circle with a sliders icon on the
+end. Tapping anywhere on it ran `context.go('/services')`. Nothing was
+searched, and the sliders button opened no filter — it was a picture of a
+search box.
+
+- **New `/search` screen** (`features/search/search_screen.dart`) doing what
+  the hint says: one query across services, parts and car ads, grouped by
+  section with counts, capped at four rows each and expandable in place (a
+  "see all" that handed the query to another screen would drop it — none of
+  the three list screens accept an incoming query). Results link straight to
+  `/service/:id`, `/shop/product/:id`, `/cars/listing/:id`.
+- **Empty state suggests real chips** — service categories, part categories
+  and makes read off the catalogues, not a hand-written "popular searches"
+  list nobody measured.
+- The sliders circle became an arrow, because it now describes what happens.
+
+### The search itself was matching too little
+- **New `core/utils/search_match.dart`**: tokens are **ANDed**, not compared
+  as one substring. "camry 2017" used to find nothing on the cars screen —
+  the ad's title reads "2017 Toyota Camry SE", so the words are in the other
+  order and `displayTitle.contains(q)` failed. Each token also gets a
+  punctuation-stripped comparison, which is how "90915 yzze1" finds part
+  number `90915-YZZE1`.
+- `Product.matchesQuery` moved onto it; **new `GalleryListing.matchesQuery`**
+  (make, model, trim, year, body type, region, localized region, seller) and
+  **`ServiceOffering.matchesQuery`** (name, description, workshop, place).
+- **Arabic search of a place now works.** Listing regions are stored as
+  English keys ("Bawshar, Muscat"), and the cars screen matched that raw key,
+  so an Arabic user searching "مسقط" got nothing. The localized name is now
+  passed in by the caller — the models stay free of the location catalogue.
+
+### Three fabrications on the main page
+- **"Book · OMR 9"** on the summer AC banner. The cheapest AC service any
+  workshop in the catalogue actually sells is OMR 13. The price now comes
+  from `fromPriceFor('ac')`, sits in the descriptive line as "from OMR 13",
+  and disappears entirely if no workshop sells the category. The button is
+  just "Book now" — a pill has no room to ellipsize a CTA gracefully.
+- **"Camry 2017"** as the maintenance card's car when nothing is saved — a
+  car the user does not own, on a card whose entire purpose is that its
+  numbers come from their own odometer. With no car the card now asks for
+  one and routes to `/add-car`.
+- **"الأكثر بحثاً / Most searched"** over what was simply the first four rows
+  of the feed. Nothing in the app records searches. The rail now sorts by
+  `postedMinutesAgo` and is titled "أحدث الإعلانات / Latest ads"; the string
+  getter was renamed `mostSearched` → `latestAds`.
+
+### The filter was fine
+Audited `CarsFilterScreen` and `CarsFilter` end-to-end since the request named
+it: the accordion's live counts come from `_draft.apply(feed, specs)` against
+the unfiltered feed (not the already-filtered one, which would double-count),
+Clear-all only touches the draft until Apply, and back pops `null` so a
+cancelled visit leaves the applied filter alone. No changes were needed. One
+adjacent nit left alone deliberately: the filter's "Show N results" ignores an
+active search box, so the number can differ from the grid behind it — they are
+separate concepts and merging them would surprise more than it fixes.
+
+`InkPill` now wraps its label in `Flexible` with an ellipsis, after the longer
+promo label overflowed it by 53px under the test font.
+
+### Found and not fixed
+Every car ad's Call/WhatsApp dials the same hardcoded `96892000000` — the same
+bug already fixed for workshops. Six call sites across `cars_screen`,
+`listing_card` and `listing_detail_screen`, plus a model and demo-data change.
+Left out of this pass to keep it coherent; raised as a separate task.
+
+**Verified:** `flutter analyze` — clean (same pre-existing
+`use_null_aware_elements` hint in `core/utils/contact.dart`). `flutter test` —
+148 passing, with four new search cases: "camry 2017" finds the Camry (the
+token-order bug), "denso" and "battery" span parts and services, "مسقط" in the
+Arabic build matches by localized place, and a nonsense query renders the
+no-results state. The home smoke test's `الأكثر بحثاً` assertion was pinning
+the mislabel and moved to `أحدث الإعلانات`, with the reason recorded above it.
+Not verified: no device or emulator run this session.
+
+---
+
+## 2026-07-25 · Offers became a swipeable slider instead of one banner
+
+**Baseline:** `228e1d2` (uncommitted working tree, on top of the entry below)
+**Request:** "edit and update the offers section which it as slider and user
+can see more than one advertising"
+
+### What changed
+- `bestOfferProvider` (one product) became **`offersProvider`** — every part
+  with a live discount, deepest first. Still fully derived: an empty list
+  means the section disappears entirely rather than falling back to evergreen
+  ad copy.
+- New `_OffersCarousel`: a `PageView` at `viewportFraction: 0.9`, so the next
+  offer peeks in at the edge and reads as swipeable without an affordance,
+  plus a dot indicator. With the current catalogue that is three real offers —
+  LED kit −21%, cabin filter −20%, battery −13%.
+- **Auto-advance every 6s**, implemented as a `Timer` that is *rescheduled
+  after each page change* rather than a periodic one. A periodic timer would
+  keep firing while the customer is mid-swipe and yank the page out from under
+  them; rescheduling means touching the slider restarts the countdown. It is
+  cancelled in `dispose`, which also keeps widget tests free of a pending
+  timer.
+- Each card now leads with the **cash saving** ("SAVE OMR 2.50") next to the
+  percentage — the number a buyer actually compares — and carries a "View
+  part ›" affordance; the "All offers" action moved up to a proper section
+  header, where it sets `onOfferOnly` and shows only when there is more than
+  one offer to see.
+
+**Verified:** `flutter analyze` — clean (same pre-existing hint in
+`core/utils/contact.dart`). `flutter test` — 144 passing. The banner test grew
+into a slider test: it asserts the first page is the real −21% LED kit, that
+"Up to 15% off" appears nowhere, and that dragging the `PageView` reaches the
+−20% cabin filter. Not verified: no device or emulator run, so the auto-
+advance was not watched in real time — only its scheduling and cleanup are
+covered.
+
+---
+
+## 2026-07-25 · Shop page: real offers, a search that finds part numbers, sort
+
+**Baseline:** `228e1d2` (uncommitted working tree, on top of the two entries
+below)
+**Request:** "improve the shop page and make it modern."
+
+### The two things that were wrong, not just dated
+- **The promo banner was fiction.** "خصم حتى 15% على البطاريات / Up to 15% off
+  batteries · free fitting at partner workshops" was hardcoded. The battery in
+  the catalogue is 28 down from 32 — 12.5%, not 15 — and nothing anywhere
+  records free fitting. Same class of bug as the fake "Open" badge fixed on
+  the service page and the invented provider ratings removed on 2026-07-13.
+- **"الأكثر مبيعاً / Best sellers" sorted by `rating`.** Nothing in the
+  catalogue records sales, and the rail was hardcoded to `itemCount: 3`, which
+  would throw the moment a filter or a smaller catalogue left fewer than three
+  products in it.
+
+### What changed
+- **The banner is now derived** (`bestOfferProvider`): the single biggest live
+  discount in the catalogue, quoting that part's real percentage, name and
+  before/after price, tapping through to it, with "All offers" setting the new
+  `onOfferOnly` filter. If nothing is on offer the banner does not render at
+  all. It also moved from the fixed `AppColors.sunsetGradient` (white text on
+  amber, unreadable-adjacent in dark) to the `promoBg*/promoTitle/promoSub`
+  tokens, which the theme already defines for both modes.
+- **Rail renamed to "الأعلى تقييماً / Top rated"** — what it actually sorts by
+  — and its count is `clamp(0, 5)` instead of a literal 3.
+- **Search matches what is written on the part.** New `Product.matchesQuery`
+  covers name (both languages), brand, and part number with punctuation
+  stripped from both sides, so "90915 yzze1" finds `90915-YZZE1` and "denso"
+  finds the Denso filter. It lives on the model, next to `fitsCar`, so the
+  local search and a future `GET /products?q=` cannot drift.
+- **Quick filters and sort.** `ShopFilter` gained `inStockOnly`, `onOfferOnly`
+  and a `ShopSort` (recommended / price ↑ / price ↓ / top rated), all wired
+  into `matches`, `activeCount` (sort excluded — it reorders, it does not
+  filter), `toQueryParameters` and the filter sheet. Ordering is
+  `ShopFilter.ordered`, which copies before sorting so the repository's warm
+  cache can never be reordered underneath it.
+- **Modernized layout**: `CustomScrollView` with a floating app bar, a
+  **pinned search header** that stays reachable down the grid, and a real
+  `SliverGrid` instead of a `shrinkWrap: true` `GridView` nested in a
+  `ListView`. The grid uses `SliverGridDelegateWithMaxCrossAxisExtent` so a
+  tablet gets more columns rather than two stretched cards.
+- **Richer product cards**: brand line, delivery estimate, out-of-stock state
+  (dimmed art, "Out of stock" tag, add button disabled and greyed) — all from
+  fields the product page work added. Badges are `PositionedDirectional`, so
+  they sit on the correct side in Arabic.
+- **Empty state earns its keep**: different copy for "no search results" vs
+  "filters too narrow", plus a Clear-filters button; the results header gained
+  the same action, and uses `s.resultsCount` (Arabic-correct counted noun)
+  instead of interpolating a bare number.
+
+### Test that had to change
+`screens_smoke_test` asserted `الأكثر مبيعاً`. That string was the mislabel,
+so the assertion moved to `الأعلى تقييماً` with the reason recorded above it.
+Three tests were added: the banner quotes the real -21% LED kit and no longer
+contains "Up to 15% off"; searching "90915 yzze1" and "denso" both find the
+oil filter and nothing else.
+
+**Verified:** `flutter analyze` — clean (same pre-existing
+`use_null_aware_elements` hint in `core/utils/contact.dart`). `flutter test` —
+144 passing. One overflow was caught and fixed during the run (the banner's
+discount-badge row, 11px in Arabic); the label is now `Flexible` with an
+ellipsis. Not verified: no device or emulator run this session.
+
+---
+
+## 2026-07-25 · Service details rebuilt on the same pattern as the product page
+
+**Baseline:** `228e1d2` (uncommitted working tree, on top of the product-page
+entry below)
+**Request:** "do same thing for the service details page"
+
+### What was there
+One `ListView` inside a provider card: name, a three-tile stat row, one
+paragraph, the add-on wraps, and a book button. Three specific problems:
+
+- **A fabricated "Open" badge.** `StatusBadge.good('مفتوح', 'Open')` was
+  hardcoded on every offering — every workshop read as open at every hour of
+  every day, including the ones whose demo hours say Friday closed. Nothing in
+  the data ever said "open".
+- **It was written against the legacy `AppColors` statics** (`AppColors.field`,
+  `ink2`, `ink3`, `brand`), so the page did not follow the dark "Ink" theme —
+  the stat tiles and body copy stayed light-theme colours in dark mode.
+- **The workshop was a name and a distance.** No hours, no phone, no
+  registration details, no way to contact it, and nothing about what the price
+  actually covers or what happens when the job grows past the quote.
+
+### What changed
+- **Rewritten `service_detail_screen.dart`** as a `CustomScrollView` with a
+  category-icon hero and a sticky book bar. Order: name/workshop/description →
+  price card → duration / workmanship / payment facts → your car → **what's
+  included** → **how it works** → add-ons → **workshop details** → same
+  service at other workshops → other services here.
+- **The "Open" badge is gone**, replaced by the workshop's real opening hours
+  inside the details card. The page shows no rating and no review count for
+  the same reason the provider-comparison cards stopped showing them on
+  2026-07-13: the data does not contain any.
+- **Theme-aware throughout** — every colour now resolves from
+  `AkColors.of(context)`, so the page follows light/dark like the rest of the
+  rebuilt screens.
+- **New shared `features/services/provider_details_card.dart`.** The workshop
+  record — verified mark, area/governorate/distance, hours, phone, **Oman VAT
+  number**, commercial registration, VAT-invoice note, Call/WhatsApp, optional
+  footer action — is now one widget used by *both* the service page and the
+  parts product page, which grew its own copy yesterday. A buyer asks the same
+  questions of a workshop whether they are buying a part or a service, and the
+  VATIN in particular must not be formatted in two places. The product page's
+  private `_sellerCard`/`_sellerRow` were deleted in favour of it; on the
+  service side it also renders the fulfillment chips (visit / pickup with its
+  fee / roadside) from the provider record.
+- **`ServiceOffering` gained `includes` (the checklist of what the price
+  covers) and `warrantyMonths`**, plus a `quoteOnly` convenience. Both are
+  filled per *category* in `MockServiceData._copy`, not per workshop — same
+  reasoning as the 2026-07-22 entry: two garages selling "Express service" are
+  selling the same job, and a per-workshop checklist would invent a difference
+  the real API will not return. `warrantyMonths` is null where a workmanship
+  warranty is meaningless (roadside callout, annual contract, diagnostics).
+- **Quote-only offerings get their own price card** — an amber panel that says
+  the price comes after inspection and that no work starts without approval —
+  instead of a stat tile reading "Quote / After inspection". Priced offerings
+  show the 5% VAT split, matching the product page.
+- **"How it works"** is four steps built from the app's real flow (book →
+  fixed price or inspect-and-quote → track → pay after completion, funds held
+  until the customer confirms), branching on `quoteOnly`.
+
+### Two overflow guards worth keeping
+The price row overflowed by 31px under the test font. Both price cards now
+wrap the trailing element (`Fixed price` label, `Save OMR x` pill) in
+`Flexible` with an ellipsis, so under a large text scale the label yields and
+the price — the one thing that must never be clipped — always renders whole.
+
+### Test that had to change
+`translation_coverage_test` asserted `مفتوح` / `Open` on this screen. That
+assertion was pinning the fabricated badge, so it was replaced with the
+what's-included heading; the reason is recorded in a comment above the case so
+the next reader does not "restore" the badge.
+
+**Verified:** `flutter analyze` — clean (same pre-existing
+`use_null_aware_elements` hint in `core/utils/contact.dart`). `flutter test` —
+142 passing, including two new smoke tests asserting the service page prints
+`OM1100047382` for the VAT-registered workshop and "Not VAT registered" for
+the one without a VATIN. Not verified: no device or emulator run; the Arabic
+and English pumps at 402×874 would have failed on an overflow, but nothing was
+inspected visually.
+
+---
+
+## 2026-07-25 · Product details became a real page, with shop identity + VAT
+
+**Baseline:** `228e1d2` (uncommitted working tree)
+**Request:** "check the page of the product details. it needs to update and
+improve. show the shop details and contacts also. see in the internet how the
+product details of cars part shop should be and generate a modern page for my
+project. also update the shops demo data to add the Oman VAT code and display
+it with the shop details."
+
+### What was there
+There was no product *page* — `_ProductSheet`, a half-height modal inside
+`shop_screen.dart`. It showed the name, rating, a fits-list, one paragraph of
+boilerplate and a seller strip whose Call/WhatsApp buttons dialled two
+hardcoded constants (`+96824000000` / `96892000000`) identical for every
+seller in the catalogue. No part number, no brand, no specs, no stock, no
+delivery, no warranty, no shop registration details.
+
+### What a parts PDP actually needs
+Checked current auto-parts commerce guidance (BigCommerce's 2026 selling-auto-
+parts guide, scandiweb/VWO PDP practice) before designing. The recurring point
+is that fitment is the section that decides the sale — roughly a third of
+automotive e-commerce returns trace to fitment data that was not specific
+enough — followed by part identity (brand + manufacturer part number the buyer
+can cross-check against the part in their hand), then specs, then seller trust
+and delivery. The page is ordered in that decision order rather than by visual
+weight.
+
+### What changed
+- **New `features/shop/product_detail_screen.dart`**, routed at
+  `/shop/product/:id`; `ShopScreen._openProduct` pushes it instead of opening
+  the sheet. Sections: gallery app-bar (save/share, photo counter, discount
+  pill) → brand + genuine/aftermarket badge + copyable part number → price
+  card with the VAT split → fitment card → stock/delivery/fitting →
+  description → spec table (collapsed past four rows) → warranty/returns/
+  escrow → **shop details** → similar parts rail → sticky qty + add-to-cart.
+- **Fitment card has three honest states**, not one: universal part, "select
+  your car" when no car is saved, fits / may-not-fit when one is. It links
+  straight into `ShopFilterSheet` to change the car.
+- **Shop details card** shows the seller's real record — verified mark,
+  localized area/governorate + distance, opening hours, phone, **Oman VAT
+  number**, commercial registration — with copy-to-clipboard on the phone and
+  VAT number, Call/WhatsApp wired to *that seller's* numbers (the WhatsApp
+  message quotes the part name and part number), and "All parts from this
+  shop" which sets `providerId` on the shop filter and pops back.
+- **Models extended.** `Product`: `brand`, `partNumber`, `genuine`,
+  `warrantyMonths`, `stock`, `deliveryDays`, `returnDays`,
+  `fittingAvailable`, `specs` (new `ProductSpec`), plus `inStock` / `saving` /
+  `discountPercent` / `universalFit`. `ServiceProvider`: `phone`, `whatsapp`,
+  `vatNumber`, `crNumber`, `hours`, plus `vatRegistered`. All round-trip
+  through `toJson`/`fromJson` and are covered by the existing
+  `models_json_test` loops over the demo data.
+- **Demo data filled in** for all six products and all eleven workshops.
+- `AppConstants.vatRate = 0.05` (Oman standard rate); the price card shows the
+  tax backed *out* of the price, because Oman shelf prices are quoted
+  VAT-inclusive.
+- `_Rating` / `_PriceLine` moved out of `shop_screen.dart` into
+  `features/shop/product_widgets.dart` as `ProductRating` /
+  `ProductPriceLine` / `DiscountBadge`, so the grid card and the page cannot
+  render the same price two ways. New `savedPartsProvider` keeps saved parts
+  out of `favoritesProvider`, which holds car-ad ids.
+
+### The VAT decision worth remembering
+An Oman VATIN is `OM` + 10 digits, issued by the Oman Tax Authority, and only
+businesses over the registration threshold have one. So `vatNumber` is
+**nullable**, and four of the eleven demo workshops (the unverified ones)
+deliberately have none: the card then reads "Not VAT registered" and drops the
+"issues a VAT invoice with every order" line, instead of printing a blank
+field or implying a number exists. Both branches are pinned by tests.
+
+**Verified:** `flutter analyze` — clean (the one remaining info is the
+pre-existing `use_null_aware_elements` hint in `core/utils/contact.dart`,
+untouched here). `flutter test` — 140 passing, including two new smoke tests
+covering both VAT states and a new bilingual coverage case for the page. Not
+verified: no run on a device or emulator this session; the phone-sized
+(402×874) widget pumps would have failed on an overflow, but nothing was
+inspected visually.
+
+---
+
 ## 2026-07-22 · Region filter widened itself because the demo data had holes
 
 **Baseline:** `5744a25` (uncommitted working tree)

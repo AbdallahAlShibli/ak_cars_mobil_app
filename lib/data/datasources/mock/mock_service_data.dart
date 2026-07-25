@@ -15,7 +15,19 @@ typedef _Sale = ({double? price, int? minutes});
 
 /// Customer-facing wording for a category, shared by every workshop selling
 /// it.
-typedef _Copy = ({L name, L description});
+///
+/// [includes] is the checklist the service detail page renders — what the
+/// price actually covers. It belongs to the category, not the workshop: two
+/// garages selling "Express service" are selling the same job, and a
+/// per-workshop checklist would be inventing a difference the real API will
+/// not return. [warrantyMonths] is null where a workmanship warranty makes
+/// no sense (a roadside callout, a year-long contract).
+typedef _Copy = ({
+  L name,
+  L description,
+  List<L> includes,
+  int? warrantyMonths,
+});
 
 /// Demo data for the service marketplace — providers, categories, offerings,
 /// add-ons and bookable slots.
@@ -34,6 +46,12 @@ typedef _Copy = ({L name, L description});
 abstract final class MockServiceData {
   /// Grouped by governorate — `providerRegions`, and therefore the order of
   /// the region picker, is derived from this list.
+  /// **VAT rule.** `vatNumber` carries an Oman VATIN — `OM` + 10 digits,
+  /// issued by the Oman Tax Authority — and is set only on the workshops that
+  /// are actually VAT-registered. Registration in Oman is turnover-based, so
+  /// the smaller garages here deliberately carry `null`: the shop and product
+  /// pages must be able to render a seller that cannot issue a VAT invoice,
+  /// rather than assuming every seller has a number to print.
   static const providers = <ServiceProvider>[
     // ------------------------------------------------------------ Muscat
     ServiceProvider(
@@ -44,6 +62,12 @@ abstract final class MockServiceData {
       distanceKm: 2.4,
       verified: true,
       fulfillments: {Fulfillment.workshop, Fulfillment.pickup},
+      phone: '+96824478120',
+      whatsapp: '96892140088',
+      vatNumber: 'OM1100047382',
+      crNumber: '1198432',
+      hours: L('السبت–الخميس ٨:٠٠–٢٠:٠٠ · الجمعة مغلق',
+          'Sat–Thu 8:00–20:00 · Fri closed'),
     ),
     ServiceProvider(
       id: 'p2',
@@ -57,6 +81,12 @@ abstract final class MockServiceData {
         Fulfillment.pickup,
         Fulfillment.roadside,
       },
+      phone: '+96824551907',
+      whatsapp: '96895330214',
+      vatNumber: 'OM1100062915',
+      crNumber: '1243907',
+      hours: L('السبت–الخميس ٧:٣٠–٢١:٠٠ · الجمعة ١٦:٠٠–٢١:٠٠',
+          'Sat–Thu 7:30–21:00 · Fri 16:00–21:00'),
     ),
     ServiceProvider(
       id: 'p4',
@@ -67,6 +97,12 @@ abstract final class MockServiceData {
       verified: true,
       fulfillments: {Fulfillment.workshop, Fulfillment.pickup},
       pickupFee: 2,
+      phone: '+96824663415',
+      whatsapp: '96899210546',
+      vatNumber: 'OM1100051764',
+      crNumber: '1215880',
+      hours: L('السبت–الخميس ٨:٠٠–١٩:٠٠ · الجمعة مغلق',
+          'Sat–Thu 8:00–19:00 · Fri closed'),
     ),
     // -------------------------------------------------- North Al Batinah
     ServiceProvider(
@@ -77,6 +113,10 @@ abstract final class MockServiceData {
       distanceKm: 18.0,
       verified: false,
       fulfillments: {Fulfillment.workshop},
+      phone: '+96826841203',
+      whatsapp: '96897440319',
+      crNumber: '1307654',
+      hours: L('السبت–الخميس ٨:٠٠–١٨:٠٠', 'Sat–Thu 8:00–18:00'),
     ),
     ServiceProvider(
       id: 'p8',
@@ -90,6 +130,12 @@ abstract final class MockServiceData {
         Fulfillment.pickup,
         Fulfillment.roadside,
       },
+      phone: '+96826855740',
+      whatsapp: '96893120877',
+      vatNumber: 'OM1100073508',
+      crNumber: '1288201',
+      hours: L('السبت–الخميس ٧:٠٠–٢٠:٠٠ · الجمعة ١٦:٠٠–٢٠:٠٠',
+          'Sat–Thu 7:00–20:00 · Fri 16:00–20:00'),
     ),
     // -------------------------------------------------- South Al Batinah
     ServiceProvider(
@@ -100,6 +146,10 @@ abstract final class MockServiceData {
       distanceKm: 22.0,
       verified: false,
       fulfillments: {Fulfillment.workshop, Fulfillment.roadside},
+      phone: '+96826882456',
+      whatsapp: '96896015523',
+      crNumber: '1341120',
+      hours: L('السبت–الخميس ٨:٠٠–٢٢:٠٠', 'Sat–Thu 8:00–22:00'),
     ),
     ServiceProvider(
       id: 'p9',
@@ -110,6 +160,12 @@ abstract final class MockServiceData {
       verified: true,
       fulfillments: {Fulfillment.workshop, Fulfillment.pickup},
       pickupFee: 4,
+      phone: '+96826875031',
+      whatsapp: '96894870162',
+      vatNumber: 'OM1100068247',
+      crNumber: '1276418',
+      hours: L('السبت–الخميس ٨:٠٠–١٩:٣٠ · الجمعة مغلق',
+          'Sat–Thu 8:00–19:30 · Fri closed'),
     ),
     // ----------------------------------------------------- Ad Dakhiliyah
     ServiceProvider(
@@ -120,6 +176,12 @@ abstract final class MockServiceData {
       distanceKm: 32.0,
       verified: true,
       fulfillments: {Fulfillment.workshop, Fulfillment.roadside},
+      phone: '+96825412876',
+      whatsapp: '96891650430',
+      vatNumber: 'OM1100059183',
+      crNumber: '1260973',
+      hours: L('السبت–الخميس ٧:٣٠–١٩:٠٠ · الجمعة مغلق',
+          'Sat–Thu 7:30–19:00 · Fri closed'),
     ),
     ServiceProvider(
       id: 'p10',
@@ -133,6 +195,10 @@ abstract final class MockServiceData {
         Fulfillment.pickup,
         Fulfillment.roadside,
       },
+      phone: '+96825350962',
+      whatsapp: '96892770118',
+      crNumber: '1352209',
+      hours: L('يومياً ٦:٠٠–٢٣:٠٠', 'Daily 6:00–23:00'),
     ),
     // ------------------------------------------------------------ Dhofar
     ServiceProvider(
@@ -148,6 +214,12 @@ abstract final class MockServiceData {
         Fulfillment.roadside,
       },
       pickupFee: 4,
+      phone: '+96823298450',
+      whatsapp: '96899640277',
+      vatNumber: 'OM1100081642',
+      crNumber: '1229561',
+      hours: L('السبت–الخميس ٨:٠٠–٢٠:٣٠ · الجمعة ١٦:٠٠–٢٠:٣٠',
+          'Sat–Thu 8:00–20:30 · Fri 16:00–20:30'),
     ),
     ServiceProvider(
       id: 'p11',
@@ -157,6 +229,10 @@ abstract final class MockServiceData {
       distanceKm: 52.0,
       verified: false,
       fulfillments: {Fulfillment.workshop, Fulfillment.roadside},
+      phone: '+96823271908',
+      whatsapp: '96897330654',
+      crNumber: '1366742',
+      hours: L('السبت–الخميس ٨:٠٠–١٨:٣٠', 'Sat–Thu 8:00–18:30'),
     ),
   ];
 
@@ -348,6 +424,19 @@ abstract final class MockServiceData {
         'Complete service: engine oil FREE, all filters, brakes check, '
             'fluids, belts and a 40-point inspection.',
       ),
+      includes: [
+        L('زيت محرك كامل التخليق (مجاناً ضمن الباقة)',
+            'Fully synthetic engine oil (free with this package)'),
+        L('فلتر زيت وهواء ووقود وفلتر مقصورة',
+            'Oil, air, fuel and cabin filters'),
+        L('فحص الفرامل والتعليق وتعبئة سائل الفرامل عند الحاجة',
+            'Brake and suspension check, brake fluid topped up if needed'),
+        L('فحص الأحزمة والخراطيم وجميع السوائل',
+            'Belts, hoses and all fluid levels checked'),
+        L('تقرير فحص من ٤٠ نقطة يُسلَّم في التطبيق',
+            '40-point inspection report delivered in the app'),
+      ],
+      warrantyMonths: 6,
     ),
     'full': (
       name: L('صيانة كاملة', 'Full service'),
@@ -357,6 +446,14 @@ abstract final class MockServiceData {
         'Oil & filters, brake and suspension check, AC performance test, '
             '25-point inspection.',
       ),
+      includes: [
+        L('تغيير زيت المحرك وفلتر الزيت', 'Engine oil and oil filter change'),
+        L('فلتر هواء وفلتر مقصورة', 'Air filter and cabin filter'),
+        L('فحص الفرامل والتعليق', 'Brake and suspension check'),
+        L('اختبار أداء المكيف', 'AC performance test'),
+        L('تقرير فحص من ٢٥ نقطة', '25-point inspection report'),
+      ],
+      warrantyMonths: 6,
     ),
     'express': (
       name: L('صيانة سريعة', 'Express service'),
@@ -365,6 +462,15 @@ abstract final class MockServiceData {
         'Oil + filter replacement and a 10-point safety check, in and out '
             'within the hour.',
       ),
+      includes: [
+        L('تغيير زيت المحرك وفلتر الزيت', 'Engine oil and oil filter change'),
+        L('تعبئة السوائل وضبط ضغط الإطارات',
+            'Fluids topped up and tyre pressures set'),
+        L('فحص أمان من ١٠ نقاط', '10-point safety check'),
+        L('التخلص من الزيت المستعمل وفق الاشتراطات البيئية',
+            'Used oil disposed of to environmental requirements'),
+      ],
+      warrantyMonths: 3,
     ),
     'repair': (
       name: L('إصلاح وفحص السيارة', 'Car repair & inspection'),
@@ -372,6 +478,16 @@ abstract final class MockServiceData {
         'فحص كامل أولاً — عرض سعر مفصّل قبل أي عمل.',
         'Full inspection first — itemized quote before any work.',
       ),
+      includes: [
+        L('فحص كامل لتحديد العطل', 'Full inspection to identify the fault'),
+        L('عرض سعر مفصّل بالقطع والأجرة',
+            'Itemized quote covering parts and labour'),
+        L('لا يبدأ أي عمل قبل موافقتك في التطبيق',
+            'No work starts before you approve it in the app'),
+        L('إعادة القطع المستبدلة عند طلبها',
+            'Replaced parts returned on request'),
+      ],
+      warrantyMonths: 3,
     ),
     'sos': (
       name: L('مساعدة على الطريق', 'Roadside assistance'),
@@ -379,6 +495,15 @@ abstract final class MockServiceData {
         'شحن البطارية، تغيير الإطار، وتنسيق السحب.',
         'Battery boost, tyre change, tow coordination.',
       ),
+      includes: [
+        L('وصول فني إلى موقعك', 'A technician comes to your location'),
+        L('شحن البطارية أو تركيب الإطار الاحتياطي',
+            'Battery boost or spare-wheel change'),
+        L('تنسيق السحب إلى أقرب ورشة (رسوم السحب منفصلة)',
+            'Tow coordination to the nearest workshop (towing billed '
+                'separately)'),
+      ],
+      warrantyMonths: null,
     ),
     'tyres': (
       name: L('تغيير وترصيص الإطارات', 'Tyre change & balancing'),
@@ -386,6 +511,14 @@ abstract final class MockServiceData {
         'تركيب وترصيص وفحص الضغط لكل إطار.',
         'Fitting, balancing and pressure check per tyre.',
       ),
+      includes: [
+        L('فك وتركيب الإطار', 'Tyre removal and fitting'),
+        L('ترصيص بالأوزان', 'Balancing with weights'),
+        L('صمام هواء جديد', 'New valve stem'),
+        L('ضبط ضغط الهواء وفحص الإطار الاحتياطي',
+            'Pressures set and spare wheel checked'),
+      ],
+      warrantyMonths: 3,
     ),
     'detailing': (
       name: L('تلميع السيارة', 'Car detailing'),
@@ -393,6 +526,14 @@ abstract final class MockServiceData {
         'تنظيف داخلي عميق، تلميع خارجي وشمع.',
         'Interior deep clean, exterior polish and wax.',
       ),
+      includes: [
+        L('غسيل خارجي وتلميع وطبقة شمع',
+            'Exterior wash, polish and a wax coat'),
+        L('تنظيف عميق للمقاعد والسجاد', 'Deep clean of seats and carpets'),
+        L('تنظيف الزجاج والجنوط من الداخل والخارج',
+            'Glass and wheels cleaned inside and out'),
+      ],
+      warrantyMonths: null,
     ),
     'battery': (
       name: L('تغيير البطارية', 'Battery replacement'),
@@ -400,6 +541,16 @@ abstract final class MockServiceData {
         'فحص وتوريد وتركيب — ويتم تدوير البطارية القديمة.',
         'Test, supply and fit — old battery recycled.',
       ),
+      includes: [
+        L('فحص البطارية والدينمو قبل الاستبدال',
+            'Battery and alternator tested before replacing'),
+        L('تركيب البطارية وتنظيف الأطراف',
+            'Battery fitted and terminals cleaned'),
+        L('تدوير البطارية القديمة', 'Old battery taken away for recycling'),
+        L('سعر البطارية نفسها يُضاف حسب النوع',
+            'The battery itself is charged separately by type'),
+      ],
+      warrantyMonths: 12,
     ),
     'ac': (
       name: L('عناية بالمكيف', 'AC care'),
@@ -407,6 +558,13 @@ abstract final class MockServiceData {
         'تعبئة الغاز، فحص التسريب، وفحص فلتر المقصورة.',
         'Gas recharge, leak test, cabin filter check.',
       ),
+      includes: [
+        L('تفريغ وتعبئة غاز التبريد', 'Refrigerant evacuated and recharged'),
+        L('فحص التسريب بالصبغة', 'Dye leak test'),
+        L('فحص فلتر المقصورة وقياس حرارة المخرج',
+            'Cabin filter checked and vent temperature measured'),
+      ],
+      warrantyMonths: 3,
     ),
     'diag': (
       name: L('فحص المحرك', 'Engine diagnostics'),
@@ -414,6 +572,16 @@ abstract final class MockServiceData {
         'فحص OBD كامل مع تقرير مطبوع.',
         'Full OBD scan with printed report.',
       ),
+      includes: [
+        L('قراءة أكواد الأعطال من جميع الوحدات',
+            'Fault codes read from every module'),
+        L('اختبار قيادة قصير عند الحاجة', 'Short road test when needed'),
+        L('تقرير مكتوب بالأعطال والإصلاح المقترح',
+            'Written report of faults and recommended repair'),
+        L('تُخصم قيمة الفحص من الإصلاح إذا تم في نفس الورشة',
+            'Scan fee deducted from the repair if done at the same workshop'),
+      ],
+      warrantyMonths: null,
     ),
     'contracts': (
       name: L('عقد صيانة سنوي', 'Annual service contract'),
@@ -422,6 +590,15 @@ abstract final class MockServiceData {
         'All routine services for a year — priority booking and free '
             'pickup included.',
       ),
+      includes: [
+        L('جميع الصيانات الدورية لمدة سنة',
+            'Every routine service for twelve months'),
+        L('حجز بأولوية بدون انتظار', 'Priority booking with no queue'),
+        L('استلام وإعادة السيارة مجاناً', 'Free pickup and return'),
+        L('يبدأ العقد من تاريخ أول خدمة',
+            'The contract runs from the first service'),
+      ],
+      warrantyMonths: null,
     ),
   };
 
@@ -438,6 +615,8 @@ abstract final class MockServiceData {
           description: _copy[sale.key]!.description,
           price: sale.value.price,
           durationMin: sale.value.minutes,
+          includes: _copy[sale.key]!.includes,
+          warrantyMonths: _copy[sale.key]!.warrantyMonths,
         ),
   ];
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/i18n/strings.dart';
+import '../../core/utils/search_match.dart';
 import '../../core/json/color_codec.dart';
 import '../../core/json/icon_codec.dart';
 import '../../core/json/json_utils.dart';
@@ -302,6 +303,26 @@ class GalleryListing {
 
 extension GalleryListingX on GalleryListing {
   String get displayTitle => '$year $make $model $trim'.trim();
+
+  /// Free-text search over the ad.
+  ///
+  /// The cars screen used to match only `displayTitle` and the raw `region`
+  /// key, which meant "camry 2017" found nothing (the title reads "2017
+  /// Toyota Camry SE", so the words are in the other order) and an Arabic
+  /// user searching "مسقط" found nothing at all, because the stored region is
+  /// the English key. [localizedRegion] carries the translated place name in
+  /// so the model stays free of the location catalogue.
+  bool matchesQuery(String query, {String? localizedRegion}) =>
+      SearchMatch.all(query, [
+        make,
+        model,
+        trim,
+        '$year',
+        bodyType,
+        region,
+        localizedRegion,
+        sellerName,
+      ]);
 
   /// Numeric odometer parsed from the display string ("200,000+" → 200000)
   /// for range filtering.

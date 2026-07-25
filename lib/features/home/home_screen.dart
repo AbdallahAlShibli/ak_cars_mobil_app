@@ -10,6 +10,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/car_media.dart';
 import '../../core/widgets/sand_widgets.dart';
+import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
 
@@ -26,7 +27,12 @@ class HomeScreen extends ConsumerWidget {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final auth = ref.watch(authProvider);
-    final listings = ref.watch(galleryFeedProvider).take(4).toList();
+    // "الأكثر بحثاً / Most searched" until 2026-07-25 — nothing in the app
+    // records searches, and the rail was simply the first four rows of the
+    // feed. It now says what it shows: the four most recently posted ads.
+    final listings = [...ref.watch(galleryFeedProvider)]
+      ..sort((a, b) => a.postedMinutesAgo.compareTo(b.postedMinutesAgo));
+    final latest = listings.take(4).toList();
     final firstName = auth.profile?.name.split(' ').first;
 
     return Scaffold(
@@ -83,8 +89,12 @@ class HomeScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 15),
             // ------------------------------------------------ search pill
+            // Opens the real cross-catalogue search. Until 2026-07-25 this
+            // pill carried the "search services, parts, cars" hint but only
+            // navigated to /services — nothing was ever searched, and the
+            // sliders button on its end opened no filter.
             GestureDetector(
-              onTap: () => context.go('/services'),
+              onTap: () => context.push('/search'),
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
@@ -108,7 +118,7 @@ class HomeScreen extends ConsumerWidget {
                       height: 30,
                       decoration: BoxDecoration(
                           color: ak.primary, shape: BoxShape.circle),
-                      child: Icon(LucideIcons.slidersHorizontal,
+                      child: Icon(LucideIcons.arrowRight,
                           size: 13, color: ak.onPrimary),
                     ),
                   ],
@@ -160,7 +170,7 @@ class HomeScreen extends ConsumerWidget {
             const SizedBox(height: 15),
             // ------------------------------------------------ most searched
             SandSectionHeader(
-              s.mostSearched,
+              s.latestAds,
               action: s.viewAll,
               onAction: () => context.go('/cars'),
             ),
@@ -173,7 +183,7 @@ class HomeScreen extends ConsumerWidget {
               crossAxisSpacing: 11,
               childAspectRatio: 1.16,
               children: [
-                for (final l in listings)
+                for (final l in latest)
                   _ListingTile(
                     title: l.displayTitle,
                     price: l.price,
@@ -230,14 +240,23 @@ class _BellButton extends StatelessWidget {
   }
 }
 
-class _PromoBanner extends StatelessWidget {
+/// Seasonal AC promo.
+///
+/// The price is the cheapest real "AC care" offering in the marketplace, not
+/// a number in the copy: this banner used to promise "Book · OMR 9" while the
+/// cheapest AC service any workshop actually sells is OMR 13. When no
+/// workshop sells the category at all, the button drops the price rather than
+/// inventing one.
+class _PromoBanner extends ConsumerWidget {
   const _PromoBanner({required this.s});
 
   final S s;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ak = AkColors.of(context);
+    final from =
+        ref.watch(serviceMarketplaceRepositoryProvider).fromPriceFor('ac');
     return Container(
       clipBehavior: Clip.antiAlias,
       constraints: const BoxConstraints(minHeight: 96),
@@ -268,14 +287,20 @@ class _PromoBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  s.t('فحص تكييف + سائل تبريد بسعر واحد',
-                      'AC check + coolant top-up, one price'),
+                  from == null
+                      ? s.t('تعبئة غاز المكيف، فحص التسريب، وفلتر المقصورة',
+                          'AC gas recharge, leak test and cabin filter')
+                      : s.t(
+                          'تعبئة غاز، فحص تسريب، وفلتر مقصورة — من ${from.toStringAsFixed(0)} ر.ع',
+                          'Gas recharge, leak test, cabin filter — from OMR ${from.toStringAsFixed(0)}'),
                   style: TextStyle(
                       fontSize: 10.5, color: ak.promoSub, height: 1.6),
                 ),
                 const SizedBox(height: 9),
+                // The price lives in the line above, not in the button: a
+                // pill has no room to ellipsize a CTA gracefully.
                 InkPill(
-                  label: s.t('احجز بـ 9 ر.ع', 'Book · OMR 9'),
+                  label: s.t('احجز الآن', 'Book now'),
                   fontSize: 10.5,
                   onTap: () => context.go('/services'),
                 ),
@@ -309,9 +334,54 @@ class _MaintenanceMiniCard extends ConsumerWidget {
     final due = ref.watch(maintenanceDueProvider);
     final m = ref.watch(maintenanceProvider);
     final car = ref.watch(primaryCarProvider);
-    final carLabel =
-        car != null ? '${car.model} ${car.year}' : s.t('كامري 2017', 'Camry 2017');
 
+    // No saved car used to render as "Camry 2017" — a car the user does not
+    // own, on a card whose whole point is that its numbers come from their
+    // own odometer. With no car there is nothing to follow up, so the card
+    // asks for one instead of illustrating itself with someone else's.
+    if (car == null) {
+      return SandCard(
+        radius: 20,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        onTap: () => context.push('/add-car'),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration:
+                  BoxDecoration(color: ak.surfaceDim, shape: BoxShape.circle),
+              child: Icon(LucideIcons.car, size: 17, color: ak.inkSub),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(s.maintenanceTitle,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(
+                    s.t('أضف سيارتك لمتابعة الزيت والإطارات من ممشاك.',
+                        'Add your car to track oil and tyres from your own mileage.'),
+                    style: TextStyle(fontSize: 10.5, color: ak.inkSub),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            SandStatusPill(
+              s.t('أضف سيارة', 'Add a car'),
+              background: ak.surfaceDim,
+              foreground: ak.ink,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final carLabel = '${car.model} ${car.year}';
     final oil = due.firstWhere((d) => d.type == MaintenanceType.oil);
     final tyres = due.firstWhere((d) => d.type == MaintenanceType.tyres);
 

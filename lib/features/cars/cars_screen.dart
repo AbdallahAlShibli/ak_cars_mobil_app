@@ -60,12 +60,16 @@ class _CarsScreenState extends ConsumerState<CarsScreen> {
     final s = S.of(context);
     final allFeed = ref.watch(galleryFeedProvider);
     final filter = ref.watch(carsFilterProvider);
-    final q = _query.trim().toLowerCase();
-    final feed = ref.watch(filteredGalleryProvider).where((l) {
-      if (q.isEmpty) return true;
-      return l.displayTitle.toLowerCase().contains(q) ||
-          l.region.toLowerCase().contains(q);
-    }).toList();
+    final q = _query.trim();
+    final locations = ref.watch(locationCatalogProvider);
+    // Was a substring test against `displayTitle` + the raw English region:
+    // "camry 2017" matched nothing (the title reads "2017 Toyota Camry SE")
+    // and an Arabic user searching "مسقط" matched nothing at all.
+    final feed = ref
+        .watch(filteredGalleryProvider)
+        .where((l) => l.matchesQuery(q,
+            localizedRegion: locations.localizedRegion(l.region, s.isAr)))
+        .toList();
 
     final countsByMake = <String, int>{};
     for (final l in allFeed) {

@@ -14,6 +14,7 @@ import 'package:ak_cars_mobil_app/features/services/booking_screen.dart';
 import 'package:ak_cars_mobil_app/features/services/requests_screen.dart';
 import 'package:ak_cars_mobil_app/features/services/service_detail_screen.dart';
 import 'package:ak_cars_mobil_app/features/services/services_screen.dart';
+import 'package:ak_cars_mobil_app/features/shop/product_detail_screen.dart';
 
 import 'helpers/test_harness.dart';
 
@@ -96,11 +97,14 @@ void main() {
     en: ['Services', 'Car service', 'Other services', 'Popular in Muscat'],
   );
 
+  // "مفتوح"/"Open" was asserted here until 2026-07-25: the header used to
+  // print an "Open" pill for every workshop regardless of its hours. The page
+  // shows the real opening hours instead, so there is no such badge to find.
   bilingualTest(
     'Service detail screen',
     () => const ServiceDetailScreen(offeringId: 'o-p1-express'),
-    ar: ['صيانة سريعة', 'مفتوح', 'المدة', 'سعر ثابت'],
-    en: ['Express service', 'Open', 'Duration', 'Fixed price'],
+    ar: ['صيانة سريعة', 'المدة', 'سعر ثابت', 'ما الذي يشمله السعر'],
+    en: ['Express service', 'Duration', 'Fixed price', "What's included"],
   );
 
   bilingualTest(
@@ -124,6 +128,15 @@ void main() {
     () => const ListingDetailScreen(listingId: 'g1'),
     ar: ['اسم السيارة', 'الحالة', 'اسأل عن السعر', 'الممشى'],
     en: ['Car name', 'Condition', 'Ask about price', 'Mileage'],
+  );
+
+  // The seller block sits below the fold in a CustomScrollView, so this
+  // asserts only what the first viewport builds.
+  bilingualTest(
+    'Product detail screen',
+    () => const ProductDetailScreen(productId: 'pr1'),
+    ar: ['قطعة أصلية', 'رقم القطعة', 'شامل ضريبة القيمة المضافة', 'الوصف'],
+    en: ['Genuine / OEM', 'Part no.', 'Includes 5% VAT', 'Description'],
   );
 
   bilingualTest(

@@ -11,6 +11,9 @@ import 'package:ak_cars_mobil_app/features/cars/cars_filter_screen.dart';
 import 'package:ak_cars_mobil_app/features/home/home_screen.dart';
 import 'package:ak_cars_mobil_app/features/profile/profile_screen.dart';
 import 'package:ak_cars_mobil_app/features/settings/settings_screen.dart';
+import 'package:ak_cars_mobil_app/features/search/search_screen.dart';
+import 'package:ak_cars_mobil_app/features/services/service_detail_screen.dart';
+import 'package:ak_cars_mobil_app/features/shop/product_detail_screen.dart';
 import 'package:ak_cars_mobil_app/features/shop/shop_screen.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 
@@ -57,7 +60,10 @@ void main() {
     expect(find.text('أهلاً بك!'), findsOneWidget);
     expect(find.textContaining('متابعة الصيانة'), findsOneWidget);
     expect(find.text('مساعدة طريق'), findsOneWidget);
-    expect(find.text('الأكثر بحثاً'), findsOneWidget);
+    // "الأكثر بحثاً" / "Most searched" until 2026-07-25: nothing records
+    // searches, and the rail was just the head of the feed. It now shows the
+    // newest ads and says so.
+    expect(find.text('أحدث الإعلانات'), findsOneWidget);
   });
 
   testWidgets('Home renders in English LTR', (tester) async {
@@ -125,6 +131,50 @@ void main() {
     expect(find.text('Parts shop'), findsOneWidget);
     await pumpScreen(tester, const ShopScreen(), locale: 'en', dark: true);
     expect(find.text('Parts shop'), findsOneWidget);
+  });
+
+  // The shop block is what a buyer checks before paying a stranger, so both
+  // its states are pinned: a VAT-registered seller prints its Oman VATIN, and
+  // one that is not registered says so instead of showing an empty field.
+  testWidgets('Product page prints the seller VAT number', (tester) async {
+    // pr1 → Al Noor Workshop, VAT registered.
+    await pumpScreen(tester, const ProductDetailScreen(productId: 'pr1'),
+        locale: 'en');
+    await tester.scrollUntilVisible(find.text('Shop details'), 300,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('OM1100047382'), findsOneWidget);
+    expect(find.textContaining('VAT invoice'), findsOneWidget);
+  });
+
+  testWidgets('Product page says when the seller is not VAT registered',
+      (tester) async {
+    // pr5 → Sohar Speed Garage, no VATIN in the demo data.
+    await pumpScreen(tester, const ProductDetailScreen(productId: 'pr5'),
+        locale: 'en');
+    await tester.scrollUntilVisible(find.text('Shop details'), 300,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('Not VAT registered'), findsOneWidget);
+    expect(find.textContaining('VAT invoice'), findsNothing);
+  });
+
+  // Same two states on the service side, where the card is shared code.
+  testWidgets('Service page prints the workshop VAT number', (tester) async {
+    // o-p1-express → Al Noor Workshop, VAT registered.
+    await pumpScreen(tester, const ServiceDetailScreen(offeringId: 'o-p1-express'),
+        locale: 'en');
+    await tester.scrollUntilVisible(find.text('Workshop details'), 300,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('OM1100047382'), findsOneWidget);
+  });
+
+  testWidgets('Service page says when the workshop is not VAT registered',
+      (tester) async {
+    // o-p3-express → Sohar Speed Garage, no VATIN in the demo data.
+    await pumpScreen(tester, const ServiceDetailScreen(offeringId: 'o-p3-express'),
+        locale: 'en');
+    await tester.scrollUntilVisible(find.text('Workshop details'), 300,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('Not VAT registered'), findsOneWidget);
   });
 
   testWidgets('Profile hub renders in dark "Ink" theme (English)',
@@ -270,9 +320,88 @@ void main() {
     expect(find.text('Dual-clutch (DCT)'), findsOneWidget);
   });
 
+  // "الأكثر مبيعاً" / "Best sellers" was asserted here until 2026-07-25. The
+  // rail sorts by rating and nothing in the catalogue records sales, so it is
+  // now titled "الأعلى تقييماً" / "Top rated" — what it actually shows.
   testWidgets('Parts shop is translated to Arabic', (tester) async {
     await pumpScreen(tester, const ShopScreen(), locale: 'ar');
     expect(find.text('متجر القطع'), findsOneWidget);
-    expect(find.text('الأكثر مبيعاً'), findsOneWidget);
+    expect(find.text('الأعلى تقييماً'), findsWidgets);
+  });
+
+  // The home pill carried a "search services, parts, cars" hint but only
+  // navigated to /services. These pin the search it now actually runs.
+  testWidgets('Search finds a car when the words are in the other order',
+      (tester) async {
+    await pumpScreen(tester, const SearchScreen(), locale: 'en');
+    // The ad's title reads "2017 Toyota Camry SE", so the old substring
+    // match against displayTitle returned nothing for this query.
+    await tester.enterText(find.byType(TextField).first, 'camry 2017');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('Camry'), findsWidgets);
+  });
+
+  testWidgets('Search spans services, parts and cars', (tester) async {
+    await pumpScreen(tester, const SearchScreen(), locale: 'en');
+    await tester.enterText(find.byType(TextField).first, 'denso');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Parts · 1'), findsOneWidget);
+    expect(find.text('Genuine oil filter'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, 'battery');
+    await tester.pump(const Duration(milliseconds: 300));
+    // Two services mention a battery (replacement, and the roadside boost)
+    // and one part is one.
+    expect(find.text('Battery replacement'), findsOneWidget);
+    expect(find.text('Roadside assistance'), findsOneWidget);
+    expect(find.text('Parts · 1'), findsOneWidget);
+  });
+
+  testWidgets('Search matches an Arabic place name', (tester) async {
+    // Regions are stored as English keys ("Bawshar, Muscat"), so an Arabic
+    // search only works if the localized name is matched too.
+    await pumpScreen(tester, const SearchScreen(), locale: 'ar');
+    await tester.enterText(find.byType(TextField).first, 'مسقط');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('السيارات'), findsWidgets);
+  });
+
+  testWidgets('Search says so when nothing matches', (tester) async {
+    await pumpScreen(tester, const SearchScreen(), locale: 'en');
+    await tester.enterText(find.byType(TextField).first, 'zzzznotathing');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('Nothing found'), findsOneWidget);
+  });
+
+  // The banner used to advertise a fixed "Up to 15% off batteries" that no
+  // product had to honour, and showed one thing at a time. The carousel now
+  // pages through every real discount, deepest first: the LED kit at 9.50
+  // down from 12.00 is 21%, then the cabin filter at 20%, then the battery.
+  testWidgets('Parts shop offers slider pages through the real discounts',
+      (tester) async {
+    await pumpScreen(tester, const ShopScreen(), locale: 'en');
+    expect(find.textContaining('Up to 15% off'), findsNothing);
+    expect(find.text('-21%'), findsWidgets);
+    expect(find.text('LED headlight kit'), findsWidgets);
+
+    // Swiping reaches the next offer — the point of making it a slider.
+    await tester.drag(find.byType(PageView).first, const Offset(-300, 0));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('Cabin air filter'), findsWidgets);
+    expect(find.text('-20%'), findsWidgets);
+  });
+
+  testWidgets('Parts shop searches by part number and brand', (tester) async {
+    await pumpScreen(tester, const ShopScreen(), locale: 'en');
+    // pr1 is the only Denso part, and 90915-YZZE1 is its part number typed
+    // without the hyphen — both must find it and nothing else.
+    await tester.enterText(find.byType(TextField).first, '90915 yzze1');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Genuine oil filter'), findsOneWidget);
+    expect(find.text('Battery 70Ah AGM'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).first, 'denso');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Genuine oil filter'), findsOneWidget);
   });
 }

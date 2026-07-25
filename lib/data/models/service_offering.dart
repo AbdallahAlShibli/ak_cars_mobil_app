@@ -1,5 +1,8 @@
+import 'package:collection/collection.dart';
+
 import '../../core/i18n/strings.dart';
 import '../../core/json/json_utils.dart';
+import '../../core/utils/search_match.dart';
 import 'service_provider.dart';
 
 /// A concrete service a specific provider sells within a category.
@@ -12,6 +15,8 @@ class ServiceOffering {
     required this.description,
     this.price,
     this.durationMin,
+    this.includes = const [],
+    this.warrantyMonths,
   });
 
   final String id;
@@ -28,6 +33,33 @@ class ServiceOffering {
   final double? price;
   final int? durationMin;
 
+  /// What the price covers, one line per item. Shared per category — the
+  /// checklist is what the customer is buying, not a per-workshop sales
+  /// pitch.
+  final List<L> includes;
+
+  /// Workmanship warranty on the job. Null where a warranty makes no sense
+  /// (a callout, an open-ended contract).
+  final int? warrantyMonths;
+
+  bool get quoteOnly => price == null;
+
+  /// Free-text search over the service, its workshop and where that workshop
+  /// is. [localizedPlace] carries the translated area/governorate in, so the
+  /// model does not have to reach for the location catalogue.
+  bool matchesQuery(String query, {String? localizedPlace}) =>
+      SearchMatch.all(query, [
+        name.ar,
+        name.en,
+        description.ar,
+        description.en,
+        provider.name.ar,
+        provider.name.en,
+        provider.area,
+        provider.region,
+        localizedPlace,
+      ]);
+
   factory ServiceOffering.fromJson(JsonMap json) => ServiceOffering(
         id: json.requireString('id'),
         categoryId: json.stringOr('categoryId', ''),
@@ -36,6 +68,11 @@ class ServiceOffering {
         description: L.fromJson(json['description']),
         price: json.doubleOrNull('price'),
         durationMin: json.intOrNull('durationMin'),
+        includes: [
+          for (final item in (json['includes'] as List<dynamic>? ?? const []))
+            L.fromJson(item)
+        ],
+        warrantyMonths: json.intOrNull('warrantyMonths'),
       );
 
   JsonMap toJson() => {
@@ -46,6 +83,8 @@ class ServiceOffering {
         'description': description.toJson(),
         'price': price,
         'durationMin': durationMin,
+        'includes': [for (final item in includes) item.toJson()],
+        'warrantyMonths': warrantyMonths,
       };
 
   ServiceOffering copyWith({
@@ -56,6 +95,8 @@ class ServiceOffering {
     L? description,
     double? price,
     int? durationMin,
+    List<L>? includes,
+    int? warrantyMonths,
   }) =>
       ServiceOffering(
         id: id ?? this.id,
@@ -65,6 +106,8 @@ class ServiceOffering {
         description: description ?? this.description,
         price: price ?? this.price,
         durationMin: durationMin ?? this.durationMin,
+        includes: includes ?? this.includes,
+        warrantyMonths: warrantyMonths ?? this.warrantyMonths,
       );
 
   @override
@@ -76,7 +119,9 @@ class ServiceOffering {
       other.provider == provider &&
       other.description == description &&
       other.price == price &&
-      other.durationMin == durationMin;
+      other.durationMin == durationMin &&
+      other.warrantyMonths == warrantyMonths &&
+      const ListEquality<L>().equals(other.includes, includes);
 
   @override
   int get hashCode => Object.hash(
@@ -87,5 +132,7 @@ class ServiceOffering {
         description,
         price,
         durationMin,
+        warrantyMonths,
+        Object.hashAll(includes),
       );
 }

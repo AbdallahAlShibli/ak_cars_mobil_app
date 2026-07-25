@@ -147,7 +147,10 @@ class S {
   String get searchHint =>
       t('ابحث عن خدمة، قطعة، أو سيارة…', 'Search services, parts, cars…');
   String get maintenanceTitle => t('متابعة الصيانة', 'Maintenance');
-  String get mostSearched => t('الأكثر بحثاً', 'Most searched');
+  /// Was `mostSearched` ("الأكثر بحثاً" / "Most searched") until 2026-07-25.
+  /// Nothing in the app records searches, so the home rail now says what it
+  /// actually shows: the newest ads.
+  String get latestAds => t('أحدث الإعلانات', 'Latest ads');
   String get bookService => t('حجز صيانة', 'Book service');
   String get roadside => t('مساعدة طريق', 'Roadside');
   String get parts => t('قطع غيار', 'Parts');

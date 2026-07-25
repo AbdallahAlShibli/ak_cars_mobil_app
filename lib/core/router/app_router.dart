@@ -28,10 +28,12 @@ import '../../features/services/requests_screen.dart';
 import '../../features/services/service_detail_screen.dart';
 import '../../features/services/services_screen.dart';
 import '../../features/services/tracking_screen.dart';
+import '../../features/search/search_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/shell/shell_screen.dart';
 import '../../features/shop/cart_screen.dart';
 import '../../features/shop/orders_screen.dart';
+import '../../features/shop/product_detail_screen.dart';
 import '../../features/shop/shop_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -95,6 +97,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const MyAdsScreen(),
       ),
       GoRoute(
+        path: '/shop/product/:id',
+        builder: (context, state) =>
+            ProductDetailScreen(productId: state.pathParameters['id']!),
+      ),
+      GoRoute(
         path: '/cart',
         builder: (context, state) => const CartScreen(),
       ),
@@ -113,6 +120,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/challenge',
         builder: (context, state) => const ChallengeScreen(),
+      ),
+      GoRoute(
+        path: '/search',
+        builder: (context, state) =>
+            SearchScreen(initialQuery: state.uri.queryParameters['q'] ?? ''),
       ),
       GoRoute(
         path: '/settings',

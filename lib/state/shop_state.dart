@@ -83,8 +83,30 @@ class ShopFilterNotifier extends Notifier<ShopFilter> {
 final shopFilterProvider =
     NotifierProvider<ShopFilterNotifier, ShopFilter>(ShopFilterNotifier.new);
 
-/// Instant, local-first filtering — applies as the user taps.
-final filteredProductsProvider = Provider<List<Product>>((ref) =>
-    ref.watch(shopRepositoryProvider).filter(ref.watch(shopFilterProvider)));
+/// Instant, local-first filtering and ordering — applies as the user taps.
+final filteredProductsProvider = Provider<List<Product>>((ref) {
+  final filter = ref.watch(shopFilterProvider);
+  return filter.ordered(ref.watch(shopRepositoryProvider).filter(filter));
+});
+
+/// Every part carrying a live discount, deepest first — the shop's offers
+/// carousel.
+///
+/// Derived, never authored: the banner this replaced advertised "up to 15%
+/// off batteries" as static copy no matter what the catalogue said. An empty
+/// list means the shop has no offers to show and the section disappears,
+/// rather than an evergreen ad nothing has to honour.
+final offersProvider = Provider<List<Product>>((ref) {
+  final offers =
+      ref.watch(productsProvider).where((p) => p.onOffer).toList();
+  offers.sort((a, b) => b.discountPercent.compareTo(a.discountPercent));
+  return offers;
+});
 
 final favoritesProvider = StateProvider<Set<String>>((ref) => {});
+
+/// Parts the user saved from the product page.
+///
+/// Separate from [favoritesProvider] (which holds car-ad ids) so neither
+/// feature has to assume the other's ids can never collide.
+final savedPartsProvider = StateProvider<Set<String>>((ref) => {});

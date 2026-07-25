@@ -105,12 +105,18 @@ class _InkPillState extends State<InkPill> {
                 Icon(widget.icon, size: widget.fontSize + 2, color: fg),
                 const SizedBox(width: 6),
               ],
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontSize: widget.fontSize,
-                  fontWeight: FontWeight.w700,
-                  color: fg,
+              // Flexible so a long label in a narrow column ellipsizes
+              // instead of overflowing the pill.
+              Flexible(
+                child: Text(
+                  widget.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: widget.fontSize,
+                    fontWeight: FontWeight.w700,
+                    color: fg,
+                  ),
                 ),
               ),
             ],

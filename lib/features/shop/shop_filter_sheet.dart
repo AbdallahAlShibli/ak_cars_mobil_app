@@ -314,6 +314,31 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
               ],
             ),
             const SizedBox(height: 16),
+            Text(s.t('التوفر', 'Availability'),
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                SelectChip(
+                  label: s.t('المتوفر الآن', 'In stock'),
+                  icon: Icons.inventory_2_outlined,
+                  selected: _draft.inStockOnly,
+                  onTap: () => setState(() => _draft =
+                      _draft.copyWith(inStockOnly: !_draft.inStockOnly)),
+                ),
+                SelectChip(
+                  label: s.t('عليها عرض', 'On offer'),
+                  icon: Icons.local_offer_outlined,
+                  selected: _draft.onOfferOnly,
+                  onTap: () => setState(() => _draft =
+                      _draft.copyWith(onOfferOnly: !_draft.onOfferOnly)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             Text(s.t('المزود / المتجر', 'Provider / store'),
                 style: const TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w700)),

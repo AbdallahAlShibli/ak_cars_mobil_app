@@ -15,5 +15,6 @@ export 'maintenance_state.dart';
 export 'notifications_state.dart';
 export 'orders_state.dart';
 export 'requests_state.dart';
+export 'search_state.dart';
 export 'settings_state.dart';
 export 'shop_state.dart';

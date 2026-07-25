@@ -42,6 +42,11 @@ class ServiceProvider {
     required this.verified,
     required this.fulfillments,
     this.pickupFee = 3,
+    this.phone,
+    this.whatsapp,
+    this.vatNumber,
+    this.crNumber,
+    this.hours,
   });
 
   final String id;
@@ -55,6 +60,27 @@ class ServiceProvider {
   final Set<Fulfillment> fulfillments;
   final double pickupFee;
 
+  /// Shop landline/mobile in international form (`+968…`).
+  final String? phone;
+
+  /// WhatsApp number, digits only — often a different line from [phone].
+  final String? whatsapp;
+
+  /// Oman VAT Identification Number: `OM` followed by 10 digits, issued by
+  /// the Oman Tax Authority. Only VAT-registered businesses have one (the
+  /// registration threshold is turnover-based), so a null here means "not
+  /// VAT registered" and must not be rendered as a blank field.
+  final String? vatNumber;
+
+  /// Commercial Registration number from the Ministry of Commerce.
+  final String? crNumber;
+
+  /// Opening hours, free text ("Sat–Thu 8:00–20:00").
+  final L? hours;
+
+  /// True once the workshop can issue a VAT invoice for a parts order.
+  bool get vatRegistered => vatNumber != null && vatNumber!.isNotEmpty;
+
   factory ServiceProvider.fromJson(JsonMap json) => ServiceProvider(
         id: json.requireString('id'),
         name: L.fromJson(json['name']),
@@ -67,6 +93,11 @@ class ServiceProvider {
             .map(FulfillmentX.fromKey)
             .toSet(),
         pickupFee: json.doubleOr('pickupFee', 3),
+        phone: json.stringOrNull('phone'),
+        whatsapp: json.stringOrNull('whatsapp'),
+        vatNumber: json.stringOrNull('vatNumber'),
+        crNumber: json.stringOrNull('crNumber'),
+        hours: json['hours'] == null ? null : L.fromJson(json['hours']),
       );
 
   JsonMap toJson() => {
@@ -78,6 +109,11 @@ class ServiceProvider {
         'verified': verified,
         'fulfillments': [for (final f in fulfillments) f.key],
         'pickupFee': pickupFee,
+        'phone': phone,
+        'whatsapp': whatsapp,
+        'vatNumber': vatNumber,
+        'crNumber': crNumber,
+        'hours': hours?.toJson(),
       };
 
   ServiceProvider copyWith({
@@ -89,6 +125,11 @@ class ServiceProvider {
     bool? verified,
     Set<Fulfillment>? fulfillments,
     double? pickupFee,
+    String? phone,
+    String? whatsapp,
+    String? vatNumber,
+    String? crNumber,
+    L? hours,
   }) =>
       ServiceProvider(
         id: id ?? this.id,
@@ -99,6 +140,11 @@ class ServiceProvider {
         verified: verified ?? this.verified,
         fulfillments: fulfillments ?? this.fulfillments,
         pickupFee: pickupFee ?? this.pickupFee,
+        phone: phone ?? this.phone,
+        whatsapp: whatsapp ?? this.whatsapp,
+        vatNumber: vatNumber ?? this.vatNumber,
+        crNumber: crNumber ?? this.crNumber,
+        hours: hours ?? this.hours,
       );
 
   @override
@@ -111,6 +157,11 @@ class ServiceProvider {
       other.distanceKm == distanceKm &&
       other.verified == verified &&
       other.pickupFee == pickupFee &&
+      other.phone == phone &&
+      other.whatsapp == whatsapp &&
+      other.vatNumber == vatNumber &&
+      other.crNumber == crNumber &&
+      other.hours == hours &&
       other.fulfillments.length == fulfillments.length &&
       other.fulfillments.containsAll(fulfillments);
 
@@ -123,6 +174,11 @@ class ServiceProvider {
         distanceKm,
         verified,
         pickupFee,
+        phone,
+        whatsapp,
+        vatNumber,
+        crNumber,
+        hours,
         Object.hashAllUnordered(fulfillments),
       );
 }

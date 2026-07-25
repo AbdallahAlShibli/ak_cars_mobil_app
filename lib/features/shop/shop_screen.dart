@@ -1,4 +1,5 @@
-import 'package:collection/collection.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,10 +8,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/utils/contact.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
+import 'product_widgets.dart';
 import 'shop_filter_sheet.dart';
 
 const _categoryIcons = {
@@ -21,8 +22,9 @@ const _categoryIcons = {
   'lights': Icons.lightbulb_outline_rounded,
 };
 
-/// Parts shop — 2026 e-commerce patterns: promo banner, icon categories,
-/// best-sellers rail, bento product grid, product sheet, sticky cart bar.
+/// Parts shop — pinned search, a real offer banner, category rail, quick
+/// availability filters with sort, top-rated rail and a responsive product
+/// grid. Tapping a part opens [ProductDetailScreen] at `/shop/product/:id`.
 class ShopScreen extends ConsumerStatefulWidget {
   const ShopScreen({super.key});
 
@@ -33,381 +35,334 @@ class ShopScreen extends ConsumerStatefulWidget {
 class _ShopScreenState extends ConsumerState<ShopScreen> {
   String _query = '';
 
+  void _openFilters() {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const ShopFilterSheet(),
+    );
+  }
+
+  Future<void> _pickSort(ShopFilter filter) async {
+    final s = S.of(context);
+    HapticFeedback.selectionClick();
+    final picked = await showModalBottomSheet<ShopSort>(
+      context: context,
+      builder: (context) {
+        final ak = AkColors.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.t('الترتيب', 'Sort by'),
+                    style: const TextStyle(
+                        fontSize: 17, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 6),
+                for (final option in ShopSort.values)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(option.label(s),
+                        style: const TextStyle(fontSize: 13.5)),
+                    trailing: option == filter.sort
+                        ? Icon(Icons.check_rounded, size: 19, color: ak.ink)
+                        : null,
+                    onTap: () => Navigator.pop(context, option),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null) {
+      ref.read(shopFilterProvider.notifier).set(filter.copyWith(sort: picked));
+    }
+  }
+
+  void _openProduct(BuildContext context, Product product) {
+    HapticFeedback.selectionClick();
+    context.push('/shop/product/${product.id}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final filter = ref.watch(shopFilterProvider);
-    final q = _query.trim().toLowerCase();
     final products = ref
         .watch(filteredProductsProvider)
-        .where((p) =>
-            q.isEmpty ||
-            p.name.ar.contains(q) ||
-            p.name.en.toLowerCase().contains(q))
+        .where((p) => p.matchesQuery(_query))
         .toList();
     final cart = ref.watch(cartProvider);
-    final cartItems = ref.watch(cartItemsProvider);
-    final cartTotal = ref.watch(cartTotalProvider);
     final searching = _query.trim().isNotEmpty;
 
-    final bestSellers = [...ref.watch(productsProvider)]
+    final topRated = [...ref.watch(productsProvider)]
       ..sort((a, b) => b.rating.compareTo(a.rating));
+    final offers = ref.watch(offersProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(s.t('متجر القطع', 'Parts shop')),
-        actions: [
-          Padding(
-            padding: const EdgeInsetsDirectional.only(end: 12),
-            child: Badge(
-              isLabelVisible: cart.isNotEmpty,
-              label: Text('${cart.length}'),
-              child: IconButton(
-                icon: const Icon(Icons.shopping_bag_outlined),
-                onPressed: () {
-                  if (!ensureRegistered(context, ref)) return;
-                  context.push('/cart');
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
       body: SafeArea(
+        bottom: false,
         child: Stack(
           children: [
-            ListView(
-              padding: EdgeInsets.only(
-                  top: 4, bottom: cart.isNotEmpty ? 92 : 24),
-              children: [
-                // ------------------------------------ search + filters
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          onChanged: (v) => setState(() => _query = v),
-                          decoration: InputDecoration(
-                            hintText: s.t('ابحث عن قطعة…', 'Search parts…'),
-                            prefixIcon: const Icon(Icons.search_rounded),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(999),
-                              borderSide: BorderSide(
-                                  color: ak.border, width: 1.5),
+            CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  floating: true,
+                  backgroundColor: ak.bg,
+                  surfaceTintColor: Colors.transparent,
+                  title: Text(s.t('متجر القطع', 'Parts shop')),
+                  actions: [
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 12),
+                      child: Badge(
+                        isLabelVisible: cart.isNotEmpty,
+                        label: Text('${cart.length}'),
+                        child: IconButton(
+                          icon: const Icon(Icons.shopping_bag_outlined),
+                          onPressed: () {
+                            if (!ensureRegistered(context, ref)) return;
+                            context.push('/cart');
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                // Pinned so the search box stays reachable however far down
+                // the grid the user has scrolled.
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SearchHeader(
+                    background: ak.bg,
+                    child: _searchRow(filter, s, ak),
+                  ),
+                ),
+                if (!searching) ...[
+                  if (offers.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+                        child: SectionHeader(
+                          s.t('العروض', 'Offers'),
+                          action: offers.length > 1
+                              ? s.t('كل العروض', 'All offers')
+                              : null,
+                          onAction: () => ref
+                              .read(shopFilterProvider.notifier)
+                              .set(filter.copyWith(onOfferOnly: true)),
+                        ),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: _OffersCarousel(
+                        offers: offers,
+                        onOpen: (product) => _openProduct(context, product),
+                      ),
+                    ),
+                  ],
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: SizedBox(
+                        height: 84,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          children: [
+                            _CategoryAvatar(
+                              icon: Icons.apps_rounded,
+                              label: s.t('الكل', 'All'),
+                              selected: filter.categoryId == null,
+                              onTap: () => ref
+                                  .read(shopFilterProvider.notifier)
+                                  .set(filter.copyWith(categoryId: () => null)),
                             ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(999),
-                              borderSide: BorderSide(
-                                  color: ak.border, width: 1.5),
-                            ),
+                            for (final e
+                                in ref.watch(partCategoriesProvider).entries)
+                              _CategoryAvatar(
+                                icon: _categoryIcons[e.key] ??
+                                    Icons.category_outlined,
+                                label: e.value.of(s),
+                                selected: filter.categoryId == e.key,
+                                onTap: () => ref
+                                    .read(shopFilterProvider.notifier)
+                                    .set(filter.copyWith(
+                                        categoryId: () => e.key)),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                      child: SectionHeader(s.t('الأعلى تقييماً', 'Top rated')),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: SizedBox(
+                        height: 118,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          // Never a hardcoded count: the catalogue size is
+                          // the API's to decide.
+                          itemCount: topRated.length.clamp(0, 5),
+                          separatorBuilder: (_, _) => const SizedBox(width: 10),
+                          itemBuilder: (context, i) => _TopRatedCard(
+                            product: topRated[i],
+                            onTap: () => _openProduct(context, topRated[i]),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Badge(
-                        isLabelVisible: filter.activeCount > 0,
-                        label: Text('${filter.activeCount}'),
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              builder: (_) => const ShopFilterSheet(),
-                            );
-                          },
-                          child: const IconTile(Icons.tune_rounded,
-                              size: 48, radius: 999),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                if (!searching) ...[
-                  // ------------------------------------ promo banner
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: GestureDetector(
-                      onTap: () => ref
-                          .read(shopFilterProvider.notifier)
-                          .set(filter.copyWith(
-                              categoryId: () => 'batteries')),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          gradient: AppColors.sunsetGradient,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.amber
-                                  .withValues(alpha: 0.35),
-                              blurRadius: 14,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                ],
+                // ------------------------------------ shopping-for bar
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                    child: AppCard(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      child: Row(
+                        children: [
+                          Icon(Icons.directions_car_outlined,
+                              size: 17, color: ak.ink),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text.rich(
+                              TextSpan(
+                                text: s.t('التسوق لـ: ', 'Shopping for: '),
+                                style: const TextStyle(
+                                    fontSize: 12, fontWeight: FontWeight.w600),
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 9, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white
-                                          .withValues(alpha: 0.16),
-                                      borderRadius:
-                                          BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      s.t('هذا الأسبوع', 'THIS WEEK'),
-                                      style: const TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    s.t('خصم حتى 15% على البطاريات',
-                                        'Up to 15% off batteries'),
-                                    style: const TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    s.t('تركيب مجاني في الورش الشريكة',
-                                        'Free fitting at partner workshops'),
-                                    style: const TextStyle(
-                                        fontSize: 11.5,
-                                        color: Colors.white70),
+                                  TextSpan(
+                                    text: filter.car?.label ??
+                                        s.t('أي سيارة', 'Any car'),
+                                    style: TextStyle(
+                                        color: ak.ink,
+                                        fontWeight: FontWeight.w700),
                                   ),
                                 ],
                               ),
                             ),
-                            const Icon(Icons.battery_charging_full_rounded,
-                                size: 52, color: Colors.white54),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  // ------------------------------------ icon categories
-                  SizedBox(
-                    height: 84,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      children: [
-                        _CategoryAvatar(
-                          icon: Icons.apps_rounded,
-                          label: s.t('الكل', 'All'),
-                          selected: filter.categoryId == null,
-                          onTap: () => ref
-                              .read(shopFilterProvider.notifier)
-                              .set(filter.copyWith(
-                                  categoryId: () => null)),
-                        ),
-                        for (final e in ref.watch(partCategoriesProvider).entries)
-                          _CategoryAvatar(
-                            icon: _categoryIcons[e.key] ??
-                                Icons.category_outlined,
-                            label: e.value.of(s),
-                            selected: filter.categoryId == e.key,
-                            onTap: () => ref
-                                .read(shopFilterProvider.notifier)
-                                .set(filter.copyWith(
-                                    categoryId: () => e.key)),
                           ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // ------------------------------------ best sellers
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: SectionHeader(s.t('الأكثر مبيعاً', 'Best sellers')),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 118,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: 3,
-                      separatorBuilder: (_, _) => const SizedBox(width: 10),
-                      itemBuilder: (context, i) => _BestSellerCard(
-                          product: bestSellers[i],
-                          onTap: () =>
-                              _openProduct(context, bestSellers[i])),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                ],
-                // ------------------------------------ shopping-for bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: AppCard(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
-                    child: Row(
-                      children: [
-                        Icon(Icons.directions_car_outlined,
-                            size: 17, color: ak.ink),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text.rich(
-                            TextSpan(
-                              text: s.t('التسوق لـ: ', 'Shopping for: '),
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600),
-                              children: [
-                                TextSpan(
-                                  text: filter.car?.label ??
-                                      s.t('أي سيارة', 'Any car'),
-                                  style: TextStyle(
-                                      color: ak.ink,
-                                      fontWeight: FontWeight.w700),
-                                ),
-                              ],
-                            ),
+                          GestureDetector(
+                            onTap: _openFilters,
+                            child: StatusBadge(s.t('تغيير', 'Change car')),
                           ),
-                        ),
-                        GestureDetector(
-                          onTap: () => showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            builder: (_) => const ShopFilterSheet(),
-                          ),
-                          child: StatusBadge(s.t('تغيير', 'Change car')),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: SectionHeader(searching
-                      ? s.t('${products.length} نتيجة', '${products.length} results')
-                      : s.t('كل القطع', 'All parts')),
-                ),
-                const SizedBox(height: 10),
-                if (products.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          Icon(Icons.search_off_rounded,
-                              size: 40, color: ak.inkFaint),
-                          const SizedBox(height: 8),
-                          Text(
-                              s.t('لا قطع تطابق هذه الفلاتر',
-                                  'No parts match these filters'),
-                              style: TextStyle(
-                                  fontSize: 13, color: ak.inkSub)),
                         ],
                       ),
                     ),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 11,
-                        crossAxisSpacing: 11,
-                        childAspectRatio: 0.8,
-                      ),
-                      itemCount: products.length,
-                      itemBuilder: (context, i) => Entrance(
-                        delayMs: 30 * i,
-                        child: _ProductCard(
-                          product: products[i],
-                          onTap: () =>
-                              _openProduct(context, products[i]),
-                        ),
+                  ),
+                ),
+                // ------------------------------------ quick filters + sort
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: SizedBox(
+                      height: 38,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        children: [
+                          SelectChip(
+                            label: s.t('المتوفر الآن', 'In stock'),
+                            icon: Icons.inventory_2_outlined,
+                            selected: filter.inStockOnly,
+                            onTap: () => ref
+                                .read(shopFilterProvider.notifier)
+                                .set(filter.copyWith(
+                                    inStockOnly: !filter.inStockOnly)),
+                          ),
+                          const SizedBox(width: 7),
+                          SelectChip(
+                            label: s.t('عليها عرض', 'On offer'),
+                            icon: Icons.local_offer_outlined,
+                            selected: filter.onOfferOnly,
+                            onTap: () => ref
+                                .read(shopFilterProvider.notifier)
+                                .set(filter.copyWith(
+                                    onOfferOnly: !filter.onOfferOnly)),
+                          ),
+                          const SizedBox(width: 7),
+                          SelectChip(
+                            label: filter.sort.label(s),
+                            icon: Icons.swap_vert_rounded,
+                            selected: filter.sort != ShopSort.recommended,
+                            onTap: () => _pickSort(filter),
+                          ),
+                        ],
                       ),
                     ),
                   ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+                    child: SectionHeader(
+                      searching || filter.activeCount > 0
+                          ? s.resultsCount(products.length)
+                          : s.t('كل القطع', 'All parts'),
+                      action: filter.activeCount > 0
+                          ? s.t('مسح الفلاتر', 'Clear filters')
+                          : null,
+                      onAction: () => ref
+                          .read(shopFilterProvider.notifier)
+                          .set(ShopFilter(sort: filter.sort)),
+                    ),
+                  ),
+                ),
+                if (products.isEmpty)
+                  SliverToBoxAdapter(
+                    child: _emptyState(searching, filter, s, ak),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverGrid(
+                      // Max-extent, not a fixed column count: the grid keeps
+                      // its card size on a tablet instead of stretching two
+                      // cards across the width.
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 230,
+                        mainAxisSpacing: 11,
+                        crossAxisSpacing: 11,
+                        childAspectRatio: 0.66,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => Entrance(
+                          delayMs: 30 * i,
+                          child: _ProductCard(
+                            product: products[i],
+                            onTap: () => _openProduct(context, products[i]),
+                          ),
+                        ),
+                        childCount: products.length,
+                      ),
+                    ),
+                  ),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: cart.isNotEmpty ? 96 : 28),
+                ),
               ],
             ),
-            // ------------------------------------ sticky cart bar
             if (cart.isNotEmpty)
               Positioned(
                 left: 20,
                 right: 20,
                 bottom: 14,
-                child: Entrance(
-                  child: GestureDetector(
-                    onTap: () {
-                      if (!ensureRegistered(context, ref)) return;
-                      context.push('/cart');
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 15),
-                      decoration: BoxDecoration(
-                        color: ak.primary,
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.25),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.shopping_bag_rounded,
-                              color: ak.onPrimary, size: 19),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              s.t(
-                                  '${cartItems.length} قطعة · ${cartTotal.toStringAsFixed(2)} ${s.omr}',
-                                  '${cartItems.length} item${cartItems.length == 1 ? '' : 's'} · OMR ${cartTotal.toStringAsFixed(2)}'),
-                              style: TextStyle(
-                                color: ak.onPrimary,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            s.t('عرض السلة', 'View cart'),
-                            style: TextStyle(
-                              color: ak.onPrimary.withValues(alpha: 0.75),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Icon(Icons.chevron_right_rounded,
-                              color: ak.onPrimary.withValues(alpha: 0.75)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                child: const Entrance(child: _CartBar()),
               ),
           ],
         ),
@@ -415,12 +370,328 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
     );
   }
 
-  void _openProduct(BuildContext context, Product product) {
-    HapticFeedback.selectionClick();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => _ProductSheet(product: product),
+  Widget _searchRow(ShopFilter filter, S s, AkColors ak) {
+    return Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 46,
+            child: TextField(
+              onChanged: (v) => setState(() => _query = v),
+              textAlignVertical: TextAlignVertical.center,
+              decoration: InputDecoration(
+                isDense: true,
+                filled: true,
+                fillColor: ak.surface,
+                hintText: s.t('ابحث بالاسم أو رقم القطعة…',
+                    'Search name or part number…'),
+                hintStyle: TextStyle(fontSize: 12.5, color: ak.inkFaint),
+                prefixIcon: Icon(Icons.search_rounded, size: 19, color: ak.inkSub),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: Icon(Icons.close_rounded,
+                            size: 17, color: ak.inkSub),
+                        onPressed: () => setState(() => _query = ''),
+                      ),
+                contentPadding: EdgeInsets.zero,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  borderSide: BorderSide(color: ak.border, width: 1.5),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  borderSide: BorderSide(color: ak.border, width: 1.5),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  borderSide: BorderSide(color: ak.ink, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Badge(
+          isLabelVisible: filter.activeCount > 0,
+          label: Text('${filter.activeCount}'),
+          child: GestureDetector(
+            onTap: _openFilters,
+            child: IconTile(Icons.tune_rounded,
+                size: 46,
+                radius: 999,
+                background: ak.surface,
+                foreground: ak.ink),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyState(bool searching, ShopFilter filter, S s, AkColors ak) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
+      child: Column(
+        children: [
+          Icon(Icons.search_off_rounded, size: 40, color: ak.inkFaint),
+          const SizedBox(height: 10),
+          Text(
+            searching
+                ? s.t('لا نتائج لهذا البحث', 'Nothing matches that search')
+                : s.t('لا قطع تطابق هذه الفلاتر',
+                    'No parts match these filters'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            searching
+                ? s.t('جرّب اسم القطعة أو رقمها أو الماركة.',
+                    'Try the part name, its number, or the brand.')
+                : s.t('وسّع الفلاتر لعرض المزيد من القطع.',
+                    'Widen the filters to see more parts.'),
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12.5, color: ak.inkSub),
+          ),
+          if (filter.activeCount > 0) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: 200,
+              child: FilledButton(
+                onPressed: () => ref
+                    .read(shopFilterProvider.notifier)
+                    .set(ShopFilter(sort: filter.sort)),
+                child: Text(s.t('مسح الفلاتر', 'Clear filters')),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Fixed-height pinned header holding the search row.
+class _SearchHeader extends SliverPersistentHeaderDelegate {
+  _SearchHeader({required this.child, required this.background});
+
+  final Widget child;
+  final Color background;
+
+  static const _height = 62.0;
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
+    return Container(
+      color: background,
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+      child: child,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_SearchHeader old) =>
+      old.child != child || old.background != background;
+}
+
+/// Offers carousel — one page per part carrying a live discount.
+///
+/// Every number on a card is read off the part it links to. The banner this
+/// replaced read "Up to 15% off batteries · free fitting at partner
+/// workshops" no matter what the catalogue contained, and showed one thing at
+/// a time; this shows every real offer and lets the customer swipe.
+class _OffersCarousel extends StatefulWidget {
+  const _OffersCarousel({required this.offers, required this.onOpen});
+
+  final List<Product> offers;
+  final void Function(Product product) onOpen;
+
+  @override
+  State<_OffersCarousel> createState() => _OffersCarouselState();
+}
+
+class _OffersCarouselState extends State<_OffersCarousel> {
+  static const _height = 138.0;
+  static const _advanceAfter = Duration(seconds: 6);
+
+  final _controller = PageController(viewportFraction: 0.9);
+  Timer? _advance;
+  int _page = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleAdvance();
+  }
+
+  /// Rescheduled after each turn rather than run as a periodic timer, so a
+  /// swipe restarts the countdown instead of the page jumping out from under
+  /// a customer who has just taken control. Cancelled in [dispose], which
+  /// also keeps widget tests free of a pending timer.
+  void _scheduleAdvance() {
+    _advance?.cancel();
+    if (widget.offers.length < 2) return;
+    _advance = Timer(_advanceAfter, () {
+      if (!mounted || !_controller.hasClients) return;
+      _controller.animateToPage(
+        (_page + 1) % widget.offers.length,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _advance?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    return Column(
+      children: [
+        SizedBox(
+          height: _height,
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: widget.offers.length,
+            onPageChanged: (i) {
+              setState(() => _page = i);
+              _scheduleAdvance();
+            },
+            itemBuilder: (context, i) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: _OfferCard(
+                product: widget.offers[i],
+                onTap: () => widget.onOpen(widget.offers[i]),
+              ),
+            ),
+          ),
+        ),
+        if (widget.offers.length > 1) ...[
+          const SizedBox(height: 9),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < widget.offers.length; i++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: _page == i ? 18 : 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: _page == i ? ak.ink : ak.border,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// One offer page: the discount, the part, and what it costs now.
+class _OfferCard extends StatelessWidget {
+  const _OfferCard({required this.product, required this.onTap});
+
+  final Product product;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [ak.promoBgA, ak.promoBgB],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: ak.promoBorder),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      DiscountBadge(percent: product.discountPercent),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          s.t('وفّر ${product.saving.toStringAsFixed(2)} ${s.omr}',
+                              'SAVE OMR ${product.saving.toStringAsFixed(2)}'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8,
+                            color: ak.promoSub,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 9),
+                  Text(
+                    product.name.of(s),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: ak.promoTitle,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    s.t(
+                        '${product.price.toStringAsFixed(2)} بدلاً من ${product.oldPrice!.toStringAsFixed(2)} ${s.omr}',
+                        'OMR ${product.price.toStringAsFixed(2)} instead of ${product.oldPrice!.toStringAsFixed(2)}'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11.5, color: ak.promoSub),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    s.t('اعرض القطعة ›', 'View part ›'),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: ak.promoTitle,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(product.icon, size: 46, color: ak.promoSub),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -459,12 +730,10 @@ class _CategoryAvatar extends StatelessWidget {
               decoration: BoxDecoration(
                 color: selected ? ak.primary : ak.surface,
                 shape: BoxShape.circle,
-                border:
-                    selected ? null : Border.all(color: ak.border),
+                border: selected ? null : Border.all(color: ak.border),
               ),
               child: Icon(icon,
-                  size: 22,
-                  color: selected ? ak.onPrimary : ak.inkSub),
+                  size: 22, color: selected ? ak.onPrimary : ak.inkSub),
             ),
             const SizedBox(height: 5),
             Text(
@@ -473,8 +742,7 @@ class _CategoryAvatar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 10.5,
-                fontWeight:
-                    selected ? FontWeight.w800 : FontWeight.w600,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                 color: selected ? ak.ink : ak.inkSub,
               ),
             ),
@@ -485,8 +753,8 @@ class _CategoryAvatar extends StatelessWidget {
   }
 }
 
-class _BestSellerCard extends StatelessWidget {
-  const _BestSellerCard({required this.product, required this.onTap});
+class _TopRatedCard extends StatelessWidget {
+  const _TopRatedCard({required this.product, required this.onTap});
 
   final Product product;
   final VoidCallback onTap;
@@ -518,15 +786,27 @@ class _BestSellerCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (product.brand case final brand?)
+                    Text(
+                      brand.of(s).toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.6,
+                        color: ak.inkFaint,
+                      ),
+                    ),
                   Text(product.name.of(s),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 12.5, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  _Rating(rating: product.rating),
-                  const SizedBox(height: 4),
-                  _PriceLine(product: product, size: 13.5),
+                  const SizedBox(height: 3),
+                  ProductRating(rating: product.rating),
+                  const SizedBox(height: 3),
+                  ProductPriceLine(product: product, size: 13.5),
                 ],
               ),
             ),
@@ -566,89 +846,116 @@ class _ProductCard extends ConsumerWidget {
                     color: ak.surfaceDim,
                     borderRadius: BorderRadius.circular(13),
                   ),
-                  child:
-                      Icon(product.icon, size: 32, color: ak.inkFaint),
+                  child: Opacity(
+                    opacity: product.inStock ? 1 : 0.4,
+                    child: Icon(product.icon, size: 32, color: ak.inkFaint),
+                  ),
                 ),
                 if (product.onOffer)
-                  Positioned(
+                  PositionedDirectional(
                     top: 6,
-                    left: 6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        // Amber, not red — red is reserved for SOS.
-                        color: ak.amber,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '-${(100 - product.price / product.oldPrice! * 100).round()}%',
-                        style: const TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1D1B17),
-                        ),
-                      ),
-                    ),
+                    start: 6,
+                    child: DiscountBadge(percent: product.discountPercent),
                   ),
-                if (fits)
-                  Positioned(
+                if (!product.inStock)
+                  PositionedDirectional(
                     bottom: 6,
-                    left: 6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: ak.successSoft,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        s.t('✓ تناسب سيارتك', '✓ Fits your car'),
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: ak.success,
-                        ),
-                      ),
+                    start: 6,
+                    child: _Tag(
+                      label: s.t('غير متوفرة', 'Out of stock'),
+                      background: ak.surface,
+                      foreground: ak.inkSub,
+                    ),
+                  )
+                else if (fits)
+                  PositionedDirectional(
+                    bottom: 6,
+                    start: 6,
+                    child: _Tag(
+                      label: s.t('✓ تناسب سيارتك', '✓ Fits your car'),
+                      background: ak.successSoft,
+                      foreground: ak.success,
                     ),
                   ),
               ],
             ),
           ),
           const SizedBox(height: 8),
+          if (product.brand case final brand?)
+            Text(
+              brand.of(s).toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+                color: ak.inkFaint,
+              ),
+            ),
           Text(
             product.name.of(s),
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style:
                 const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 3),
-          _Rating(rating: product.rating),
+          Row(
+            children: [
+              ProductRating(rating: product.rating),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  product.deliveryDays == 1
+                      ? s.t('توصيل خلال يوم', '1-day delivery')
+                      : s.t('${product.deliveryDays} أيام',
+                          '${product.deliveryDays} days'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10, color: ak.inkFaint),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 5),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: _PriceLine(product: product, size: 13)),
+              Expanded(child: ProductPriceLine(product: product, size: 13)),
               const SizedBox(width: 6),
               GestureDetector(
-                onTap: () {
-                  if (!ensureRegistered(context, ref)) return;
-                  HapticFeedback.selectionClick();
-                  ref.read(cartProvider.notifier).toggle(product);
-                },
+                onTap: product.inStock
+                    ? () {
+                        if (!ensureRegistered(context, ref)) return;
+                        HapticFeedback.selectionClick();
+                        ref.read(cartProvider.notifier).toggle(product);
+                      }
+                    : null,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   width: 30,
                   height: 30,
                   decoration: BoxDecoration(
-                    color: inCart ? ak.success : ak.surfaceDim,
+                    color: !product.inStock
+                        ? ak.surfaceDim
+                        : inCart
+                            ? ak.success
+                            : ak.surfaceDim,
                     borderRadius: BorderRadius.circular(9),
                   ),
                   child: Icon(
-                    inCart ? Icons.check_rounded : Icons.add_rounded,
+                    !product.inStock
+                        ? Icons.block_rounded
+                        : inCart
+                            ? Icons.check_rounded
+                            : Icons.add_rounded,
                     size: 17,
-                    color: inCart ? Colors.white : ak.ink,
+                    color: !product.inStock
+                        ? ak.inkFaint
+                        : inCart
+                            ? Colors.white
+                            : ak.ink,
                   ),
                 ),
               ),
@@ -660,405 +967,98 @@ class _ProductCard extends ConsumerWidget {
   }
 }
 
-/// Product detail sheet — image carousel, full details, provider card
-/// with contact actions, quantity stepper and add-to-cart.
-class _ProductSheet extends ConsumerStatefulWidget {
-  const _ProductSheet({required this.product});
+/// Small overlay pill on a product image.
+class _Tag extends StatelessWidget {
+  const _Tag({
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
 
-  final Product product;
-
-  @override
-  ConsumerState<_ProductSheet> createState() => _ProductSheetState();
-}
-
-class _ProductSheetState extends ConsumerState<_ProductSheet> {
-  int _qty = 1;
-  int _photo = 0;
-  final _photos = PageController();
-
-  @override
-  void dispose() {
-    _photos.dispose();
-    super.dispose();
-  }
+  final String label;
+  final Color background;
+  final Color foreground;
 
   @override
   Widget build(BuildContext context) {
-    final ak = AkColors.of(context);
-    final s = S.of(context);
-    final p = widget.product;
-    final provider = ref
-        .watch(shopSellersProvider)
-        .where((x) => x.id == p.providerId)
-        .firstOrNull;
-
-    return SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.86,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Expanded(
-              child: ListView(
-                shrinkWrap: true,
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                children: [
-                  // ---------------------------------- image carousel
-                  Stack(
-                    children: [
-                      Container(
-                        height: 190,
-                        decoration: BoxDecoration(
-                          color: ak.surfaceDim,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: PageView.builder(
-                          controller: _photos,
-                          itemCount: p.photoCount,
-                          onPageChanged: (i) =>
-                              setState(() => _photo = i),
-                          itemBuilder: (context, i) => Center(
-                            child: Icon(
-                              i == 0 ? p.icon : Icons.photo_outlined,
-                              size: 64,
-                              color: ak.inkFaint,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (p.onOffer)
-                        Positioned(
-                          top: 10,
-                          left: 10,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 9, vertical: 4),
-                            decoration: BoxDecoration(
-                              // Amber, not red — red is reserved for SOS.
-                              color: ak.amber,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              '-${(100 - p.price / p.oldPrice! * 100).round()}% OFF',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF1D1B17),
-                              ),
-                            ),
-                          ),
-                        ),
-                      Positioned(
-                        bottom: 10,
-                        left: 0,
-                        right: 0,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            for (var i = 0; i < p.photoCount; i++)
-                              AnimatedContainer(
-                                duration:
-                                    const Duration(milliseconds: 180),
-                                margin: const EdgeInsets.symmetric(
-                                    horizontal: 3),
-                                width: _photo == i ? 18 : 7,
-                                height: 7,
-                                decoration: BoxDecoration(
-                                  color: _photo == i
-                                      ? ak.ink
-                                      : ak.surface,
-                                  borderRadius:
-                                      BorderRadius.circular(4),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  // ---------------------------------- name + rating
-                  Text(p.name.of(s),
-                      style: const TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 5),
-                  Row(
-                    children: [
-                      _Rating(rating: p.rating),
-                      const SizedBox(width: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: p.fits.contains('any')
-                              ? ak.surfaceDim
-                              : ak.successSoft,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          p.fits.contains('any')
-                              ? s.t('تناسب كل السيارات', 'Universal fit')
-                              : s.t('تناسب: ${p.fits.join('، ')}',
-                                  'Fits: ${p.fits.join(', ')}'),
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: p.fits.contains('any')
-                                ? ak.ink
-                                : ak.success,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    p.details(s),
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        color: ak.inkSub,
-                        height: 1.55),
-                  ),
-                  const SizedBox(height: 14),
-                  // ---------------------------------- provider card
-                  if (provider != null)
-                    Container(
-                      padding: const EdgeInsets.all(13),
-                      decoration: BoxDecoration(
-                        color: ak.surfaceDim,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              const IconTile(Icons.storefront_rounded,
-                                  size: 42, radius: 999),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Flexible(
-                                          child: Text(
-                                            provider.name.of(s),
-                                            overflow:
-                                                TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                                fontSize: 13.5,
-                                                fontWeight:
-                                                    FontWeight.w700),
-                                          ),
-                                        ),
-                                        if (provider.verified) ...[
-                                          const SizedBox(width: 4),
-                                          Icon(
-                                              Icons.verified_rounded,
-                                              size: 14,
-                                              color: ak.ink),
-                                        ],
-                                      ],
-                                    ),
-                                    Text(
-                                      '${provider.area}, ${provider.region} · ${provider.distanceKm} km',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: ak.inkFaint),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  style: OutlinedButton.styleFrom(
-                                    minimumSize:
-                                        const Size.fromHeight(42),
-                                    backgroundColor: ak.surface,
-                                  ),
-                                  onPressed: () => Contact.call(
-                                      context, '+96824000000'),
-                                  icon: const Icon(Icons.phone_outlined,
-                                      size: 15),
-                                  label: Text(s.t('اتصل', 'Call'),
-                                      style: const TextStyle(fontSize: 12.5)),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    minimumSize:
-                                        const Size.fromHeight(42),
-                                    backgroundColor:
-                                        const Color(0xFF25A55A),
-                                  ),
-                                  onPressed: () => Contact.whatsapp(
-                                    context,
-                                    '96892000000',
-                                    message: s.t(
-                                        'مرحباً، أستفسر عن "${p.name.ar}" في متجر AK Cars.',
-                                        'Hi, I am asking about "${p.name.en}" on AK Cars shop.'),
-                                  ),
-                                  icon: const Icon(Icons.chat_rounded,
-                                      size: 15),
-                                  label: Text(s.t('واتساب', 'WhatsApp'),
-                                      style: const TextStyle(fontSize: 12.5)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            // ---------------------------------- price + qty + CTA
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              decoration: BoxDecoration(
-                color: ak.surface,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      _PriceLine(product: p, size: 18),
-                      const Spacer(),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: ak.surfaceDim,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(Icons.remove_rounded,
-                                  size: 18),
-                              onPressed: _qty > 1
-                                  ? () => setState(() => _qty--)
-                                  : null,
-                            ),
-                            Text('$_qty',
-                                style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800)),
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              icon:
-                                  const Icon(Icons.add_rounded, size: 18),
-                              onPressed: () => setState(() => _qty++),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: () {
-                      if (!ensureRegistered(context, ref)) return;
-                      HapticFeedback.mediumImpact();
-                      ref.read(cartProvider.notifier).setQty(p.id, _qty);
-                      Navigator.pop(context);
-                    },
-                    icon: const Icon(Icons.shopping_bag_outlined,
-                        size: 17),
-                    label: Text(s.t(
-                        'أضف $_qty للسلة — ${(p.price * _qty).toStringAsFixed(2)} ${s.omr}',
-                        'Add $_qty to cart — OMR ${(p.price * _qty).toStringAsFixed(2)}')),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          color: foreground,
         ),
       ),
     );
   }
 }
 
-class _Rating extends StatelessWidget {
-  const _Rating({required this.rating});
-
-  final double rating;
-
-  @override
-  Widget build(BuildContext context) {
-    final ak = AkColors.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.star_rounded, size: 13, color: ak.amber),
-        const SizedBox(width: 3),
-        Text(
-          rating.toStringAsFixed(1),
-          style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w700,
-              color: ak.inkSub),
-        ),
-      ],
-    );
-  }
-}
-
-class _PriceLine extends StatelessWidget {
-  const _PriceLine({required this.product, required this.size});
-
-  final Product product;
-  final double size;
+/// Sticky "N items · OMR x" bar over the grid.
+class _CartBar extends ConsumerWidget {
+  const _CartBar();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ak = AkColors.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Flexible(
-          child: Text(
-            'OMR ${product.price.toStringAsFixed(2)}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: size,
-              fontWeight: FontWeight.w800,
-              color: ak.ink,
+    final s = S.of(context);
+    final items = ref.watch(cartItemsProvider);
+    final total = ref.watch(cartTotalProvider);
+
+    return GestureDetector(
+      onTap: () {
+        if (!ensureRegistered(context, ref)) return;
+        context.push('/cart');
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+        decoration: BoxDecoration(
+          color: ak.primary,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
-          ),
+          ],
         ),
-        if (product.onOffer) ...[
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              product.oldPrice!.toStringAsFixed(2),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: size - 3,
-                color: ak.inkFaint,
-                decoration: TextDecoration.lineThrough,
+        child: Row(
+          children: [
+            Icon(Icons.shopping_bag_rounded, color: ak.onPrimary, size: 19),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                s.t('${items.length} قطعة · ${total.toStringAsFixed(2)} ${s.omr}',
+                    '${items.length} item${items.length == 1 ? '' : 's'} · OMR ${total.toStringAsFixed(2)}'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: ak.onPrimary,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-          ),
-        ],
-      ],
+            const SizedBox(width: 8),
+            Text(
+              s.t('السلة', 'View cart'),
+              style: TextStyle(
+                color: ak.onPrimary.withValues(alpha: 0.75),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                color: ak.onPrimary.withValues(alpha: 0.75)),
+          ],
+        ),
+      ),
     );
   }
 }

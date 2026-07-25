@@ -7,6 +7,11 @@ abstract final class AppConstants {
   /// prices parts and services in two — keep display consistent app-wide.
   static const priceDecimals = 2;
 
+  /// Oman standard VAT rate (Royal Decree 121/2020, in force since April
+  /// 2021). Shop prices are quoted VAT-inclusive, so this is only used to
+  /// show the buyer how much of a price is tax.
+  static const vatRate = 0.05;
+
   /// Cars-market feed page size (matches [AppConfig.defaultPageSize]).
   static const listingsPageSize = 20;
 
