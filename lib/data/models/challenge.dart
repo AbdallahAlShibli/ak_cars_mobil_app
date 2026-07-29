@@ -55,6 +55,7 @@ class WeeklyChallenge {
     required this.badgeName,
     required this.endsInDays,
     this.feedsMaintenance,
+    this.recordTitle,
   });
 
   final String id;
@@ -68,6 +69,14 @@ class WeeklyChallenge {
   /// When set, completing the challenge writes a maintenance record of this
   /// type — the handoff's "challenge feeds the maintenance log".
   final MaintenanceType? feedsMaintenance;
+
+  /// Title of the record [feedsMaintenance] writes. Null falls back to
+  /// [challengeRecordTitle].
+  ///
+  /// Carried per challenge because the record has to say what was actually
+  /// done: an EV owner who inspected a charging cable must not find "tyre
+  /// pressure check" in their service history.
+  final L? recordTitle;
 
   int get doneCount => steps.where((s) => s.done).length;
   bool get allDone => doneCount == steps.length;
@@ -87,6 +96,8 @@ class WeeklyChallenge {
                 MaintenanceType.values,
                 MaintenanceType.oil,
               ),
+        recordTitle:
+            json['recordTitle'] == null ? null : L.fromJson(json['recordTitle']),
       );
 
   JsonMap toJson() => {
@@ -98,6 +109,7 @@ class WeeklyChallenge {
         'badgeName': badgeName.toJson(),
         'endsInDays': endsInDays,
         'feedsMaintenance': feedsMaintenance?.key,
+        'recordTitle': recordTitle?.toJson(),
       };
 
   WeeklyChallenge copyWith({
@@ -109,6 +121,7 @@ class WeeklyChallenge {
     L? badgeName,
     int? endsInDays,
     MaintenanceType? feedsMaintenance,
+    L? recordTitle,
   }) =>
       WeeklyChallenge(
         id: id ?? this.id,
@@ -119,6 +132,7 @@ class WeeklyChallenge {
         badgeName: badgeName ?? this.badgeName,
         endsInDays: endsInDays ?? this.endsInDays,
         feedsMaintenance: feedsMaintenance ?? this.feedsMaintenance,
+        recordTitle: recordTitle ?? this.recordTitle,
       );
 
   @override
@@ -131,6 +145,7 @@ class WeeklyChallenge {
       other.badgeName == badgeName &&
       other.endsInDays == endsInDays &&
       other.feedsMaintenance == feedsMaintenance &&
+      other.recordTitle == recordTitle &&
       Object.hashAll(other.steps) == Object.hashAll(steps);
 
   @override
@@ -142,12 +157,14 @@ class WeeklyChallenge {
         badgeName,
         endsInDays,
         feedsMaintenance,
+        recordTitle,
         Object.hashAll(steps),
       );
 }
 
 /// Product rule: a completed challenge that feeds the maintenance log writes
-/// a record under this title, attributed to the app rather than a workshop.
+/// a record under [WeeklyChallenge.recordTitle], or this when the challenge
+/// does not name one. Attributed to the app rather than a workshop.
 const challengeRecordTitle =
     L('فحص ضغط الإطارات (تحدي)', 'Tyre pressure check (challenge)');
 

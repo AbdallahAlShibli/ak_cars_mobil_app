@@ -51,6 +51,23 @@ abstract final class ApiEndpoints {
   static const serviceProviders = '/service-marketplace/providers';
   static const serviceOfferings = '/service-marketplace/offerings';
 
+  /// Live promoted offers — the home page's offers rail.
+  static const servicePromotions = '/service-marketplace/promotions';
+
+  /// Time-boxed workshop discounts on listed services. The server returns only
+  /// founder-approved, in-window offers; the client validates them again
+  /// against the catalogue before rendering.
+  static const serviceOffers = '/service-marketplace/offers';
+
+  /// Marketplace-wide booking counts per category, aggregated server-side.
+  static const serviceCategoryDemand = '/service-marketplace/category-demand';
+
+  /// Completed-booking counts per workshop, aggregated server-side.
+  static const serviceWorkshopDemand = '/service-marketplace/workshop-demand';
+
+  /// Customer ratings per workshop. Only rated workshops appear.
+  static const serviceWorkshopRatings = '/service-marketplace/ratings';
+
   static String providerAddOns(String providerId) =>
       '/service-marketplace/providers/$providerId/add-ons';
 
@@ -67,6 +84,26 @@ abstract final class ApiEndpoints {
 
   static String serviceRequestApproval(String requestId) =>
       '/service-marketplace/requests/$requestId/approve';
+
+  /// "Request a part + installation" — a booking that starts without a price
+  /// (spec §6). Same collection as [serviceRequests]; a separate path because
+  /// the body is a part description rather than an offering id.
+  static const partRequests = '/service-marketplace/part-requests';
+
+  /// The workshop's itemised quote against a part request.
+  static String requestQuote(String requestId) =>
+      '/service-marketplace/requests/$requestId/quote';
+
+  // --------------------------------------------------------------- reviews
+  /// Verified reviews. A `POST` here is only valid for a booking that reached
+  /// `releasedToWorkshop`, and `(bookingId, direction)` must be unique — the
+  /// server owns both rules; the client only mirrors them (spec §8).
+  static const reviews = '/reviews';
+
+  static String review(String reviewId) => '/reviews/$reviewId';
+
+  static String providerReviews(String providerId) =>
+      '/service-marketplace/providers/$providerId/reviews';
 
   // ------------------------------------------------------------------ shop
   static const partCategories = '/products/categories';

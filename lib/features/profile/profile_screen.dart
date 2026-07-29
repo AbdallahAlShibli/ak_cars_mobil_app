@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -28,14 +29,13 @@ class ProfileScreen extends ConsumerWidget {
     final cart = ref.watch(cartProvider);
     final settings = ref.watch(settingsProvider);
 
-    final activeCount = requests
-        .where((r) =>
-            r.status != RequestStatus.completed &&
-            r.status != RequestStatus.disputed)
-        .length;
+    final activeCount = requests.where((r) => !r.escrow.isTerminal).length;
     final openOrders = orders.where((o) => o.status.held).length;
-    // Held payments = active service requests + unconfirmed shop orders.
-    final heldCount = activeCount + openOrders;
+    // Held payments = bookings whose escrow is actually holding money, plus
+    // unconfirmed shop orders. A booking still awaiting its funds
+    // confirmation is *not* holding anything, so it must not be counted.
+    final heldCount =
+        requests.where((r) => r.escrow.holdsFunds).length + openOrders;
 
     return Scaffold(
       backgroundColor: ak.bg,
@@ -86,7 +86,7 @@ class ProfileScreen extends ConsumerWidget {
                     value: '$activeCount',
                     label: s.t('نشط', 'Active'),
                     highlight: activeCount > 0,
-                    onTap: () => context.push('/requests'),
+                    onTap: () => context.go('/bookings'),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -116,39 +116,47 @@ class ProfileScreen extends ConsumerWidget {
                 ),
                 _MenuRow(
                   icon: Icons.build_rounded,
-                  label: s.t('طلبات الصيانة', 'Service requests'),
+                  label: s.t('حجوزاتي', 'My bookings'),
                   trailing: activeCount > 0
                       ? StatusBadge.good(
                           s.t('$activeCount نشط', '$activeCount active'))
                       : null,
-                  onTap: () => context.push('/requests'),
+                  onTap: () => context.go('/bookings'),
                 ),
-                _MenuRow(
-                  icon: Icons.inventory_2_outlined,
-                  label: s.t('طلبات المتجر', 'Shop orders'),
-                  // Was showing the CART count on the ORDERS row.
-                  trailing: openOrders > 0
-                      ? StatusBadge.good(
-                          s.t('$openOrders جارٍ', '$openOrders open'))
-                      : (orders.isEmpty ? null : StatusBadge('${orders.length}')),
-                  onTap: () => context.push('/orders'),
-                ),
-                if (cart.isNotEmpty)
+                // Phase-2 pillars: the rows come back with their flags
+                // (lib/config/app_flags.dart), and there is no route to push
+                // to while they are off.
+                if (AppFlags.partsStoreEnabled) ...[
                   _MenuRow(
-                    icon: Icons.shopping_bag_outlined,
-                    label: s.t('سلة المشتريات', 'Shopping cart'),
-                    trailing: StatusBadge.warn(s.t(
-                        '${cart.length} قطعة', '${cart.length} items')),
-                    onTap: () => context.push('/cart'),
+                    icon: Icons.inventory_2_outlined,
+                    label: s.t('طلبات المتجر', 'Shop orders'),
+                    // Was showing the CART count on the ORDERS row.
+                    trailing: openOrders > 0
+                        ? StatusBadge.good(
+                            s.t('$openOrders جارٍ', '$openOrders open'))
+                        : (orders.isEmpty
+                            ? null
+                            : StatusBadge('${orders.length}')),
+                    onTap: () => context.push('/orders'),
                   ),
-                _MenuRow(
-                  icon: Icons.campaign_outlined,
-                  label: s.t('إعلاناتي', 'My car ads'),
-                  trailing:
-                      ads.isEmpty ? null : StatusBadge('${ads.length}'),
-                  // Was context.go('/cars') — the whole market, not my ads.
-                  onTap: () => context.push('/my-ads'),
-                ),
+                  if (cart.isNotEmpty)
+                    _MenuRow(
+                      icon: Icons.shopping_bag_outlined,
+                      label: s.t('سلة المشتريات', 'Shopping cart'),
+                      trailing: StatusBadge.warn(s.t(
+                          '${cart.length} قطعة', '${cart.length} items')),
+                      onTap: () => context.push('/cart'),
+                    ),
+                ],
+                if (AppFlags.carMarketplaceEnabled)
+                  _MenuRow(
+                    icon: Icons.campaign_outlined,
+                    label: s.t('إعلاناتي', 'My car ads'),
+                    trailing:
+                        ads.isEmpty ? null : StatusBadge('${ads.length}'),
+                    // Was context.go('/cars') — the whole market, not my ads.
+                    onTap: () => context.push('/my-ads'),
+                  ),
                 _MenuRow(
                   icon: Icons.credit_card_rounded,
                   label: s.t('المدفوعات', 'Payments'),
@@ -428,8 +436,16 @@ class _IdentityCard extends ConsumerWidget {
                             // and can be empty on a profile saved before the
                             // field was required — no dangling " · " then.
                             [
-                              if (profile!.region.trim().isNotEmpty)
-                                locations.localized(profile.region, s.isAr),
+                              // Narrowest first — "Seeb, Muscat" — and each
+                              // part only when it is actually on file.
+                              if (profile!.wilayat.trim().isNotEmpty ||
+                                  profile.region.trim().isNotEmpty)
+                                [
+                                  if (profile.wilayat.trim().isNotEmpty)
+                                    locations.localized(profile.wilayat, s.isAr),
+                                  if (profile.region.trim().isNotEmpty)
+                                    locations.localized(profile.region, s.isAr),
+                                ].join(s.isAr ? '، ' : ', '),
                               s.t('حساب موثّق', 'Verified account'),
                             ].join(' · '),
                             maxLines: 1,

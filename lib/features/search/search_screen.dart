@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
@@ -232,11 +233,24 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// Empty-query state. The chips are read off the real catalogues rather
   /// than being a hand-written list of "popular searches" nobody measured.
   Widget _suggestions(S s, AkColors ak) {
+    // Suggestions follow the saved car: an EV owner's first four service
+    // chips are their own services, and their parts chips lead with charging.
+    // Both lists are still read off the real catalogues — the order changes,
+    // nothing is invented.
+    final powertrain = ref.watch(primaryPowertrainProvider);
     final categories = ref
         .watch(serviceMarketplaceRepositoryProvider)
-        .categories
+        .categoriesFor(powertrain)
         .take(4);
-    final parts = ref.watch(partCategoriesProvider).entries.take(3);
+    final partEntries = ref.watch(partCategoriesProvider).entries.toList();
+    if (powertrain?.plugsIn ?? false) {
+      partEntries.sort((a, b) => a.key == 'charging'
+          ? -1
+          : b.key == 'charging'
+              ? 1
+              : 0);
+    }
+    final parts = partEntries.take(3);
     final makes = ref.watch(vehicleCatalogProvider).makes.take(4);
 
     Widget group(String title, List<Widget> chips) => Padding(
@@ -268,20 +282,27 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: [
         Text(
-          s.t('ابحث في الخدمات وقطع الغيار وإعلانات السيارات.',
-              'Search across services, parts and car ads.'),
+          // The blurb names only what this build can actually return, so it
+          // cannot promise a catalogue the search does not search.
+          AppFlags.partsStoreEnabled || AppFlags.carMarketplaceEnabled
+              ? s.t('ابحث في الخدمات وقطع الغيار وإعلانات السيارات.',
+                  'Search across services, parts and car ads.')
+              : s.t('ابحث في الخدمات والورش.',
+                  'Search across services and workshops.'),
           style: TextStyle(fontSize: 12.5, color: ak.inkSub),
         ),
         const SizedBox(height: 18),
         group(s.t('خدمات', 'Services'), [
           for (final c in categories) chip(c.name.of(s).replaceAll('\n', ' ')),
         ]),
-        group(s.t('قطع الغيار', 'Parts'), [
-          for (final e in parts) chip(e.value.of(s)),
-        ]),
-        group(s.t('ماركات', 'Makes'), [
-          for (final m in makes) chip(m.name),
-        ]),
+        if (AppFlags.partsStoreEnabled)
+          group(s.t('قطع الغيار', 'Parts'), [
+            for (final e in parts) chip(e.value.of(s)),
+          ]),
+        if (AppFlags.carMarketplaceEnabled)
+          group(s.t('ماركات', 'Makes'), [
+            for (final m in makes) chip(m.name),
+          ]),
       ],
     );
   }

@@ -1,5 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/app_flags.dart';
+import '../core/constants/app_constants.dart';
 import '../data/models/user_profile.dart';
 import '../di/providers.dart';
 
@@ -7,6 +10,10 @@ import '../di/providers.dart';
 ///
 /// Rule: browsing is open, but transactions (booking, checkout, publishing an
 /// ad) require a completed registration.
+///
+/// [onboardingSeen] and [startChoiceMade] are *installation* facts, not
+/// account facts: they gate the first-launch flow and are persisted to
+/// SharedPreferences so a cold start does not replay the intro.
 class AuthState {
   const AuthState({
     this.profile,
@@ -19,6 +26,18 @@ class AuthState {
   final bool startChoiceMade;
 
   bool get isRegistered => profile != null;
+
+  /// Where a cold start belongs: the intro runs once, then the app opens on
+  /// its first tab. Kept here rather than in the router so the rule has one
+  /// home and can be unit-tested without building a navigator.
+  ///
+  /// The destination is [AppFlags.startLocation] rather than a literal, so it
+  /// can never name a tab the current build does not register.
+  String get initialRoute {
+    if (!onboardingSeen) return '/splash';
+    if (!startChoiceMade) return '/start-choice';
+    return AppFlags.startLocation;
+  }
 
   AuthState copyWith({
     UserProfile? profile,
@@ -33,12 +52,36 @@ class AuthState {
 }
 
 class AuthNotifier extends Notifier<AuthState> {
+  SharedPreferences get _prefs => ref.read(sharedPrefsProvider);
+
   @override
-  AuthState build() => const AuthState();
+  AuthState build() => AuthState(
+        onboardingSeen:
+            _prefs.getBool(AppConstants.prefsOnboardingSeen) ?? false,
+        startChoiceMade:
+            _prefs.getBool(AppConstants.prefsStartChoiceMade) ?? false,
+      );
 
-  void markOnboardingSeen() => state = state.copyWith(onboardingSeen: true);
+  /// Re-attaches the stored profile after a cold start.
+  ///
+  /// Called once from bootstrap, before the first frame. Without it the app
+  /// came up anonymous every launch: the profile only ever lived in memory,
+  /// so a user who had registered was asked to register again at the next
+  /// checkout.
+  Future<void> restore() async {
+    final stored = await ref.read(authRepositoryProvider).currentUser();
+    if (stored != null) state = state.copyWith(profile: stored);
+  }
 
-  void markStartChoiceMade() => state = state.copyWith(startChoiceMade: true);
+  void markOnboardingSeen() {
+    state = state.copyWith(onboardingSeen: true);
+    _prefs.setBool(AppConstants.prefsOnboardingSeen, true);
+  }
+
+  void markStartChoiceMade() {
+    state = state.copyWith(startChoiceMade: true);
+    _prefs.setBool(AppConstants.prefsStartChoiceMade, true);
+  }
 
   /// Applies the registration optimistically, then persists it.
   ///
@@ -53,6 +96,9 @@ class AuthNotifier extends Notifier<AuthState> {
       onboardingSeen: true,
       startChoiceMade: true,
     );
+    // Someone who registered has, by definition, finished the intro — even if
+    // they reached the form from a deep link rather than from onboarding.
+    _markFirstRunDone();
     try {
       final stored = await ref.read(authRepositoryProvider).register(profile);
       state = state.copyWith(profile: stored);
@@ -88,7 +134,13 @@ class AuthNotifier extends Notifier<AuthState> {
   /// user back to browsing, not through the intro again.
   Future<void> signOut() async {
     state = const AuthState(onboardingSeen: true, startChoiceMade: true);
+    _markFirstRunDone();
     await ref.read(authRepositoryProvider).signOut();
+  }
+
+  void _markFirstRunDone() {
+    _prefs.setBool(AppConstants.prefsOnboardingSeen, true);
+    _prefs.setBool(AppConstants.prefsStartChoiceMade, true);
   }
 }
 

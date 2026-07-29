@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../widgets/sand_widgets.dart';
 import 'app_colors.dart';
 
 /// Sand & Ink theme. Typography: IBM Plex Sans Arabic for text,
@@ -63,6 +65,14 @@ abstract final class AppTheme {
           fontSize: 19,
           color: ak.ink,
         ),
+      ),
+      // Every AppBar back arrow in the app renders as the Sand & Ink circular
+      // chevron instead of the stock Material arrow — one place, no per-screen
+      // `leading:` overrides to keep in sync.
+      actionIconTheme: ActionIconThemeData(
+        backButtonIconBuilder: (context) => const SandBackButton.icon(),
+        closeButtonIconBuilder: (context) =>
+            Icon(LucideIcons.x, size: 20, color: ak.ink),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(

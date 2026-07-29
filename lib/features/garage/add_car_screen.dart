@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -42,6 +43,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
   String? _trim;
   int? _year;
   String? _color;
+  Powertrain? _powertrain;
   String? _governorate;
   String? _wilayat;
 
@@ -67,6 +69,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
     _trim = car.trim;
     _year = car.year;
     _color = car.color;
+    _powertrain = car.powertrain;
     _governorate = car.governorate;
     _wilayat = car.wilayat;
     _nickname.text = car.nickname ?? '';
@@ -101,6 +104,10 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
         nickname: _nickname.text.trim().isEmpty ? null : _nickname.text.trim(),
         trim: _trim,
         color: _color,
+        // Optional, and never guessed from the model name: the app changes
+        // what it shows for an electric car, so it may only act on what the
+        // owner actually told it.
+        powertrain: _powertrain,
         plate: _plate,
         odometerKm: int.tryParse(_odometer.text.trim()),
         governorate: _governorate,
@@ -120,6 +127,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
     if (widget.isEditing) {
       final updated = _compose(widget.carId!);
       ref.read(garageProvider.notifier).update(updated);
+      _syncOdometer(updated);
       context.pop(true);
       messenger.showSnackBar(SnackBar(
         content: Text(s.t('تم تحديث ${updated.displayName}',
@@ -131,6 +139,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
     final wasEmpty = ref.read(garageProvider).isEmpty;
     final car = _compose(DateTime.now().millisecondsSinceEpoch.toString());
     ref.read(garageProvider.notifier).add(car);
+    _syncOdometer(car);
     // Only the first car sets the service region — registering a second car
     // used to silently move the region the whole app searches in.
     if (wasEmpty && _governorate != null) {
@@ -142,16 +151,30 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
     // underneath, so a bare pop would drop the user back onto the "how do
     // you want to start?" question they just answered — which read as the
     // Finish button doing nothing at all. Deep-linked straight to /add-car
-    // (nothing to pop) → land on Home instead.
+    // (nothing to pop) → land on the app's first tab instead.
     if (context.canPop()) {
       context.pop(true);
     } else {
-      context.go('/home');
+      context.go(AppFlags.startLocation);
     }
     messenger.showSnackBar(SnackBar(
       content: Text(s.t('تمت إضافة ${car.label} إلى مرآبك',
           '${car.label} added to your garage')),
     ));
+  }
+
+  /// Puts the mileage typed on this form into the car's maintenance book too.
+  ///
+  /// The form and the maintenance page must never be able to show two
+  /// different readings for the same car, and the book is what every countdown
+  /// on that car is measured from — a reading entered here has to reach it.
+  void _syncOdometer(Car car) {
+    final km = car.odometerKm;
+    if (km == null || km <= 0) return;
+    if (km == ref.read(maintenanceBookProvider(car.id)).currentOdometerKm) {
+      return;
+    }
+    ref.read(garageProvider.notifier).setOdometer(car.id, km);
   }
 
   Future<void> _confirmDelete() async {
@@ -464,6 +487,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                                   CarImage(
                                       make: _make!.name,
                                       model: _model!,
+                                      color: _color,
                                       height: 110),
                                   const SizedBox(height: 4),
                                   Text(
@@ -502,6 +526,15 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                     swatch: _color == null ? null : _specs.swatchOf(_color!),
                     optional: true,
                     onTap: _pickColor,
+                  ),
+                  // One tap, five options, skippable — the point of asking is
+                  // that an electric car gets EV maintenance and EV services
+                  // instead of oil-change reminders, and that is worth exactly
+                  // one tap of the owner's time.
+                  _PowertrainField(
+                    selected: _powertrain,
+                    onSelected: (p) => setState(
+                        () => _powertrain = _powertrain == p ? null : p),
                   ),
                   _TextField(
                     icon: Icons.badge_outlined,
@@ -617,10 +650,74 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
     final parts = <String>[
       '${_make!.name} $_model${_trim == null ? '' : ' $_trim'} $_year',
       if (_color != null) _specs.localized(_color!, s.isAr),
+      if (_powertrain != null) _powertrain!.label.of(s),
       if (_wilayat != null) _locations.localized(_wilayat!, s.isAr),
       ?_plate,
     ];
     return parts.join(s.t(' · ', ' · '));
+  }
+}
+
+/// Powertrain row: a label, a one-line explanation of what changes, and five
+/// chips. Deliberately not another popup picker — it is the one field on this
+/// form whose answer changes the rest of the app, so it has to be cheaper to
+/// answer than to skip.
+class _PowertrainField extends StatelessWidget {
+  const _PowertrainField({required this.selected, required this.onSelected});
+
+  final Powertrain? selected;
+  final ValueChanged<Powertrain> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(selected?.icon ?? Icons.local_gas_station_outlined,
+                  size: 17, color: ak.inkSub),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(s.t('نوع الوقود / المحرك', 'Fuel / powertrain'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 6),
+              Text(s.t('(اختياري)', '(optional)'),
+                  style: TextStyle(fontSize: 11, color: ak.inkFaint)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            s.t('يحدد ما نعرضه لك: صيانة وخدمات وقطع سيارتك.',
+                'Sets what we show you: maintenance, services and parts for '
+                    'your car.'),
+            style: TextStyle(fontSize: 11.5, color: ak.inkFaint),
+          ),
+          const SizedBox(height: 9),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final p in Powertrain.values)
+                SelectChip(
+                  label: p.label.of(s),
+                  icon: p.icon,
+                  selected: selected == p,
+                  onTap: () => onSelected(p),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 

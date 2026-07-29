@@ -25,6 +25,14 @@ abstract final class IconCodec {
     'monitor_heart': Icons.monitor_heart_outlined,
     'assignment_turned_in': Icons.assignment_turned_in_outlined,
 
+    // ------------------------------------------- electric-car service & parts
+    'electric_car': Icons.electric_car_rounded,
+    'battery_saver': Icons.battery_saver_rounded,
+    'cable': Icons.cable_rounded,
+    'ev_station': Icons.ev_station_outlined,
+    'electrical_services': Icons.electrical_services_rounded,
+    'power': Icons.power_rounded,
+
     // -------------------------------------------------------- shop products
     'filter_alt': Icons.filter_alt_outlined,
     'battery_full': Icons.battery_full_rounded,

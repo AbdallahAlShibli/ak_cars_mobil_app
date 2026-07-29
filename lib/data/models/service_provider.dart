@@ -31,6 +31,39 @@ extension FulfillmentX on Fulfillment {
   }
 }
 
+/// Something a workshop is equipped and certified to do, beyond ordinary
+/// mechanical work.
+///
+/// Kept separate from [ServiceProvider.verified] (which is about the business
+/// being checked) because these gate *what* can be booked: high-voltage work
+/// on an EV needs trained staff and insulated tooling, and a home charger
+/// inspection needs an electrical contractor.
+enum ProviderCapability { evService, evChargerInstall }
+
+extension ProviderCapabilityX on ProviderCapability {
+  /// Stable wire value.
+  String get key => name;
+
+  L get label => switch (this) {
+        ProviderCapability.evService =>
+          const L('معتمد لخدمة السيارات الكهربائية', 'EV-certified'),
+        ProviderCapability.evChargerInstall =>
+          const L('تركيب وفحص شواحن منزلية', 'Home charger installation'),
+      };
+
+  IconData get icon => switch (this) {
+        ProviderCapability.evService => Icons.electric_bolt_rounded,
+        ProviderCapability.evChargerInstall => Icons.ev_station_outlined,
+      };
+
+  static ProviderCapability? fromKey(String? key) {
+    for (final value in ProviderCapability.values) {
+      if (value.name.toLowerCase() == key?.toLowerCase()) return value;
+    }
+    return null;
+  }
+}
+
 /// A workshop or roadside operator on the marketplace.
 class ServiceProvider {
   const ServiceProvider({
@@ -41,6 +74,8 @@ class ServiceProvider {
     required this.distanceKm,
     required this.verified,
     required this.fulfillments,
+    this.isApproved = false,
+    this.capabilities = const {},
     this.pickupFee = 3,
     this.phone,
     this.whatsapp,
@@ -58,6 +93,26 @@ class ServiceProvider {
   final double distanceKm;
   final bool verified;
   final Set<Fulfillment> fulfillments;
+
+  /// Platform approval — the gate on anything that *promotes* this workshop
+  /// (home-page spec §3: "معتمدة من المنصة — شرط لأي عرض أو إبراز").
+  ///
+  /// Distinct from [verified], which is a badge about the business having been
+  /// checked. This one is an editorial decision by the platform, and it gates
+  /// two things and only two: whether the workshop may run an [Offer], and
+  /// whether it may be ranked on the home page's workshop boards. It does
+  /// **not** hide the workshop from the services list — an unapproved workshop
+  /// still sells, it just does not get promoted.
+  ///
+  /// Defaults to false, including on the wire: a workshop the API says nothing
+  /// about has not been approved, and must not be promoted on that silence.
+  final bool isApproved;
+
+  /// Specialist work this workshop is equipped for. Empty is the normal case —
+  /// an ordinary garage — and is why every existing provider needed no change
+  /// when this was added.
+  final Set<ProviderCapability> capabilities;
+
   final double pickupFee;
 
   /// Shop landline/mobile in international form (`+968…`).
@@ -81,6 +136,12 @@ class ServiceProvider {
   /// True once the workshop can issue a VAT invoice for a parts order.
   bool get vatRegistered => vatNumber != null && vatNumber!.isNotEmpty;
 
+  bool can(ProviderCapability? capability) =>
+      capability == null || capabilities.contains(capability);
+
+  /// Trained and equipped for high-voltage work on an electric car.
+  bool get evCertified => capabilities.contains(ProviderCapability.evService);
+
   factory ServiceProvider.fromJson(JsonMap json) => ServiceProvider(
         id: json.requireString('id'),
         name: L.fromJson(json['name']),
@@ -88,10 +149,15 @@ class ServiceProvider {
         region: json.stringOr('region', ''),
         distanceKm: json.doubleOr('distanceKm', 0),
         verified: json.boolOr('verified', false),
+        isApproved: json.boolOr('isApproved', false),
         fulfillments: json
             .stringList('fulfillments')
             .map(FulfillmentX.fromKey)
             .toSet(),
+        capabilities: {
+          for (final key in json.stringList('capabilities'))
+            ?ProviderCapabilityX.fromKey(key),
+        },
         pickupFee: json.doubleOr('pickupFee', 3),
         phone: json.stringOrNull('phone'),
         whatsapp: json.stringOrNull('whatsapp'),
@@ -107,7 +173,9 @@ class ServiceProvider {
         'region': region,
         'distanceKm': distanceKm,
         'verified': verified,
+        'isApproved': isApproved,
         'fulfillments': [for (final f in fulfillments) f.key],
+        'capabilities': [for (final c in capabilities) c.key],
         'pickupFee': pickupFee,
         'phone': phone,
         'whatsapp': whatsapp,
@@ -123,7 +191,9 @@ class ServiceProvider {
     String? region,
     double? distanceKm,
     bool? verified,
+    bool? isApproved,
     Set<Fulfillment>? fulfillments,
+    Set<ProviderCapability>? capabilities,
     double? pickupFee,
     String? phone,
     String? whatsapp,
@@ -138,7 +208,9 @@ class ServiceProvider {
         region: region ?? this.region,
         distanceKm: distanceKm ?? this.distanceKm,
         verified: verified ?? this.verified,
+        isApproved: isApproved ?? this.isApproved,
         fulfillments: fulfillments ?? this.fulfillments,
+        capabilities: capabilities ?? this.capabilities,
         pickupFee: pickupFee ?? this.pickupFee,
         phone: phone ?? this.phone,
         whatsapp: whatsapp ?? this.whatsapp,
@@ -156,6 +228,7 @@ class ServiceProvider {
       other.region == region &&
       other.distanceKm == distanceKm &&
       other.verified == verified &&
+      other.isApproved == isApproved &&
       other.pickupFee == pickupFee &&
       other.phone == phone &&
       other.whatsapp == whatsapp &&
@@ -163,7 +236,9 @@ class ServiceProvider {
       other.crNumber == crNumber &&
       other.hours == hours &&
       other.fulfillments.length == fulfillments.length &&
-      other.fulfillments.containsAll(fulfillments);
+      other.fulfillments.containsAll(fulfillments) &&
+      other.capabilities.length == capabilities.length &&
+      other.capabilities.containsAll(capabilities);
 
   @override
   int get hashCode => Object.hash(
@@ -173,6 +248,7 @@ class ServiceProvider {
         region,
         distanceKm,
         verified,
+        isApproved,
         pickupFee,
         phone,
         whatsapp,
@@ -180,5 +256,6 @@ class ServiceProvider {
         crNumber,
         hours,
         Object.hashAllUnordered(fulfillments),
+        Object.hashAllUnordered(capabilities),
       );
 }

@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/contact.dart';
+import '../../core/widgets/car_media.dart';
+import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
@@ -144,6 +146,31 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
       (s.t('نوع البائع', 'Seller type'), spec(listing.sellerType), null),
       (s.t('نظام الدفع', 'Drivetrain'), spec(listing.drivetrain), null),
       (s.t('نوع الوقود', 'Fuel type'), spec(listing.fuel), null),
+      // Electric facts, in the order a used-EV buyer asks for them. Each row
+      // appears only when the seller actually stated it — a blank "Range: —"
+      // reads as a car with no range.
+      if (listing.plugsIn) ...[
+        if (listing.rangeKm case final range?)
+          (
+            s.t('المدى (حسب البائع)', 'Range (as stated)'),
+            s.t('$range كم', '$range km'),
+            null
+          ),
+        if (listing.batteryWarrantyUntilYear case final year?)
+          (
+            s.t('ضمان البطارية', 'Battery warranty'),
+            s.t('حتى $year', 'Until $year'),
+            null
+          ),
+        if (listing.chargerIncluded case final included?)
+          (
+            s.t('شاحن مع السيارة', 'Charger included'),
+            included
+                ? s.t('نعم', 'Yes')
+                : s.t('لا', 'No'),
+            null
+          ),
+      ],
       (s.t('اللون الخارجي', 'Exterior color'),
           spec(listing.exteriorColor), listing.exteriorSwatch),
       (s.t('اللون الداخلي', 'Interior color'),
@@ -167,8 +194,8 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                 backgroundColor: AppColors.bg,
                 leading: Padding(
                   padding: const EdgeInsets.all(6),
-                  child: _RoundButton(
-                    icon: Icons.arrow_back_rounded,
+                  child: SandBackButton(
+                    translucent: true,
                     onTap: () => context.pop(),
                   ),
                 ),
@@ -206,15 +233,13 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                               setState(() => _photo = i),
                           itemBuilder: (context, i) => ColoredBox(
                             color: const Color(0xFFE7ECF3),
-                            child: Image.network(
-                              carImageUrl(listing.make, listing.model,
-                                  angle: 20 + (i % 8) * 5),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, _, _) => Center(
-                                child: Icon(listing.icon,
-                                    size: 72,
-                                    color: const Color(0xFFB0A996)),
-                              ),
+                            child: CarImage(
+                              make: listing.make,
+                              model: listing.model,
+                              color: listing.exteriorColor,
+                              variant: i,
+                              expand: true,
+                              fallbackIcon: listing.icon,
                             ),
                           ),
                         ),

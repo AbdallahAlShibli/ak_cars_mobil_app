@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/car_media.dart';
+import '../../core/widgets/sand_widgets.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
 
@@ -317,13 +318,11 @@ class _CarsFilterScreenState extends ConsumerState<CarsFilterScreen> {
           children: [
             // ------------------------------------------------ header
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 16, 6),
+              padding: const EdgeInsets.fromLTRB(14, 8, 16, 8),
               child: Row(
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(LucideIcons.arrowLeft, size: 20),
-                  ),
+                  const SandBackButton(),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       s.t('الفلاتر', 'Filters'),

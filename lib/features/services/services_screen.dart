@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
@@ -13,7 +14,11 @@ import 'service_widgets.dart';
 /// Services — search across all workshops, "Car service" package cards,
 /// "Other services" icon tiles, and popular offerings near you.
 class ServicesScreen extends ConsumerStatefulWidget {
-  const ServicesScreen({super.key});
+  const ServicesScreen({super.key, this.initialQuery});
+
+  /// Search text to open with (`/services?q=charging`). Lets a shortcut
+  /// elsewhere in the app land on results instead of on an empty search box.
+  final String? initialQuery;
 
   @override
   ConsumerState<ServicesScreen> createState() => _ServicesScreenState();
@@ -32,6 +37,8 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   @override
   void initState() {
     super.initState();
+    _query = widget.initialQuery?.trim() ?? '';
+    _search.text = _query;
     Future.delayed(const Duration(milliseconds: 450), () {
       if (mounted) setState(() => _loading = false);
     });
@@ -105,6 +112,12 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   /// Offerings matching the search box, split into the selected [region] and
   /// the wider country. Only the first group is shown until the user taps
   /// "Look beyond", so the chip always describes what is on screen.
+  ///
+  /// Unsearched, the shortlist holds only what the saved car can actually be
+  /// booked in for — a petrol owner has no use for a high-voltage battery
+  /// diagnostic, and an EV owner should see theirs. A typed query overrides
+  /// that: an explicit search outranks personalisation, so someone shopping
+  /// for their next car still finds every service.
   RegionSplit _results(String region) {
     final q = _query.trim().toLowerCase();
     final isAr = S.of(context).isAr;
@@ -112,8 +125,12 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     bool hit(L text) =>
         text.ar.contains(q) || text.en.toLowerCase().contains(q);
     final marketplace = ref.read(serviceMarketplaceRepositoryProvider);
-    final matches = marketplace.offerings.where((o) {
-      if (q.isEmpty) return true;
+    final powertrain = ref.read(primaryPowertrainProvider);
+    final bookable = {
+      for (final c in marketplace.categoriesFor(powertrain)) c.id,
+    };
+    final matches = marketplace.pricedOfferings.where((o) {
+      if (q.isEmpty) return bookable.contains(o.categoryId);
       final category = marketplace.categories
           .firstWhere((c) => c.id == o.categoryId)
           .name;
@@ -231,10 +248,21 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                           selected: true,
                           onTap: _pickRegion,
                         ),
+                        // The powertrain rides on this chip because it is what
+                        // decides which services the list below holds.
                         SelectChip(
-                          label: car?.label ??
-                              s.t('أضف سيارتك', 'Add your car'),
-                          icon: Icons.directions_car_outlined,
+                          // Model + year rather than the full label when a
+                          // powertrain is shown: a chip cannot ellipsize
+                          // gracefully inside a Wrap, and "Model Y 2024 ·
+                          // Electric" is the part that matters here.
+                          label: switch (car) {
+                            null => s.t('أضف سيارتك', 'Add your car'),
+                            final c when c.powertrain != null =>
+                              '${c.model} ${c.year} · ${c.powertrain!.badge.of(s)}',
+                            final c => c.label,
+                          },
+                          icon: car?.powertrain?.icon ??
+                              Icons.directions_car_outlined,
                           selected: true,
                           onTap: () => context
                               .push(car == null ? '/add-car' : '/garage'),
@@ -243,6 +271,15 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
+                  if (!searching && AppFlags.requestPartInstall) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _PartInstallCta(
+                        onTap: () => context.push('/request-part'),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                  ],
                   if (!searching) ...[
                     const ServiceRails(),
                     const SizedBox(height: 22),
@@ -424,7 +461,7 @@ class _OfferingCard extends ConsumerWidget {
             children: [
               Text(
                 offering.price != null
-                    ? '${s.omr} ${offering.price!.toStringAsFixed(0)}'
+                    ? '${s.omr} ${omrAmount(offering.price!)}'
                     : s.t('عرض سعر', 'Quote'),
                 style: TextStyle(
                   fontSize: 13.5,
@@ -458,6 +495,58 @@ class _OfferingCard extends ConsumerWidget {
                 ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The way into "request a part + fitting" (spec §6).
+///
+/// It sits on the services tab rather than in a shop, because that is what it
+/// is: work a workshop does, priced by that workshop. Nothing here browses a
+/// catalogue — there isn't one — and the copy says so instead of implying a
+/// parts store that this build does not run.
+class _PartInstallCta extends StatelessWidget {
+  const _PartInstallCta({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final ak = AkColors.of(context);
+
+    return AppCard(
+      onTap: onTap,
+      color: ak.surfaceDim,
+      child: Row(
+        children: [
+          IconTile(Icons.build_circle_outlined,
+              background: ak.primary.withValues(alpha: 0.12),
+              foreground: ak.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  s.t('تحتاج قطعة؟ اطلبها مع التركيب',
+                      'Need a part? Ask for it fitted'),
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  s.t('صف القطعة، وتردّ الورشة بسعر القطعة وأجرة التركيب منفصلين.',
+                      'Describe it and the workshop replies with the part and the fitting priced separately.'),
+                  style: TextStyle(
+                      fontSize: 11.5, height: 1.5, color: ak.inkSub),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: ak.inkFaint),
         ],
       ),
     );

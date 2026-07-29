@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/models/car.dart';
 import '../di/providers.dart';
+import 'maintenance_state.dart';
 
 /// The user's saved cars.
 ///
@@ -24,19 +25,29 @@ class GarageNotifier extends Notifier<List<Car>> {
   Future<void> add(Car car) async {
     state = [...state, car];
     await ref.read(garageRepositoryProvider).addCar(car);
+    // Every registered car owns its own maintenance schedule, opened empty
+    // here — the right default items for its powertrain and no history it
+    // did not have.
+    await ref.read(maintenanceProvider.notifier).openBook(car.id);
   }
 
   Future<void> remove(String carId) async {
     state = state.where((c) => c.id != carId).toList();
     await ref.read(garageRepositoryProvider).removeCar(carId);
+    await ref.read(maintenanceProvider.notifier).closeBook(carId);
   }
 
   /// Puts a removed car back where it was — the undo action on the garage's
   /// swipe-to-delete, so a mis-swipe is not a re-typing job.
+  ///
+  /// The maintenance book does not come back with it: removing the car deleted
+  /// it, and re-deriving one would be inventing history. Undo restores the car,
+  /// not its past.
   Future<void> restore(Car car, int index) async {
     final at = index.clamp(0, state.length);
     state = [...state]..insert(at, car);
     await ref.read(garageRepositoryProvider).addCar(car);
+    await ref.read(maintenanceProvider.notifier).openBook(car.id);
     if (at == 0) await setPrimary(car.id);
   }
 
@@ -64,6 +75,12 @@ class GarageNotifier extends Notifier<List<Car>> {
     await ref.read(garageRepositoryProvider).updatePlate(carId, plate);
   }
 
+  /// Records this car's mileage — on the car *and* in its maintenance book.
+  ///
+  /// The single entry point for mileage. Two stores held the same fact before
+  /// this, and they drifted: the garage card and the maintenance page could
+  /// show different readings for the same vehicle, and the maintenance one
+  /// belonged to whichever car happened to be default at the time.
   Future<void> setOdometer(String carId, int km) async {
     if (km <= 0) return;
     state = [
@@ -71,6 +88,7 @@ class GarageNotifier extends Notifier<List<Car>> {
         if (c.id == carId) c.copyWith(odometerKm: km) else c,
     ];
     await ref.read(garageRepositoryProvider).updateOdometer(carId, km);
+    await ref.read(maintenanceProvider.notifier).updateOdometer(carId, km);
   }
 }
 

@@ -1,21 +1,31 @@
 import '../models/challenge.dart';
+import '../models/powertrain.dart';
 import '../services/challenge_service.dart';
 import 'warm_cache.dart';
 
 /// The weekly challenge and the loyalty totals it feeds.
+///
+/// There is one board per [ChallengeTrack] — cars that plug in get charging and
+/// range tasks, everything else gets the combustion set. Both are warmed at
+/// bootstrap so switching the default car does not leave the screen empty for
+/// a frame.
 abstract interface class ChallengeRepository {
-  /// Loads the board so [board] can be read synchronously on the first frame.
+  /// Loads the boards so [board] / [boardFor] can be read synchronously on the
+  /// first frame.
   Future<void> warmUp();
 
-  /// The board as of the last load.
+  /// The combustion board — the default when nothing is known about the car.
   ChallengeBoard get board;
 
-  Future<ChallengeBoard> fetchBoard();
+  /// The board for a car with this powertrain.
+  ChallengeBoard boardFor(Powertrain? powertrain);
+
+  Future<ChallengeBoard> fetchBoard({Powertrain? powertrain});
 
   Future<ChallengeBoard> toggleStep(String stepId);
 
   /// Awards points and a badge, extends the streak, archives the challenge.
-  Future<ChallengeBoard> completeChallenge();
+  Future<ChallengeBoard> completeChallenge({Powertrain? powertrain});
 }
 
 class ChallengeRepositoryImpl implements ChallengeRepository {
@@ -23,29 +33,59 @@ class ChallengeRepositoryImpl implements ChallengeRepository {
 
   final ChallengeService _service;
 
-  final _board = WarmCache<ChallengeBoard>(fallback: ChallengeBoard.empty);
+  final Map<ChallengeTrack, WarmCache<ChallengeBoard>> _boards = {
+    for (final track in ChallengeTrack.values)
+      track: WarmCache<ChallengeBoard>(fallback: ChallengeBoard.empty),
+  };
+
+  /// A powertrain that reaches each track, used to warm and to write.
+  static const _sample = {
+    ChallengeTrack.combustion: Powertrain.petrol,
+    ChallengeTrack.electric: Powertrain.electric,
+  };
 
   @override
-  Future<void> warmUp() => _board.load(_service.fetchBoard);
+  Future<void> warmUp() => Future.wait([
+        for (final track in ChallengeTrack.values)
+          _boards[track]!
+              .load(() => _service.fetchBoard(powertrain: _sample[track])),
+      ]);
 
   @override
-  ChallengeBoard get board => _board.value;
+  ChallengeBoard get board => boardFor(null);
 
   @override
-  Future<ChallengeBoard> fetchBoard() => _board.load(_service.fetchBoard);
+  ChallengeBoard boardFor(Powertrain? powertrain) =>
+      _boards[ChallengeTrackX.of(powertrain)]!.value;
 
   @override
-  Future<ChallengeBoard> toggleStep(String stepId) =>
-      _store(_service.toggleStep(stepId));
+  Future<ChallengeBoard> fetchBoard({Powertrain? powertrain}) =>
+      _boards[ChallengeTrackX.of(powertrain)]!
+          .load(() => _service.fetchBoard(powertrain: powertrain));
 
   @override
-  Future<ChallengeBoard> completeChallenge() =>
-      _store(_service.completeChallenge());
-
-  /// Keeps the warm cache in step with every write.
-  Future<ChallengeBoard> _store(Future<ChallengeBoard> write) async {
-    final updated = await write;
-    _board.put(updated);
+  Future<ChallengeBoard> toggleStep(String stepId) async {
+    final updated = await _service.toggleStep(stepId);
+    _putWhereTheStepLives(stepId, updated);
     return updated;
+  }
+
+  @override
+  Future<ChallengeBoard> completeChallenge({Powertrain? powertrain}) async {
+    final updated = await _service.completeChallenge(powertrain: powertrain);
+    _boards[ChallengeTrackX.of(powertrain)]!.put(updated);
+    return updated;
+  }
+
+  /// A step id belongs to exactly one board, and [ChallengeService.toggleStep]
+  /// does not say which — so the cache is updated where the id was found.
+  void _putWhereTheStepLives(String stepId, ChallengeBoard updated) {
+    for (final cache in _boards.values) {
+      final steps = cache.value.current?.steps ?? const [];
+      if (steps.any((step) => step.id == stepId)) {
+        cache.put(updated);
+        return;
+      }
+    }
   }
 }

@@ -151,7 +151,12 @@ void main() {
     // Tyres used to exist only in Sohar and Salalah, so a Muscat user tapping
     // the tile got a sheet of out-of-region workshops. It is now sold locally.
     expect(marketplace.providerCountFor('tyres', region: 'Muscat'), 2);
-    expect(marketplace.fromPriceFor('tyres', region: 'Muscat'), 6);
+    // Qurum publishes 6 and is running a validated offer at 4.5, so "from" is
+    // 4.5: the card must quote the price the tap actually leads to, not the
+    // pre-discount one. The struck-through 6 is on the offer record.
+    expect(marketplace.fromPriceFor('tyres', region: 'Muscat'), 4.5);
+    expect(marketplace.offeringById('o-p4-tyres')!.price, 6);
+    expect(marketplace.offerFor('o-p4-tyres')!.referencePrice, 6);
   });
 
   test('Arabic counted nouns inflect by the number in front of them', () {

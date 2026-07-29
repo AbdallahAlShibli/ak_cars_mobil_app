@@ -589,13 +589,19 @@ class _PickerSheetState<T> extends State<_PickerSheet<T>> {
   @override
   Widget build(BuildContext context) {
     final options = widget.optionsOf(_query);
+    // The picker is anchored to the bottom edge, so an open search keyboard
+    // would sit on top of the very results it is filtering. Lift the content
+    // clear of it, and cap the height against the screen that is left rather
+    // than the whole screen.
+    final keyboard = MediaQuery.of(context).viewInsets.bottom;
+    final available = MediaQuery.of(context).size.height - keyboard;
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.7,
+          maxHeight: available * 0.7 + keyboard,
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+          padding: EdgeInsets.fromLTRB(20, 4, 20, 16 + keyboard),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

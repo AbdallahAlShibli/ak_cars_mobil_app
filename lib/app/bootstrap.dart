@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../di/providers.dart';
+import '../state/app_state.dart';
 
 /// Start-up sequence, shared by `main()` and the widget tests.
 ///
@@ -32,6 +33,12 @@ abstract final class AppBootstrap {
       ],
     );
     await warmUp(container);
+    // Re-attach the stored session before the first frame: the router picks
+    // its start route from auth state, so this has to land before anything
+    // reads it. Deliberately outside `warmUp` — that one is reference data,
+    // and the pure-data test container has no SharedPreferences to restore
+    // from.
+    await container.read(authProvider.notifier).restore();
     return container;
   }
 

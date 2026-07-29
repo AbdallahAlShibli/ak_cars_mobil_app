@@ -99,6 +99,8 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
         .toList();
     final cart = ref.watch(cartProvider);
     final searching = _query.trim().isNotEmpty;
+    final evCar = ref.watch(primaryCarProvider);
+    final evShortcut = evCar == null || evCar.plugsIn;
 
     final topRated = [...ref.watch(productsProvider)]
       ..sort((a, b) => b.rating.compareTo(a.rating));
@@ -275,6 +277,25 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         children: [
+                          // Offered when the saved car plugs in, or when there
+                          // is no saved car to filter by (someone shopping
+                          // ahead of buying an EV). Shown to a petrol owner it
+                          // would only ever produce an empty grid.
+                          if (evShortcut) ...[
+                            SelectChip(
+                              label: s.t('قطع السيارات الكهربائية', 'EV parts'),
+                              icon: Icons.electric_bolt_rounded,
+                              selected: filter.powertrain != null,
+                              onTap: () => ref
+                                  .read(shopFilterProvider.notifier)
+                                  .set(filter.copyWith(
+                                      powertrain: () => filter.powertrain == null
+                                          ? (evCar?.powertrain ??
+                                              Powertrain.electric)
+                                          : null)),
+                            ),
+                            const SizedBox(width: 7),
+                          ],
                           SelectChip(
                             label: s.t('المتوفر الآن', 'In stock'),
                             icon: Icons.inventory_2_outlined,

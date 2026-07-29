@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,8 +40,13 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   ServiceMarketplaceRepository get _marketplace =>
       ref.read(serviceMarketplaceRepositoryProvider);
 
+  /// The offering at the price the customer will actually be charged — a live
+  /// offer's discount is already applied. Everything downstream (the total,
+  /// the draft, the escrow amount, the receipt) reads this one value, which is
+  /// why a discount cannot be advertised on the home page and then quietly
+  /// dropped at confirmation.
   ServiceOffering get _offering =>
-      _marketplace.offeringById(widget.offeringId)!;
+      _marketplace.pricedOffering(widget.offeringId)!;
 
   BookingAvailability get _availability =>
       _marketplace.availabilityFor(_offering.provider.id);
@@ -52,7 +58,11 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   @override
   void initState() {
     super.initState();
-    _slot = _availability.slots.isEmpty ? '' : _availability.slots.first;
+    // The first slot the provider can actually take. Preselecting
+    // `slots.first` would offer a slot the chip itself renders as "full" and
+    // refuses to tap — and would still book it, since the confirm button never
+    // looks at availability.
+    _slot = _availability.slots.firstWhereOrNull(_availability.isAvailable) ?? '';
     final car = ref.read(primaryCarProvider);
     // Same plate as registered with the car — prefilled and editable.
     final (number, letters) = OmanPlateInput.parse(car?.plate);
@@ -67,7 +77,9 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     } else if (offered.contains(Fulfillment.workshop)) {
       _fulfillment = Fulfillment.workshop;
     } else {
-      _fulfillment = offered.first;
+      // A provider that lists no fulfillment at all is bad data, not a reason
+      // to crash the screen on open.
+      _fulfillment = offered.firstOrNull ?? Fulfillment.workshop;
     }
   }
 
@@ -123,6 +135,17 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       );
       return;
     }
+    // A workshop or pickup booking needs a time the provider can take. There
+    // is none left to pick when every slot is already full.
+    if (_needsSlot && _slot.isEmpty) {
+      HapticFeedback.vibrate();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(s.t('لا توجد مواعيد متاحة لدى هذا المزود',
+                'This provider has no available slots'))),
+      );
+      return;
+    }
     setState(() => _confirming = true);
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
@@ -132,25 +155,46 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     final plate =
         '${_plateNumber.text.trim()} $_plateLetters'.toUpperCase();
 
+    // Resolved before the await: leaving this screen mid-booking disposes the
+    // widget, and `ref` cannot be read after that — but the booking has already
+    // been placed by then, so the garage sync and the add-on reset still have
+    // to happen.
+    final requests = ref.read(requestsProvider.notifier);
+    final garage = ref.read(garageProvider.notifier);
+    final selectedAddOns = ref.read(selectedAddOnsProvider.notifier);
+    final intent = ref.read(maintenanceBookingIntentProvider.notifier);
+
+    // Set when this booking was started from a maintenance item. It only ever
+    // applies to the car it was raised for — switching the default car between
+    // tapping the reminder and confirming must not file the service against
+    // the wrong vehicle.
+    final maintenanceItemKey =
+        intent.state?.carId == car.id ? intent.state?.itemKey : null;
+
     // The repository prices and stores the booking and raises the
-    // "funds held in escrow" notification.
-    final request = await ref.read(requestsProvider.notifier).place(
-          CreateServiceRequestDraft(
-            offering: _offering,
-            car: car,
-            plate: plate,
-            fulfillment: _fulfillment,
-            slot: _slotLabel(s),
-            addOnIds: ref.read(selectedAddOnsProvider),
-          ),
-        );
+    // "request sent" notification — nothing is held in escrow until the
+    // founder confirms the transfer landed (spec §3, note 2).
+    final request = await requests.place(
+      CreateServiceRequestDraft(
+        offering: _offering,
+        car: car,
+        plate: plate,
+        fulfillment: _fulfillment,
+        slot: _slotLabel(s),
+        addOnIds: selectedAddOns.state,
+        maintenanceItemKey: maintenanceItemKey,
+      ),
+    );
 
     // Keep the garage in sync — the plate entered here becomes the
     // car's registered plate.
     if (car.id != 'adhoc' && car.plate != plate) {
-      ref.read(garageProvider.notifier).setPlate(car.id, plate);
+      garage.setPlate(car.id, plate);
     }
-    ref.read(selectedAddOnsProvider.notifier).state = {};
+    selectedAddOns.state = {};
+    // Consumed: the next booking is a fresh one unless the owner starts it
+    // from a reminder again.
+    intent.state = null;
     if (!mounted) return;
     HapticFeedback.heavyImpact();
     context.go('/track/${request.id}');
@@ -301,6 +345,18 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                   AppCard(
                     child: Column(
                       children: [
+                        // Says out loud which schedule line this booking will
+                        // update, and on which car — and only when the owner
+                        // actually started from that reminder.
+                        if (ref.watch(maintenanceBookingIntentProvider)
+                            case final intent?
+                            when intent.carId == car?.id) ...[
+                          _SummaryRow(
+                            label: s.t('لصيانة', 'For maintenance'),
+                            value: intent.title.of(s),
+                          ),
+                          const SizedBox(height: 6),
+                        ],
                         _SummaryRow(
                           label: _offering.name.of(s),
                           value: _offering.price != null

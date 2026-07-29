@@ -432,6 +432,12 @@ abstract final class MockCarsData {
       description:
           'Model Y Long Range, home charger included, battery warranty '
           'transferable.',
+      // The three EV facts the description used to bury in prose. A used-EV
+      // buyer decides on exactly these, so they are fields the detail page can
+      // print as rows and a filter could one day match on.
+      rangeKm: 533,
+      batteryWarrantyUntilYear: 2032,
+      chargerIncluded: true,
     ),
     GalleryListing(
       id: 'g12',

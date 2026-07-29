@@ -2,29 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import 'shell_tabs.dart';
 
 /// Bottom navigation shell — Sand & Ink: surface bar with 24px top radius,
 /// active item = icon inside an ink pill (inverted cream in dark) + bold
-/// label. Home, Services, Shop, Cars, Profile.
+/// label.
+///
+/// The destinations come from [buildShellTabs] rather than being listed here,
+/// so the bar and the router's branches are generated from the same list and
+/// a feature flag hiding a pillar hides both at once.
 class ShellScreen extends ConsumerWidget {
-  const ShellScreen({super.key, required this.shell});
+  const ShellScreen({super.key, required this.shell, required this.tabs});
 
   final StatefulNavigationShell shell;
+  final List<ShellTab> tabs;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final items = [
-      (LucideIcons.home, s.navHome),
-      (LucideIcons.wrench, s.navServices),
-      (LucideIcons.shoppingBag, s.navShop),
-      (LucideIcons.car, s.navCars),
-      (LucideIcons.user, s.navProfile),
+      for (final tab in tabs) (tab.icon, tab.label(s)),
     ];
 
     return Scaffold(

@@ -23,6 +23,7 @@ import '../data/repositories/garage_repository.dart';
 import '../data/repositories/maintenance_repository.dart';
 import '../data/repositories/notification_repository.dart';
 import '../data/repositories/order_repository.dart';
+import '../data/repositories/review_repository.dart';
 import '../data/repositories/service_marketplace_repository.dart';
 import '../data/repositories/shop_repository.dart';
 import '../data/services/auth_service.dart';
@@ -34,6 +35,7 @@ import '../data/services/garage_service.dart';
 import '../data/services/maintenance_service.dart';
 import '../data/services/notification_service.dart';
 import '../data/services/order_service.dart';
+import '../data/services/review_service.dart';
 import '../data/services/service_marketplace_service.dart';
 import '../data/services/shop_service.dart';
 
@@ -54,8 +56,13 @@ final catalogServiceProvider = Provider<CatalogService>(
   (ref) => MockCatalogService(config: ref.watch(appConfigProvider)),
 );
 
+// Takes prefs because the mock stands in for the session store too: the
+// registered profile has to survive a cold start.
 final authServiceProvider = Provider<AuthService>(
-  (ref) => MockAuthService(config: ref.watch(appConfigProvider)),
+  (ref) => MockAuthService(
+    config: ref.watch(appConfigProvider),
+    prefs: ref.watch(sharedPrefsProvider),
+  ),
 );
 
 final garageServiceProvider = Provider<GarageService>(
@@ -92,6 +99,10 @@ final maintenanceServiceProvider = Provider<MaintenanceService>(
 
 final challengeServiceProvider = Provider<ChallengeService>(
   (ref) => MockChallengeService(config: ref.watch(appConfigProvider)),
+);
+
+final reviewServiceProvider = Provider<ReviewService>(
+  (ref) => MockReviewService(config: ref.watch(appConfigProvider)),
 );
 
 // ------------------------------------------------------------- repositories
@@ -141,4 +152,8 @@ final maintenanceRepositoryProvider = Provider<MaintenanceRepository>(
 
 final challengeRepositoryProvider = Provider<ChallengeRepository>(
   (ref) => ChallengeRepositoryImpl(ref.watch(challengeServiceProvider)),
+);
+
+final reviewRepositoryProvider = Provider<ReviewRepository>(
+  (ref) => ReviewRepositoryImpl(ref.watch(reviewServiceProvider)),
 );

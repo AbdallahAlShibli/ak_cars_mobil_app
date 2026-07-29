@@ -131,7 +131,12 @@ class OmanPlateInput extends StatelessWidget {
   }
 }
 
-/// Plate letters picker — one or two letters, order preserved.
+/// Plate letters picker — one or two letters, order preserved, **repeats
+/// allowed** (`AA`, `BB`, … are real Omani plates).
+///
+/// Tapping a letter appends it rather than toggling it, which is what makes a
+/// repeat possible; a full pair slides along (first letter drops off) and the
+/// backspace button undoes the last tap.
 /// Use with `showModalBottomSheet<String>`.
 class PlateLettersPicker extends ConsumerStatefulWidget {
   const PlateLettersPicker({super.key, required this.initial});
@@ -146,16 +151,22 @@ class PlateLettersPicker extends ConsumerStatefulWidget {
 class _PlateLettersPickerState extends ConsumerState<PlateLettersPicker> {
   late final List<String> _picked = widget.initial.split('');
 
-  void _toggle(String letter) {
+  /// Appends a letter — the same letter twice is a valid plate, so this must
+  /// not toggle. Once two are picked the pair slides: the oldest drops off.
+  void _pick(String letter) {
     HapticFeedback.selectionClick();
     setState(() {
-      if (_picked.contains(letter)) {
-        _picked.remove(letter);
-      } else {
-        if (_picked.length == 2) _picked.removeAt(0);
-        _picked.add(letter);
-      }
+      if (_picked.length == 2) _picked.removeAt(0);
+      _picked.add(letter);
     });
+  }
+
+  /// Undoes the last tap — the only way to unpick a letter now that tapping
+  /// one adds it.
+  void _undo() {
+    if (_picked.isEmpty) return;
+    HapticFeedback.selectionClick();
+    setState(() => _picked.removeLast());
   }
 
   @override
@@ -175,25 +186,41 @@ class _PlateLettersPickerState extends ConsumerState<PlateLettersPicker> {
                     const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             Text(
-              s.t('اختر حرفاً أو حرفين — الترتيب مهم.',
-                  'Pick one or two letters — order matters.'),
+              s.t('اختر حرفاً أو حرفين — الترتيب مهم، ويمكن تكرار نفس الحرف (مثل AA).',
+                  'Pick one or two letters — order matters, and the same '
+                      'letter can repeat (e.g. AA).'),
               style: TextStyle(fontSize: 12, color: ak.inkSub),
             ),
             const SizedBox(height: 14),
-            Center(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 150),
-                child: Text(
-                  _picked.isEmpty ? '—' : _picked.join(),
-                  key: ValueKey(_picked.join()),
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 6,
-                    color: ak.ink,
+            Row(
+              children: [
+                const SizedBox(width: 44),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 150),
+                    child: Text(
+                      _picked.isEmpty ? '—' : _picked.join(),
+                      key: ValueKey(_picked.join()),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 6,
+                        color: ak.ink,
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                SizedBox(
+                  width: 44,
+                  child: IconButton(
+                    onPressed: _picked.isEmpty ? null : _undo,
+                    icon: const Icon(Icons.backspace_outlined, size: 20),
+                    color: ak.inkSub,
+                    tooltip: s.t('حذف آخر حرف', 'Delete last letter'),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
             Wrap(
@@ -201,33 +228,52 @@ class _PlateLettersPickerState extends ConsumerState<PlateLettersPicker> {
               runSpacing: 8,
               children: [
                 for (final l in plateLetters)
-                  GestureDetector(
-                    onTap: () => _toggle(l),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color:
-                            _picked.contains(l) ? ak.primary : ak.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color:
-                                _picked.contains(l) ? ak.primary : ak.border),
-                      ),
-                      child: Center(
-                        child: Text(
-                          l,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color:
-                                _picked.contains(l) ? ak.onPrimary : ak.ink,
-                          ),
+                  Builder(builder: (context) {
+                    // How many times this letter is in the pair — 2 means the
+                    // plate repeats it, which the badge has to make obvious.
+                    final used = _picked.where((p) => p == l).length;
+                    return GestureDetector(
+                      onTap: () => _pick(l),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: used > 0 ? ak.primary : ak.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: used > 0 ? ak.primary : ak.border),
+                        ),
+                        child: Stack(
+                          children: [
+                            Center(
+                              child: Text(
+                                l,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: used > 0 ? ak.onPrimary : ak.ink,
+                                ),
+                              ),
+                            ),
+                            if (used == 2)
+                              PositionedDirectional(
+                                top: 3,
+                                end: 4,
+                                child: Text(
+                                  '×2',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: ak.onPrimary,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  }),
               ],
             ),
             const SizedBox(height: 16),

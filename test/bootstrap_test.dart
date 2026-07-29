@@ -49,8 +49,11 @@ void main() {
     expect(cars.listings, isNotEmpty);
     expect(cars.homeListings, isNotEmpty);
 
-    expect(container.read(maintenanceRepositoryProvider).log.records,
-        isNotEmpty);
+    // Maintenance is per car and never seeded: a fresh install has no cars,
+    // so it has no maintenance history either. This used to warm a global
+    // demo log, which is what made a brand-new car show services it had
+    // never had.
+    expect(container.read(maintenanceRepositoryProvider).books, isEmpty);
     expect(container.read(challengeRepositoryProvider).board.current,
         isNotNull);
   });

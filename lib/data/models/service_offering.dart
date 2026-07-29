@@ -42,7 +42,42 @@ class ServiceOffering {
   /// (a callout, an open-ended contract).
   final int? warrantyMonths;
 
+  /// The catalogue id a "request a part + installation" booking files itself
+  /// under. Not a real category in the marketplace catalogue — nothing lists
+  /// or searches it — but a stable key so the maintenance mapper and the
+  /// analytics can tell these bookings apart from catalogue ones.
+  static const partInstallCategoryId = 'part-install';
+
+  /// The stand-in offering a [BookingType.customQuote] booking carries.
+  ///
+  /// A custom request has no catalogue entry behind it — that is the point of
+  /// it — but every screen in the app reads the workshop, the title and the
+  /// price off `request.offering`. Rather than making that field nullable and
+  /// teaching a dozen widgets to branch, the request carries a quote-only
+  /// offering that describes exactly what it is: this workshop, this part, no
+  /// published price. `price: null` is not a placeholder here — it is the
+  /// truth until the quote arrives.
+  factory ServiceOffering.partInstall({
+    required ServiceProvider provider,
+    required String partDescription,
+  }) =>
+      ServiceOffering(
+        id: 'part-install-${provider.id}',
+        categoryId: partInstallCategoryId,
+        // The customer's own words, shown in both languages because the app
+        // does not translate what a user typed.
+        name: L(partDescription, partDescription),
+        provider: provider,
+        description: const L(
+          'طلب قطعة + تركيبها — السعر بعد عرض الورشة',
+          'Part supplied and fitted — priced by the workshop',
+        ),
+      );
+
   bool get quoteOnly => price == null;
+
+  /// True for the synthetic offering above rather than a catalogue entry.
+  bool get isPartInstall => categoryId == partInstallCategoryId;
 
   /// Free-text search over the service, its workshop and where that workshop
   /// is. [localizedPlace] carries the translated area/governorate in, so the

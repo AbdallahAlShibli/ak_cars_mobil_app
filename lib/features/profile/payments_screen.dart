@@ -26,10 +26,13 @@ class PaymentsScreen extends ConsumerWidget {
     final orders = ref.watch(ordersProvider);
 
     // (title, subtitle, amount, state) — state: 0 held, 1 released, 2 disputed
+    //
+    // The three groups come straight off the escrow state, so a booking whose
+    // funds were never confirmed held, or that was cancelled or refunded, is
+    // absent from all of them rather than counted as money we are sitting on.
     final held = <(String, String, double, int)>[
       for (final r in requests)
-        if (r.status != RequestStatus.completed &&
-            r.status != RequestStatus.disputed)
+        if (r.escrow.holdsFunds && r.escrow != EscrowState.disputed)
           (
             s.t('خدمة #${r.id}', 'Service #${r.id}'),
             r.offering.name.of(s),
@@ -37,7 +40,7 @@ class PaymentsScreen extends ConsumerWidget {
             0
           ),
       for (final r in requests)
-        if (r.status == RequestStatus.disputed)
+        if (r.escrow == EscrowState.disputed)
           (
             s.t('خدمة #${r.id}', 'Service #${r.id}'),
             s.t('${r.offering.name.ar} · لدى الإدارة',
@@ -46,7 +49,7 @@ class PaymentsScreen extends ConsumerWidget {
             2
           ),
       for (final r in requests)
-        if (r.status == RequestStatus.completed)
+        if (r.escrow == EscrowState.releasedToWorkshop)
           (
             s.t('خدمة #${r.id}', 'Service #${r.id}'),
             r.offering.name.of(s),

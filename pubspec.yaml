@@ -26,6 +26,31 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# App launcher icon — "Sand & Ink" mark. Sources live in icon/ (SVG masters
+# plus the rendered 1024px PNGs this tool consumes).
+# Regenerate with: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "icon/app_icon.png"
+  android: true
+  adaptive_icon_background: "#1D1B17"
+  adaptive_icon_foreground: "icon/app_icon_foreground.png"
+  adaptive_icon_monochrome: "icon/app_icon_monochrome.png"
+  ios: true
+  remove_alpha_ios: true
+  web:
+    generate: true
+    background_color: "#1D1B17"
+    theme_color: "#1D1B17"
 
 flutter:
   uses-material-design: true
+
+  # Optional drop-in vehicle imagery. Both folders are empty apart from their
+  # README: cars render offline as vector artwork (lib/core/widgets/
+  # car_artwork.dart) until real photos are licensed and registered in
+  # lib/core/media/vehicle_assets.dart.
+  assets:
+    - assets/cars/
+    - assets/logos/

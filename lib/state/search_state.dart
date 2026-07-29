@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../config/app_flags.dart';
 import '../data/models/gallery_listing.dart';
 import '../data/models/product.dart';
 import '../data/models/service_offering.dart';
@@ -53,7 +54,10 @@ final searchResultsProvider =
   // One row per service category: the cheapest workshop selling it. Which
   // workshop is the next screen's decision, not the search result's.
   final byCategory = <String, ServiceOffering>{};
-  for (final offering in ref.watch(serviceMarketplaceRepositoryProvider).offerings) {
+  // Priced: a search result that quotes the undiscounted price would send the
+  // user to a page showing a different, lower one.
+  for (final offering
+      in ref.watch(serviceMarketplaceRepositoryProvider).pricedOfferings) {
     if (!offering.matchesQuery(query,
         localizedPlace: place(offering.provider.area, offering.provider.region))) {
       continue;
@@ -66,16 +70,24 @@ final searchResultsProvider =
     }
   }
 
+  // A hidden pillar contributes nothing — not rows, and not to the result
+  // count either. Filtering here rather than in the widget keeps "3 results"
+  // honest and stops the screen offering a tap into a route that is not
+  // registered while the flag is off.
   return SearchResults(
     services: byCategory.values.toList(),
-    parts: ref
-        .watch(productsProvider)
-        .where((p) => p.matchesQuery(query))
-        .toList(),
-    cars: ref
-        .watch(galleryFeedProvider)
-        .where((l) => l.matchesQuery(query,
-            localizedRegion: locations.localizedRegion(l.region, isAr)))
-        .toList(),
+    parts: AppFlags.partsStoreEnabled
+        ? ref
+            .watch(productsProvider)
+            .where((p) => p.matchesQuery(query))
+            .toList()
+        : const [],
+    cars: AppFlags.carMarketplaceEnabled
+        ? ref
+            .watch(galleryFeedProvider)
+            .where((l) => l.matchesQuery(query,
+                localizedRegion: locations.localizedRegion(l.region, isAr)))
+            .toList()
+        : const [],
   );
 });

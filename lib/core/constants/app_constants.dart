@@ -23,4 +23,20 @@ abstract final class AppConstants {
   static const prefsTheme = 'akcars_theme';
   static const prefsNotifications = 'akcars_notifications';
   static const prefsAuthToken = 'akcars_auth_token';
+
+  /// Which of the pilot's three roles this device is acting as. Local to the
+  /// installation until the backend puts the role on the session token.
+  static const prefsRole = 'akcars_role';
+
+  /// First-run flags. These are what make the intro a *first launch* thing
+  /// rather than something the user re-watches on every cold start, so they
+  /// have to outlive the process — uninstalling the app is the only thing
+  /// that should clear them.
+  static const prefsOnboardingSeen = 'akcars_onboarding_seen';
+  static const prefsStartChoiceMade = 'akcars_start_choice_made';
+
+  /// The registered profile, cached so a returning user is still registered
+  /// after a cold start. Stands in for the session the REST implementation
+  /// will restore from [prefsAuthToken].
+  static const prefsProfile = 'akcars_profile';
 }

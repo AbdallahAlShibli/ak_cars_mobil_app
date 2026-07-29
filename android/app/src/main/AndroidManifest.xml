@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Release builds need this explicitly: only the debug/profile manifests
+         declare it, so a release APK had no network at all — remote images and
+         the REST API both failed silently. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="AK Cars"
         android:name="${applicationName}"

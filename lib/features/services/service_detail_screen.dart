@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../config/app_flags.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/router/app_router.dart';
@@ -13,6 +14,7 @@ import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
 import 'provider_details_card.dart';
+import 'review_widgets.dart';
 
 /// Selected add-ons for the in-flight booking (shared with BookingScreen).
 final selectedAddOnsProvider = StateProvider<Set<String>>((ref) => {});
@@ -26,10 +28,12 @@ final selectedAddOnsProvider = StateProvider<Set<String>>((ref) => {});
 /// workshop's own record (hours, phone, VAT/CR registration), then the extras
 /// and the total.
 ///
-/// Everything on this page comes from the offering or the provider record.
-/// The page deliberately shows no rating, no review count and no "Open now"
-/// badge: none of those exist in the data, and the old header invented an
-/// "Open" pill for every workshop regardless of its hours.
+/// Everything on this page comes from the offering, the provider record, or a
+/// review someone earned the right to write. The rating shown is derived from
+/// those reviews and is absent — in words — for a workshop nobody has rated;
+/// it is never a default score. There is still no "Open now" badge: that one
+/// does not exist in the data, and the old header invented an "Open" pill for
+/// every workshop regardless of its hours.
 class ServiceDetailScreen extends ConsumerWidget {
   const ServiceDetailScreen({super.key, required this.offeringId});
 
@@ -40,7 +44,13 @@ class ServiceDetailScreen extends ConsumerWidget {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final marketplace = ref.watch(serviceMarketplaceRepositoryProvider);
-    final offering = marketplace.offeringById(offeringId);
+    // The offering *as it would be charged* — a live offer's discount is
+    // already in `offering.price`, so the total, the book bar, the booking
+    // screen and the escrow amount all inherit it without knowing offers
+    // exist. `offer` is carried alongside only so the page can show what the
+    // price was struck down from.
+    final offering = marketplace.pricedOffering(offeringId);
+    final offer = marketplace.offerFor(offeringId);
     if (offering == null) {
       return Scaffold(
         appBar: AppBar(),
@@ -64,17 +74,20 @@ class ServiceDetailScreen extends ConsumerWidget {
     final total = (offering.price ?? 0) + addOnTotal;
 
     // Same service, other workshops — the comparison the marketplace exists
-    // to make possible.
-    final elsewhere = marketplace
-        .offeringsFor(offering.categoryId, region: provider.region)
-        .where((o) => o.provider.id != provider.id)
-        .toList();
+    // to make possible. Priced, like everything else on this screen, so a
+    // rival's discount is visible in the comparison rather than hidden by it.
+    final elsewhere = [
+      for (final o in marketplace.offeringsFor(offering.categoryId,
+          region: provider.region))
+        if (o.provider.id != provider.id) marketplace.pricedOffering(o.id)!,
+    ];
 
     // Everything else this workshop sells.
-    final alsoHere = marketplace.offerings
-        .where((o) =>
-            o.provider.id == provider.id && o.categoryId != offering.categoryId)
-        .toList();
+    final alsoHere = [
+      for (final o in marketplace.pricedOfferings)
+        if (o.provider.id == provider.id && o.categoryId != offering.categoryId)
+          o,
+    ];
 
     return Scaffold(
       body: CustomScrollView(
@@ -128,6 +141,13 @@ class ServiceDetailScreen extends ConsumerWidget {
                         Icon(Icons.verified_rounded,
                             size: 14, color: ak.success),
                       ],
+                      const SizedBox(width: 8),
+                      // Flexible so a long workshop name and a long review
+                      // count share the line instead of overflowing it.
+                      Flexible(
+                        child: RatingSummaryLine(
+                            providerId: provider.id, compact: true),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -137,7 +157,7 @@ class ServiceDetailScreen extends ConsumerWidget {
                         fontSize: 12.5, color: ak.inkSub, height: 1.6),
                   ),
                   const SizedBox(height: 14),
-                  _priceCard(offering, s, ak),
+                  _priceCard(offering, offer, s, ak),
                   const SizedBox(height: 12),
                   _facts(offering, s, ak),
                   const SizedBox(height: 12),
@@ -165,6 +185,17 @@ class ServiceDetailScreen extends ConsumerWidget {
                         s.t('قطع متوفرة لسيارتك', 'Parts they stock for your car')),
                     const SizedBox(height: 8),
                     _AddOnRow(addOns: parts, selected: selected, ref: ref),
+                  ],
+                  // Reviews sit directly above the workshop's own details, so
+                  // the decision of *which* workshop is made with both in
+                  // view. Every review here comes from a completed, released
+                  // booking — there is no other way one gets written.
+                  if (AppFlags.verifiedReviews) ...[
+                    const SizedBox(height: 18),
+                    SectionHeader(
+                        s.t('تقييمات موثّقة', 'Verified reviews')),
+                    const SizedBox(height: 8),
+                    ProviderReviewList(providerId: provider.id),
                   ],
                   const SizedBox(height: 18),
                   SectionHeader(s.t('بيانات الورشة', 'Workshop details')),
@@ -202,7 +233,8 @@ class ServiceDetailScreen extends ConsumerWidget {
   }
 
   // -------------------------------------------------------------- price
-  Widget _priceCard(ServiceOffering offering, S s, AkColors ak) {
+  Widget _priceCard(
+      ServiceOffering offering, Offer? offer, S s, AkColors ak) {
     if (offering.quoteOnly) {
       return Container(
         padding: const EdgeInsets.all(15),
@@ -288,10 +320,72 @@ class ServiceDetailScreen extends ConsumerWidget {
                 'Includes 5% VAT (OMR ${vat.toStringAsFixed(2)})'),
             style: TextStyle(fontSize: 11.5, color: ak.inkSub),
           ),
+          // The offer, stated in full on the page that takes the booking: what
+          // it was, what it is, and when it stops. Same three numbers the home
+          // card showed, from the same validated record — this page cannot
+          // contradict the rail that sent the user here.
+          if (offer != null) ...[
+            const SizedBox(height: 11),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: ak.dangerSoft,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: ak.dangerBorder),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.local_offer_outlined,
+                      size: 16, color: ak.dangerText),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text.rich(
+                          TextSpan(children: [
+                            TextSpan(
+                              text: s.t(
+                                  'خصم ${offer.discountPercent.round()}٪ — بدلاً من ',
+                                  '${offer.discountPercent.round()}% off — was '),
+                            ),
+                            TextSpan(
+                              text:
+                                  'OMR ${offer.referencePrice.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                  decoration: TextDecoration.lineThrough),
+                            ),
+                          ]),
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: ak.dangerText),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          s.t(
+                              'ينتهي العرض في ${_date(offer.endsAt)} — بعده يعود السعر المعلن.',
+                              'Offer ends ${_date(offer.endsAt)} — the published price applies after that.'),
+                          style:
+                              TextStyle(fontSize: 11, color: ak.inkSub, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+
+  /// `YYYY-MM-DD`, which is unambiguous in both languages and needs no
+  /// month-name table.
+  static String _date(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   // -------------------------------------------------------------- facts
   Widget _facts(ServiceOffering offering, S s, AkColors ak) {

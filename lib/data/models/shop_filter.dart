@@ -1,6 +1,7 @@
 import '../../core/i18n/strings.dart';
 import '../../core/json/json_utils.dart';
 import 'car.dart';
+import 'powertrain.dart';
 import 'product.dart';
 
 /// How the results list is ordered. `recommended` is catalogue order — what
@@ -36,6 +37,7 @@ class ShopFilter {
     this.categoryId,
     this.providerId,
     this.region,
+    this.powertrain,
     this.minPrice = 0,
     this.maxPrice = 100,
     this.inStockOnly = false,
@@ -47,6 +49,13 @@ class ShopFilter {
   final String? categoryId;
   final String? providerId;
   final String? region;
+
+  /// Show only parts that suit this powertrain. Set on its own (rather than
+  /// derived from [car]) so an EV owner can browse charging hardware without
+  /// pinning the whole shop to one saved car, and so someone shopping ahead of
+  /// buying an EV can use it with no car saved at all.
+  final Powertrain? powertrain;
+
   final double minPrice;
   final double maxPrice;
 
@@ -66,6 +75,7 @@ class ShopFilter {
     if (categoryId != null) n++;
     if (providerId != null) n++;
     if (region != null) n++;
+    if (powertrain != null) n++;
     if (minPrice > 0 || maxPrice < 100) n++;
     if (inStockOnly) n++;
     if (onOfferOnly) n++;
@@ -84,6 +94,7 @@ class ShopFilter {
     if (categoryId != null && product.categoryId != categoryId) return false;
     if (providerId != null && product.providerId != providerId) return false;
     if (region != null && product.region != region) return false;
+    if (!product.fitsPowertrain(powertrain)) return false;
     if (inStockOnly && !product.inStock) return false;
     if (onOfferOnly && !product.onOffer) return false;
     return matchesPrice(product.price);
@@ -113,6 +124,7 @@ class ShopFilter {
         'categoryId': categoryId,
         'providerId': providerId,
         'region': region,
+        'powertrain': powertrain?.key,
         'minPrice': minPrice,
         'maxPrice': maxPrice,
         'inStock': inStockOnly ? true : null,
@@ -125,6 +137,7 @@ class ShopFilter {
     String? Function()? categoryId,
     String? Function()? providerId,
     String? Function()? region,
+    Powertrain? Function()? powertrain,
     double? minPrice,
     double? maxPrice,
     bool? inStockOnly,
@@ -136,6 +149,7 @@ class ShopFilter {
         categoryId: categoryId != null ? categoryId() : this.categoryId,
         providerId: providerId != null ? providerId() : this.providerId,
         region: region != null ? region() : this.region,
+        powertrain: powertrain != null ? powertrain() : this.powertrain,
         minPrice: minPrice ?? this.minPrice,
         maxPrice: maxPrice ?? this.maxPrice,
         inStockOnly: inStockOnly ?? this.inStockOnly,
@@ -150,6 +164,7 @@ class ShopFilter {
       other.categoryId == categoryId &&
       other.providerId == providerId &&
       other.region == region &&
+      other.powertrain == powertrain &&
       other.minPrice == minPrice &&
       other.maxPrice == maxPrice &&
       other.inStockOnly == inStockOnly &&
@@ -157,6 +172,6 @@ class ShopFilter {
       other.sort == sort;
 
   @override
-  int get hashCode => Object.hash(car, categoryId, providerId, region, minPrice,
-      maxPrice, inStockOnly, onOfferOnly, sort);
+  int get hashCode => Object.hash(car, categoryId, providerId, region,
+      powertrain, minPrice, maxPrice, inStockOnly, onOfferOnly, sort);
 }

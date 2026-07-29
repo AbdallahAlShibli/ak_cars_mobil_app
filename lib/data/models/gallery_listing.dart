@@ -89,6 +89,9 @@ class GalleryListing {
     required this.sellerAds,
     required this.sellerFollowers,
     required this.description,
+    this.rangeKm,
+    this.batteryWarrantyUntilYear,
+    this.chargerIncluded,
   });
 
   final String id;
@@ -143,6 +146,29 @@ class GalleryListing {
   final int sellerFollowers;
   final String description;
 
+  /// --------------------------------------------------------- electric cars
+  ///
+  /// All three are null on a petrol ad and null on an electric ad whose seller
+  /// did not state them — "not stated" and "no" are different answers to a
+  /// buyer, so the detail page shows the row only when there is a real value.
+
+  /// Range in km as claimed by the seller. Not measured by the app, and not
+  /// derived from the battery size.
+  final int? rangeKm;
+
+  /// Calendar year the battery warranty runs to. Battery cover usually
+  /// outlives the vehicle warranty and is the single biggest number in a used
+  /// EV's price, so it is its own field rather than a line in the description.
+  final int? batteryWarrantyUntilYear;
+
+  /// Whether a charging cable / home charger comes with the car.
+  final bool? chargerIncluded;
+
+  /// True when this ad is for a car that charges — the gate for showing the
+  /// three fields above.
+  bool get plugsIn =>
+      fuel == 'Electric' || fuel == 'Plug-in Hybrid';
+
   factory GalleryListing.fromJson(JsonMap json) => GalleryListing(
         id: json.requireString('id'),
         make: json.stringOr('make', ''),
@@ -179,6 +205,9 @@ class GalleryListing {
         sellerAds: json.intOr('sellerAds', 0),
         sellerFollowers: json.intOr('sellerFollowers', 0),
         description: json.stringOr('description', ''),
+        rangeKm: json.intOrNull('rangeKm'),
+        batteryWarrantyUntilYear: json.intOrNull('batteryWarrantyUntilYear'),
+        chargerIncluded: json.boolOrNull('chargerIncluded'),
       );
 
   JsonMap toJson() => {
@@ -217,6 +246,9 @@ class GalleryListing {
         'sellerAds': sellerAds,
         'sellerFollowers': sellerFollowers,
         'description': description,
+        'rangeKm': rangeKm,
+        'batteryWarrantyUntilYear': batteryWarrantyUntilYear,
+        'chargerIncluded': chargerIncluded,
       };
 
   GalleryListing copyWith({
@@ -255,6 +287,9 @@ class GalleryListing {
     int? sellerAds,
     int? sellerFollowers,
     String? description,
+    int? rangeKm,
+    int? batteryWarrantyUntilYear,
+    bool? chargerIncluded,
   }) =>
       GalleryListing(
         id: id ?? this.id,
@@ -292,6 +327,10 @@ class GalleryListing {
         sellerAds: sellerAds ?? this.sellerAds,
         sellerFollowers: sellerFollowers ?? this.sellerFollowers,
         description: description ?? this.description,
+        rangeKm: rangeKm ?? this.rangeKm,
+        batteryWarrantyUntilYear:
+            batteryWarrantyUntilYear ?? this.batteryWarrantyUntilYear,
+        chargerIncluded: chargerIncluded ?? this.chargerIncluded,
       );
 
   @override

@@ -73,7 +73,10 @@ Future<ProviderContainer> pumpGarageWithRouter(
   required List<Car> garage,
   String locale = 'en',
 }) async {
-  tester.view.physicalSize = const Size(402 * 3, 874 * 3);
+  // Tall surface: the car form is a lazy ListView, so a field below the fold
+  // is never built for a finder to see. The fields these tests assert on sit
+  // past one phone viewport now that the form also asks for the powertrain.
+  tester.view.physicalSize = const Size(402 * 3, 1600 * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
 
@@ -284,9 +287,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(container.read(garageProvider).single.odometerKm, 64000);
-      // The default car's reading feeds the maintenance book too, so the two
-      // screens cannot disagree about the same car's mileage.
-      expect(container.read(maintenanceProvider).currentOdometerKm, 64000);
+      // The reading feeds *that car's* maintenance book too, so the garage
+      // card and the maintenance page cannot disagree about the same car's
+      // mileage.
+      expect(
+          container.read(maintenanceBookProvider(_patrol.id)).currentOdometerKm,
+          64000);
     });
 
     testWidgets('swiping a car away removes it and offers an undo',

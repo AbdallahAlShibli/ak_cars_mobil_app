@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Android 13+ themed ("monochrome") layer. The launcher tints by alpha, so
+       the windshield and the light bar are knocked out as real holes instead of
+       being painted a second colour — otherwise the mark flattens to a blob. -->
+  <defs>
+    <mask id="cutouts">
+      <rect width="1024" height="1024" fill="#000"/>
+      <g transform="translate(512,512) scale(1.22) translate(-512,-516)">
+        <g transform="translate(512,516) scale(1.1) translate(-512,-506)">
+          <path fill="#fff" d="M414 292 L610 292 C656 292 686 316 700 360 L742 456 L282 456 L324 360 C338 316 368 292 414 292 Z"/>
+          <path fill="#fff" d="M252 446 L772 446 C796 446 812 466 810 490 L796 606 C792 640 768 660 736 660 L288 660 C256 660 232 640 228 606 L214 490 C212 466 228 446 252 446 Z"/>
+          <rect x="278" y="658" width="142" height="56" rx="28" fill="#fff"/>
+          <rect x="604" y="658" width="142" height="56" rx="28" fill="#fff"/>
+          <!-- holes -->
+          <path fill="#000" d="M436 346 L588 346 C610 346 622 356 628 374 L648 430 L376 430 L396 374 C402 356 414 346 436 346 Z"/>
+          <rect x="286" y="520" width="452" height="44" rx="22" fill="#000"/>
+        </g>
+      </g>
+    </mask>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#FFFFFF" mask="url(#cutouts)"/>
+</svg>

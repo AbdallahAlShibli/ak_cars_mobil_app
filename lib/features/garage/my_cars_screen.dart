@@ -131,34 +131,49 @@ class _PrimaryCarCard extends ConsumerWidget {
                 ),
                 alignment: Alignment.center,
                 padding: const EdgeInsets.fromLTRB(16, 30, 16, 12),
-                child: CarImage(make: car.make, model: car.model, height: 106),
+                child: CarImage(
+                    make: car.make,
+                    model: car.model,
+                    color: car.color,
+                    height: 106),
               ),
               PositionedDirectional(
                 top: 12,
                 start: 14,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: ak.primary,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.star_rounded, size: 12, color: ak.onPrimary),
-                      const SizedBox(width: 4),
-                      Text(
-                        s.t('الافتراضية', 'DEFAULT'),
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6,
-                          color: ak.onPrimary,
-                        ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: ak.primary,
+                        borderRadius: BorderRadius.circular(999),
                       ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.star_rounded,
+                              size: 12, color: ak.onPrimary),
+                          const SizedBox(width: 4),
+                          Text(
+                            s.t('الافتراضية', 'DEFAULT'),
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6,
+                              color: ak.onPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // An electric car should be recognisable as one from its
+                    // own garage card, not only from a field inside the editor.
+                    if (car.powertrain case final powertrain?) ...[
+                      const SizedBox(width: 7),
+                      _PowertrainBadge(powertrain: powertrain),
                     ],
-                  ),
+                  ],
                 ),
               ),
               PositionedDirectional(
@@ -215,6 +230,11 @@ class _PrimaryCarCard extends ConsumerWidget {
                     _SpecChip(
                         icon: Icons.calendar_today_outlined,
                         label: '${car.year}'),
+                    if (car.powertrain case final powertrain?)
+                      _SpecChip(
+                        icon: powertrain.icon,
+                        label: powertrain.label.of(s),
+                      ),
                     if (car.color != null)
                       _SpecChip(
                         label: specs.localized(car.color!, s.isAr),
@@ -233,9 +253,9 @@ class _PrimaryCarCard extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                _MileageRow(car: car, isPrimary: true),
+                _MileageRow(car: car),
                 const SizedBox(height: 10),
-                const _DueStrip(),
+                _DueStrip(car: car),
                 if (!car.hasFullDetails) ...[
                   const SizedBox(height: 10),
                   _CompleteDetailsNudge(car: car),
@@ -257,7 +277,12 @@ class _PrimaryCarCard extends ConsumerWidget {
                       child: _Action(
                         icon: Icons.event_note_rounded,
                         label: s.t('الصيانة', 'Maintenance'),
-                        onTap: () => context.push('/maintenance'),
+                        onTap: () {
+                          ref
+                              .read(selectedMaintenanceCarIdProvider.notifier)
+                              .state = car.id;
+                          context.go('/my-car');
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -309,7 +334,9 @@ class _SecondaryCarCard extends ConsumerWidget {
         radius: 20,
         padding: const EdgeInsets.all(12),
         onTap: () => context.push('/garage/edit/${car.id}'),
-        child: Row(
+        child: Column(
+          children: [
+            Row(
           children: [
             Container(
               width: 74,
@@ -319,7 +346,11 @@ class _SecondaryCarCard extends ConsumerWidget {
                 color: ak.surfaceDim,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: CarImage(make: car.make, model: car.model, height: 50),
+              child: CarImage(
+                  make: car.make,
+                  model: car.model,
+                  color: car.color,
+                  height: 50),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -348,6 +379,20 @@ class _SecondaryCarCard extends ConsumerWidget {
                             style: TextStyle(
                                 fontSize: 11, color: ak.inkFaint)),
                       ],
+                      if (car.powertrain case final powertrain?) ...[
+                        Icon(powertrain.icon, size: 11, color: ak.inkFaint),
+                        const SizedBox(width: 3),
+                        Text(
+                          powertrain.badge.of(s),
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: ak.inkSub),
+                        ),
+                        Text(' · ',
+                            style:
+                                TextStyle(fontSize: 11, color: ak.inkFaint)),
+                      ],
                       Flexible(
                         child: Text(
                           car.odometerKm != null
@@ -367,12 +412,59 @@ class _SecondaryCarCard extends ConsumerWidget {
             _CarMenuButton(car: car, index: index),
           ],
         ),
+            // This car's own book, not the default car's.
+            const SizedBox(height: 10),
+            _DueStrip(car: car),
+          ],
+        ),
       ),
     );
   }
 }
 
 /// -------------------------------------------------------------- fragments
+
+/// "Electric" / "Hybrid" pill on the car photo.
+///
+/// Electric gets the accent treatment; everything else stays quiet — the badge
+/// exists to make an EV feel recognised, not to decorate every card.
+class _PowertrainBadge extends StatelessWidget {
+  const _PowertrainBadge({required this.powertrain});
+
+  final Powertrain powertrain;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    final electric = powertrain.isFullyElectric;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: electric ? ak.successSoft : ak.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: electric ? ak.success : ak.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(powertrain.icon,
+              size: 12, color: electric ? ak.success : ak.inkSub),
+          const SizedBox(width: 4),
+          Text(
+            powertrain.label.of(s),
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.4,
+              color: electric ? ak.success : ak.inkSub,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Mini Omani plate, so a car is recognisable at a glance the same way it is
 /// in the car park.
@@ -470,10 +562,9 @@ class _SpecChip extends StatelessWidget {
 /// Mileage with an inline update action — the one car detail that changes
 /// every week, so it does not deserve a trip through the edit form.
 class _MileageRow extends ConsumerWidget {
-  const _MileageRow({required this.car, required this.isPrimary});
+  const _MileageRow({required this.car});
 
   final Car car;
-  final bool isPrimary;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -528,8 +619,7 @@ class _MileageRow extends ConsumerWidget {
                 : s.t('حدّث', 'Update'),
             fontSize: 11,
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
-            onTap: () => showMileageSheet(context, ref, car,
-                syncMaintenanceLog: isPrimary),
+            onTap: () => showMileageSheet(context, ref, car),
           ),
         ],
       ),
@@ -537,30 +627,38 @@ class _MileageRow extends ConsumerWidget {
   }
 }
 
-/// What the maintenance book says is due next for the default car. It reads
-/// the same computed items as the maintenance screen — no second opinion,
-/// and nothing shown for an item with no service record.
+/// What *this car's* maintenance book says is due next. It reads the same
+/// computed items as the maintenance screen — no second opinion, nothing
+/// shown for an item with no service record, and nothing borrowed from
+/// another car in the garage.
 class _DueStrip extends ConsumerWidget {
-  const _DueStrip();
+  const _DueStrip({required this.car});
+
+  final Car car;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ak = AkColors.of(context);
     final s = S.of(context);
-    final due = ref.watch(maintenanceDueProvider);
-    final next = _mostUrgent(due);
+    final due = ref.watch(maintenanceDueForCarProvider(car.id));
+    final next = due.mostUrgent;
+
+    void openBook() {
+      ref.read(selectedMaintenanceCarIdProvider.notifier).state = car.id;
+      context.go('/my-car');
+    }
 
     if (next == null || next.status == DueStatus.noRecord) {
       return GestureDetector(
-        onTap: () => context.push('/maintenance'),
+        onTap: openBook,
         child: Row(
           children: [
             Icon(Icons.event_note_outlined, size: 14, color: ak.inkFaint),
             const SizedBox(width: 7),
             Expanded(
               child: Text(
-                s.t('لا سجل صيانة بعد — سجّل خدمة لتبدأ التذكيرات.',
-                    'No service record yet — log one to start reminders.'),
+                s.t('لا سجل صيانة لهذه السيارة بعد — أضف آخر خدمة لتبدأ التذكيرات.',
+                    'No service record for this car yet — add its last service to start reminders.'),
                 style: TextStyle(fontSize: 10.5, color: ak.inkFaint),
               ),
             ),
@@ -591,7 +689,7 @@ class _DueStrip extends ConsumerWidget {
     };
 
     return GestureDetector(
-      onTap: () => context.push('/maintenance'),
+      onTap: openBook,
       behavior: HitTestBehavior.opaque,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -600,7 +698,7 @@ class _DueStrip extends ConsumerWidget {
             children: [
               Expanded(
                 child: Text(
-                  next.type.shortTitle.of(s),
+                  next.shortTitle.of(s),
                   style: const TextStyle(
                       fontSize: 11.5, fontWeight: FontWeight.w700),
                 ),
@@ -617,16 +715,6 @@ class _DueStrip extends ConsumerWidget {
     );
   }
 
-  /// The item closest to being due; items with no record cannot be ranked,
-  /// so they lose to any item that can.
-  DueItem? _mostUrgent(List<DueItem> items) {
-    DueItem? best;
-    for (final item in items) {
-      if (item.progress == null) continue;
-      if (best == null || item.progress! > best.progress!) best = item;
-    }
-    return best ?? (items.isEmpty ? null : items.first);
-  }
 }
 
 /// Amber nudge shown while the car is missing the details that services and
@@ -750,9 +838,11 @@ class _CarMenuButton extends ConsumerWidget {
             context.push('/garage/edit/${car.id}');
           case 'primary':
             ref.read(garageProvider.notifier).setPrimary(car.id);
+          case 'maintenance':
+            ref.read(selectedMaintenanceCarIdProvider.notifier).state = car.id;
+            context.go('/my-car');
           case 'mileage':
-            await showMileageSheet(context, ref, car,
-                syncMaintenanceLog: isPrimary);
+            await showMileageSheet(context, ref, car);
           case 'remove':
             await confirmRemoveCar(context, ref, car, index);
         }
@@ -776,6 +866,14 @@ class _CarMenuButton extends ConsumerWidget {
           child: _MenuItem(
               icon: Icons.speed_rounded,
               label: s.t('تحديث الممشى', 'Update mileage')),
+        ),
+        // Every car has its own book, so every car's menu opens it — the
+        // maintenance page is not a view of the default car alone.
+        PopupMenuItem(
+          value: 'maintenance',
+          child: _MenuItem(
+              icon: Icons.event_note_rounded,
+              label: s.t('دفتر الصيانة', 'Maintenance book')),
         ),
         PopupMenuItem(
           value: 'remove',
@@ -857,17 +955,18 @@ class _EmptyState extends StatelessWidget {
 
 /// ----------------------------------------------------------------- actions
 
-/// Numeric sheet for the odometer.
+/// Numeric sheet for one car's odometer.
 ///
-/// When [syncMaintenanceLog] is set the reading also updates the maintenance
-/// book, which tracks the default car — otherwise the garage and the
-/// maintenance screen would show two different mileages for the same car.
+/// The write goes through the maintenance notifier, which updates that car's
+/// maintenance book *and* the saved car — one reading, one car, one place it
+/// is stored. The garage card and the maintenance page cannot show two
+/// different mileages for the same vehicle, and updating the second car in the
+/// garage no longer moves the first car's countdown.
 Future<void> showMileageSheet(
   BuildContext context,
   WidgetRef ref,
-  Car car, {
-  required bool syncMaintenanceLog,
-}) {
+  Car car,
+) {
   final ak = AkColors.of(context);
   return showModalBottomSheet<void>(
     context: context,
@@ -878,12 +977,8 @@ Future<void> showMileageSheet(
     ),
     builder: (sheetContext) => _MileageSheet(
       car: car,
-      onSave: (km) {
-        ref.read(garageProvider.notifier).setOdometer(car.id, km);
-        if (syncMaintenanceLog) {
-          ref.read(maintenanceProvider.notifier).updateOdometer(km);
-        }
-      },
+      onSave: (km) =>
+          ref.read(garageProvider.notifier).setOdometer(car.id, km),
     ),
   );
 }

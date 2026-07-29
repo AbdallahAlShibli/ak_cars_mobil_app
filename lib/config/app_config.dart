@@ -19,6 +19,8 @@ class AppConfig {
     this.mockLatency = Duration.zero,
     this.simulateProviderLifecycle = true,
     this.defaultPageSize = 20,
+    this.approvalWindow = const Duration(hours: 72),
+    this.approvalReminderLead = const Duration(hours: 24),
   });
 
   final AppEnvironment environment;
@@ -45,7 +47,38 @@ class AppConfig {
 
   final int defaultPageSize;
 
+  /// How long a customer has to approve or dispute completed work before the
+  /// escrow releases itself (spec §3, note 1).
+  ///
+  /// The window protects the *workshop* from a customer who disappears after
+  /// collecting their car. Three days sits at the short end of the 3–7 day
+  /// range these platforms normally use, which suits a market where the
+  /// workshop and the customer are usually in the same wilayat.
+  final Duration approvalWindow;
+
+  /// How far before the deadline the customer is warned that the release is
+  /// coming. A silent automatic release is indistinguishable from the app
+  /// taking the workshop's side.
+  final Duration approvalReminderLead;
+
   static const _envKey = String.fromEnvironment('AK_ENV', defaultValue: 'development');
+
+  /// Use the remote vehicle-image CDNs (studio photos, brand logos) — **on by
+  /// default**, so mobile shows the same real logos and studio photos the web
+  /// app does.
+  ///
+  /// Turn it off to force the offline drawings:
+  /// `flutter run --dart-define=AK_REMOTE_CAR_IMAGES=false`.
+  ///
+  /// Deliberately a compile-time constant rather than an environment field: the
+  /// widgets that read it (`CarImage`, `MakeLogo`) sit below the DI layer and
+  /// never see an [AppConfig] instance.
+  ///
+  /// Either way the app never shows an empty box: a car that fails to load
+  /// falls back to `assets/cars/` and then to the drawn silhouette in
+  /// `core/widgets/car_artwork.dart`.
+  static const bool useRemoteVehicleImages =
+      bool.fromEnvironment('AK_REMOTE_CAR_IMAGES', defaultValue: true);
 
   /// Configuration for the environment this binary was built for.
   factory AppConfig.current() => forEnvironment(AppEnvironment.fromKey(_envKey));
@@ -78,6 +111,8 @@ class AppConfig {
     Duration? mockLatency,
     bool? simulateProviderLifecycle,
     int? defaultPageSize,
+    Duration? approvalWindow,
+    Duration? approvalReminderLead,
   }) =>
       AppConfig(
         environment: environment ?? this.environment,
@@ -89,5 +124,8 @@ class AppConfig {
         simulateProviderLifecycle:
             simulateProviderLifecycle ?? this.simulateProviderLifecycle,
         defaultPageSize: defaultPageSize ?? this.defaultPageSize,
+        approvalWindow: approvalWindow ?? this.approvalWindow,
+        approvalReminderLead:
+            approvalReminderLead ?? this.approvalReminderLead,
       );
 }

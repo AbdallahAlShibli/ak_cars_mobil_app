@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/bidi_text.dart';
 import '../../core/utils/contact.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
@@ -84,7 +85,11 @@ class ProviderDetailsCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '$area${s.t('، ', ', ')}$region · ${provider.distanceKm} ${s.km}',
+                      isolateNumbers(
+                        '$area${s.t('، ', ', ')}$region · '
+                        '${provider.distanceKm} ${s.km}',
+                        rtl: s.isAr,
+                      ),
                       style: TextStyle(fontSize: 11.5, color: ak.inkSub),
                     ),
                   ],
@@ -113,7 +118,12 @@ class ProviderDetailsCard extends ConsumerWidget {
                         const SizedBox(width: 5),
                         Text(
                           f == Fulfillment.pickup && provider.pickupFee > 0
-                              ? '${f.label(s)} · ${provider.pickupFee.toStringAsFixed(0)} ${s.omr}'
+                              ? isolateNumbers(
+                                  '${f.label(s)} · '
+                                  '${provider.pickupFee.toStringAsFixed(0)} '
+                                  '${s.omr}',
+                                  rtl: s.isAr,
+                                )
                               : f.label(s),
                           style: const TextStyle(
                               fontSize: 11, fontWeight: FontWeight.w600),
@@ -233,6 +243,11 @@ class ProviderDetailsCard extends ConsumerWidget {
     String value, {
     VoidCallback? onCopy,
   }) {
+    // Phone numbers, VATINs, CR numbers and opening hours all carry neutral
+    // characters (`+`, `–`, `:`) that Arabic's right-to-left order would move
+    // to the wrong side of the digits. Only the *rendered* string is isolated;
+    // the copy button still puts the raw value on the clipboard.
+    final rtl = Directionality.of(context) == TextDirection.rtl;
     return Row(
       children: [
         Icon(icon, size: 15, color: ak.inkFaint),
@@ -247,7 +262,7 @@ class ProviderDetailsCard extends ConsumerWidget {
               children: [
                 Flexible(
                   child: Text(
-                    value,
+                    isolateNumbers(value, rtl: rtl),
                     textAlign: TextAlign.end,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

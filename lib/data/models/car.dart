@@ -1,4 +1,5 @@
 import '../../core/json/json_utils.dart';
+import 'powertrain.dart';
 
 /// A car saved in the user's garage, or selected ad-hoc for a request.
 ///
@@ -19,6 +20,7 @@ class Car {
     this.governorate,
     this.wilayat,
     this.serviceDueKm,
+    this.powertrain,
   });
 
   final String id;
@@ -44,6 +46,15 @@ class Car {
 
   final int? serviceDueKm;
 
+  /// Petrol / diesel / hybrid / plug-in hybrid / electric.
+  ///
+  /// Optional like every other detail past [year] — null means "the owner has
+  /// not told us", and the app falls back to combustion behaviour rather than
+  /// guessing from the model name. Everything powertrain-specific (which
+  /// maintenance items are due, which services and parts are relevant) reads
+  /// this one field.
+  final Powertrain? powertrain;
+
   String get label => '$make $model $year';
 
   /// What to show as the card title: the nickname when the user set one,
@@ -53,8 +64,19 @@ class Car {
 
   /// True once the details beyond the required make/model/year are filled in.
   /// Drives the "complete your car details" nudge in the garage.
+  ///
+  /// Powertrain is deliberately not part of this: it is a one-tap field that
+  /// changes what the app shows, not a detail a workshop needs before it can
+  /// take the car in.
   bool get hasFullDetails =>
       plate != null && odometerKm != null && governorate != null;
+
+  /// Driven by electricity alone — the flag the EV experience keys off.
+  bool get isElectric => powertrain?.isFullyElectric ?? false;
+
+  /// Plugs in to charge (electric or plug-in hybrid), so charging cables,
+  /// ports and home chargers are part of owning it.
+  bool get plugsIn => powertrain?.plugsIn ?? false;
 
   factory Car.fromJson(JsonMap json) => Car(
         id: json.requireString('id'),
@@ -69,6 +91,9 @@ class Car {
         governorate: json.stringOrNull('governorate'),
         wilayat: json.stringOrNull('wilayat'),
         serviceDueKm: json.intOrNull('serviceDueKm'),
+        // Accepts the wire key or a marketplace fuel value ("Plug-in Hybrid"),
+        // and degrades to null rather than a guess.
+        powertrain: PowertrainX.fromKey(json.stringOrNull('powertrain')),
       );
 
   JsonMap toJson() => {
@@ -84,6 +109,7 @@ class Car {
         'governorate': governorate,
         'wilayat': wilayat,
         'serviceDueKm': serviceDueKm,
+        'powertrain': powertrain?.key,
       };
 
   /// Overwrites only the named fields. It cannot clear an optional field back
@@ -102,6 +128,7 @@ class Car {
     String? governorate,
     String? wilayat,
     int? serviceDueKm,
+    Powertrain? powertrain,
   }) =>
       Car(
         id: id ?? this.id,
@@ -116,6 +143,7 @@ class Car {
         governorate: governorate ?? this.governorate,
         wilayat: wilayat ?? this.wilayat,
         serviceDueKm: serviceDueKm ?? this.serviceDueKm,
+        powertrain: powertrain ?? this.powertrain,
       );
 
   /// Full value equality, not id-only: Riverpod compares provider results with
@@ -135,9 +163,10 @@ class Car {
       other.odometerKm == odometerKm &&
       other.governorate == governorate &&
       other.wilayat == wilayat &&
-      other.serviceDueKm == serviceDueKm;
+      other.serviceDueKm == serviceDueKm &&
+      other.powertrain == powertrain;
 
   @override
   int get hashCode => Object.hash(id, make, model, year, nickname, trim, color,
-      plate, odometerKm, governorate, wilayat, serviceDueKm);
+      plate, odometerKm, governorate, wilayat, serviceDueKm, powertrain);
 }

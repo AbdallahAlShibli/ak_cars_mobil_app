@@ -4,9 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import 'package:go_router/go_router.dart';
+
+import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/sand_widgets.dart';
+import '../../data/models/app_role.dart';
 import '../../state/app_state.dart';
 
 /// Settings (handoff #4a): language segmented pill (Arabic | English),
@@ -162,6 +166,12 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
+            if (AppFlags.operatorPanelsEnabled) ...[
+              const SizedBox(height: 15),
+              _sectionLabel(ak, s.t('وضع التشغيل', 'Operating mode')),
+              const SizedBox(height: 10),
+              const _RoleSwitcher(),
+            ],
           ],
         ),
       ),
@@ -407,6 +417,93 @@ class _ThemePreviewCard extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+
+/// Switches the device between the pilot's three roles (spec §6).
+///
+/// Lives at the very bottom of Settings and says plainly what it does: this
+/// is an operating tool for the pilot, not a customer-facing feature. When
+/// the backend issues real role claims, this whole widget goes and
+/// [activeRoleProvider] reads the session instead.
+class _RoleSwitcher extends ConsumerWidget {
+  const _RoleSwitcher();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    final active = ref.watch(activeRoleProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SandCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              for (final (i, role) in AppRole.values.indexed)
+                InkWell(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    ref.read(activeRoleProvider.notifier).setRole(role);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 11),
+                    decoration: BoxDecoration(
+                      border: i == AppRole.values.length - 1
+                          ? null
+                          : Border(bottom: BorderSide(color: ak.divider)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(role.label(s),
+                                  style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 2),
+                              Text(role.description(s),
+                                  style: TextStyle(
+                                      fontSize: 10.5, color: ak.inkSub)),
+                            ],
+                          ),
+                        ),
+                        if (role == active)
+                          Icon(LucideIcons.check, size: 17, color: ak.ink),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          s.t('أدوار التشغيل للتجريبي. لا تغيّر ما يراه العميل في تطبيقه — تفتح لك لوحة الورشة أو لوحة المؤسس على هذا الجهاز فقط.',
+              "Pilot operating roles. They change nothing for a customer on their own phone — they open the workshop or founder panel on this device only."),
+          style: TextStyle(fontSize: 10, color: ak.inkFaint, height: 1.7),
+        ),
+        if (active.hasPanel) ...[
+          const SizedBox(height: 10),
+          FilledButton(
+            onPressed: () => context.push(active.panelRoute),
+            child: Text(switch (active) {
+              AppRole.workshop =>
+                s.t('افتح لوحة الورشة', 'Open the workshop panel'),
+              AppRole.founder =>
+                s.t('افتح لوحة المؤسس', 'Open the founder panel'),
+              AppRole.customer => s.navBookings,
+            }),
+          ),
+        ],
+      ],
     );
   }
 }

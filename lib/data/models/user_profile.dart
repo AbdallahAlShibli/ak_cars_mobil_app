@@ -9,6 +9,7 @@ class UserProfile {
     required this.email,
     required this.region,
     required this.address,
+    this.wilayat = '',
     this.id,
   });
 
@@ -21,6 +22,12 @@ class UserProfile {
 
   /// Canonical English governorate key.
   final String region;
+
+  /// Canonical English wilayat key within [region]. Empty when not given —
+  /// it narrows the address, it does not gate registration.
+  final String wilayat;
+
+  /// Street/area line, below the wilayat.
   final String address;
 
   factory UserProfile.fromJson(JsonMap json) => UserProfile(
@@ -29,6 +36,7 @@ class UserProfile {
         phone: json.stringOr('phone', ''),
         email: json.stringOr('email', ''),
         region: json.stringOr('region', ''),
+        wilayat: json.stringOr('wilayat', ''),
         address: json.stringOr('address', ''),
       );
 
@@ -38,6 +46,7 @@ class UserProfile {
         'phone': phone,
         'email': email,
         'region': region,
+        'wilayat': wilayat,
         'address': address,
       };
 
@@ -47,6 +56,7 @@ class UserProfile {
     String? phone,
     String? email,
     String? region,
+    String? wilayat,
     String? address,
   }) =>
       UserProfile(
@@ -55,6 +65,7 @@ class UserProfile {
         phone: phone ?? this.phone,
         email: email ?? this.email,
         region: region ?? this.region,
+        wilayat: wilayat ?? this.wilayat,
         address: address ?? this.address,
       );
 
@@ -66,8 +77,10 @@ class UserProfile {
       other.phone == phone &&
       other.email == email &&
       other.region == region &&
+      other.wilayat == wilayat &&
       other.address == address;
 
   @override
-  int get hashCode => Object.hash(id, name, phone, email, region, address);
+  int get hashCode =>
+      Object.hash(id, name, phone, email, region, wilayat, address);
 }

@@ -6,6 +6,7 @@ import '../../core/json/icon_codec.dart';
 import '../../core/json/json_utils.dart';
 import '../../core/utils/search_match.dart';
 import 'car.dart';
+import 'powertrain.dart';
 
 /// One row of a part's spec table ("Thread size" → "M20 × 1.5").
 ///
@@ -57,6 +58,7 @@ class Product {
     this.returnDays = 7,
     this.fittingAvailable = false,
     this.specs = const [],
+    this.powertrains = const {},
   });
 
   final String id;
@@ -106,6 +108,20 @@ class Product {
   /// `'any'`, or `'Make Model'` keys this part fits.
   final Set<String> fits;
 
+  /// Powertrains this part is for. Empty means "any car" — the normal case for
+  /// a tyre or a wiper blade.
+  ///
+  /// A separate axis from [fits] because it is a different kind of
+  /// incompatibility: a Type 2 charging cable does not become right for a
+  /// petrol Camry just because the make and model line up, and an EV-rated
+  /// tyre is a real spec (higher load index for pack weight, low rolling
+  /// resistance), not marketing.
+  final Set<Powertrain> powertrains;
+
+  /// True when this part exists only for cars that charge.
+  bool get evOnly =>
+      powertrains.isNotEmpty && powertrains.every((p) => p.plugsIn);
+
   bool get onOffer => oldPrice != null && oldPrice! > price;
 
   bool get inStock => stock > 0;
@@ -117,7 +133,10 @@ class Product {
   int get discountPercent =>
       onOffer ? (100 - price / oldPrice! * 100).round() : 0;
 
-  bool get universalFit => fits.contains('any');
+  /// Fits any car at all. A part restricted to one powertrain is not
+  /// universal however many makes it covers — a Type 2 charging cable listed
+  /// as "fits all cars" would be a lie told to every petrol owner who sees it.
+  bool get universalFit => fits.contains('any') && powertrains.isEmpty;
 
   String details(S s) =>
       description?.of(s) ??
@@ -139,12 +158,30 @@ class Product {
         brand?.ar,
         brand?.en,
         partNumber,
+        // "electric" / "كهربائي" finds the EV parts even when the words are
+        // not in the product name — the powertrain is printed on the listing,
+        // so it has to be searchable like anything else printed there.
+        for (final p in powertrains) p.label.ar,
+        for (final p in powertrains) p.label.en,
       ]);
 
+  /// Whether this part suits [car] — make/model *and* powertrain.
+  ///
+  /// A null car means "nothing to check against", which reads as compatible:
+  /// the shop is never locked to the saved car.
   bool fitsCar(Car? car) {
-    if (car == null || fits.contains('any')) return true;
+    if (car == null) return true;
+    if (!fitsPowertrain(car.powertrain)) return false;
+    if (fits.contains('any')) return true;
     return fits.contains('${car.make} ${car.model}');
   }
+
+  /// Powertrain compatibility on its own. An unrecorded powertrain cannot rule
+  /// a part out — the app must not hide parts because a field is blank.
+  bool fitsPowertrain(Powertrain? powertrain) =>
+      powertrains.isEmpty ||
+      powertrain == null ||
+      powertrains.contains(powertrain);
 
   factory Product.fromJson(JsonMap json) => Product(
         id: json.requireString('id'),
@@ -171,6 +208,10 @@ class Product {
         specs: [
           for (final spec in json.objectList('specs')) ProductSpec.fromJson(spec)
         ],
+        powertrains: {
+          for (final key in json.stringList('powertrains'))
+            ?PowertrainX.fromKey(key),
+        },
       );
 
   JsonMap toJson() => {
@@ -195,6 +236,7 @@ class Product {
         'returnDays': returnDays,
         'fittingAvailable': fittingAvailable,
         'specs': [for (final spec in specs) spec.toJson()],
+        'powertrains': [for (final p in powertrains) p.key],
       };
 
   Product copyWith({
@@ -219,6 +261,7 @@ class Product {
     int? returnDays,
     bool? fittingAvailable,
     List<ProductSpec>? specs,
+    Set<Powertrain>? powertrains,
   }) =>
       Product(
         id: id ?? this.id,
@@ -242,6 +285,7 @@ class Product {
         returnDays: returnDays ?? this.returnDays,
         fittingAvailable: fittingAvailable ?? this.fittingAvailable,
         specs: specs ?? this.specs,
+        powertrains: powertrains ?? this.powertrains,
       );
 
   @override
@@ -268,7 +312,9 @@ class Product {
       other.fittingAvailable == fittingAvailable &&
       const ListEquality<ProductSpec>().equals(other.specs, specs) &&
       other.fits.length == fits.length &&
-      other.fits.containsAll(fits);
+      other.fits.containsAll(fits) &&
+      other.powertrains.length == powertrains.length &&
+      other.powertrains.containsAll(powertrains);
 
   @override
   int get hashCode => Object.hash(
@@ -289,5 +335,6 @@ class Product {
         Object.hash(warrantyMonths, stock, deliveryDays, returnDays,
             fittingAvailable, Object.hashAll(specs)),
         Object.hashAllUnordered(fits),
+        Object.hashAllUnordered(powertrains),
       );
 }

@@ -2,43 +2,14 @@ import '../../../core/i18n/strings.dart';
 import '../../models/challenge.dart';
 import '../../models/maintenance.dart';
 
-/// Demo seeds for the garage features — the maintenance book and the weekly
-/// challenge. Read only by `MockMaintenanceService` / `MockChallengeService`.
+/// Demo seed for the weekly challenge. Read only by `MockChallengeService`.
+///
+/// There is deliberately no maintenance seed here any more. Maintenance is now
+/// per car and every book starts empty: the demo log that used to live here was
+/// global, so a user who had just registered their first car was shown an oil
+/// change and a wheel alignment that car had never had, at a mileage that was
+/// not theirs.
 abstract final class MockGarageData {
-  /// Mirrors the design-handoff demo data. The dated records are relative to
-  /// [now] so the computed "due in N months" lines stay sensible as time
-  /// passes instead of drifting into the past.
-  static MaintenanceLog maintenanceLog({DateTime? now}) {
-    final today = now ?? DateTime.now();
-    return MaintenanceLog(
-      currentOdometerKm: 128450,
-      odometerUpdatedAt: today.subtract(const Duration(days: 1)),
-      records: [
-        ServiceRecord(
-          id: 'r-oil-1',
-          title: const L('تغيير زيت + فلتر', 'Oil + filter change'),
-          workshop: 'Gulf Auto Care',
-          odometerKm: 123000,
-          date: DateTime(2026, 3, 14),
-          type: MaintenanceType.oil,
-        ),
-        ServiceRecord(
-          id: 'r-tyre-1',
-          title: const L('ترصيص وموازنة', 'Alignment & balancing'),
-          workshop: 'Al Noor Workshop',
-          odometerKm: 119400,
-          date: DateTime(2026, 5, 20),
-          type: MaintenanceType.tyres,
-        ),
-      ],
-      kmIntervals: const {MaintenanceType.oil: 7000},
-      monthIntervals: const {
-        MaintenanceType.tyres: 6,
-        MaintenanceType.coolant: 24,
-      },
-    );
-  }
-
   static const challengeBoard = ChallengeBoard(
     current: WeeklyChallenge(
       id: 'tyre-pressure',
@@ -77,6 +48,73 @@ abstract final class MockGarageData {
       PastChallenge(
         title: L('افحص سائل التبريد', 'Check your coolant'),
         points: 150,
+      ),
+      PastChallenge(
+        title: L('حدّث الممشى 4 أسابيع متتالية',
+            'Update mileage 4 weeks in a row'),
+        points: 200,
+      ),
+    ],
+    streakWeeks: 3,
+    completedCount: 12,
+    points: 2450,
+    badgeCount: 8,
+  );
+
+  /// The board an owner of a car that plugs in gets instead.
+  ///
+  /// Same shape, same rewards, same streak — only the tasks differ. An EV
+  /// owner being handed "check your engine oil level" week after week is
+  /// exactly the "EV support is an afterthought" feeling this exists to fix.
+  ///
+  /// The loyalty totals are shared with the combustion board on purpose: the
+  /// user has one points balance, and it must not appear to change when they
+  /// make an EV their default car.
+  static const evChallengeBoard = ChallengeBoard(
+    current: WeeklyChallenge(
+      id: 'ev-trip-charge',
+      title: L('خطّط الشحن قبل رحلتك القادمة',
+          'Plan your charging before the next long drive'),
+      description: L(
+        'الطريق إلى صلالة أو الجبل الأخضر يحتاج توقفاً مخططاً — عشر دقائق '
+            'اليوم توفّر عليك الانتظار على الطريق.',
+        'A run to Salalah or Jebel Akhdar needs a planned stop — ten minutes '
+            'now saves a wait on the road.',
+      ),
+      steps: [
+        ChallengeStep(
+          id: 'ev-s1',
+          title: L('حدّد نقطة الشحن التي ستتوقف عندها',
+              'Pick the charging stop you will use'),
+        ),
+        ChallengeStep(
+          id: 'ev-s2',
+          title: L('افحص كيبل الشحن: سخونة أو تشقق أو أطراف متآكلة',
+              'Inspect your charging cable: heat marks, cracks, worn pins'),
+        ),
+        ChallengeStep(
+          id: 'ev-s3',
+          title: L('اضبط ضغط الإطارات — الضغط الناقص يقصّر المدى',
+              'Set tyre pressures — low pressure costs you range'),
+        ),
+      ],
+      rewardPoints: 150,
+      badgeName: L('مستعد للطريق', 'Road ready'),
+      endsInDays: 4,
+      // Pressures set with a gauge is a tyre check, and it is logged as one.
+      feedsMaintenance: MaintenanceType.tyres,
+      recordTitle: L('ضبط ضغط الإطارات وفحص الكيبل (تحدي)',
+          'Tyre pressures set & cable checked (challenge)'),
+    ),
+    next: LockedChallenge(
+      title: L('سجّل فحص الشاحن المنزلي', 'Log your home charger inspection'),
+      points: 120,
+    ),
+    history: [
+      PastChallenge(
+        title: L('نظّف منفذ الشحن وافحص القفل',
+            'Clean the charge port and check its latch'),
+        points: 100,
       ),
       PastChallenge(
         title: L('حدّث الممشى 4 أسابيع متتالية',

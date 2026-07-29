@@ -136,6 +136,7 @@ class ListingCard extends ConsumerWidget {
               child: CarImage(
                 make: listing.make,
                 model: listing.model,
+                color: listing.exteriorColor,
                 height: 108,
                 fallbackIcon: listing.icon,
               ),

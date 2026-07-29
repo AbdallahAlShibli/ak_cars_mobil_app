@@ -9,6 +9,7 @@ import 'package:ak_cars_mobil_app/features/cars/listing_detail_screen.dart';
 import 'package:ak_cars_mobil_app/features/cars/make_filter_screen.dart';
 import 'package:ak_cars_mobil_app/features/cars/post_ad_screen.dart';
 import 'package:ak_cars_mobil_app/features/garage/add_car_screen.dart';
+import 'package:ak_cars_mobil_app/features/garage/maintenance_screen.dart';
 import 'package:ak_cars_mobil_app/features/onboarding/start_choice_screen.dart';
 import 'package:ak_cars_mobil_app/features/services/booking_screen.dart';
 import 'package:ak_cars_mobil_app/features/services/requests_screen.dart';
@@ -115,10 +116,10 @@ void main() {
   );
 
   bilingualTest(
-    'Service requests screen (empty state)',
+    'Bookings screen (empty state)',
     () => const RequestsScreen(),
-    ar: ['طلبات الخدمة', 'لا توجد طلبات خدمة بعد', 'حجز صيانة'],
-    en: ['Service requests', 'No service requests yet', 'Book service'],
+    ar: ['حجوزاتي', 'لا توجد حجوزات بعد', 'حجز صيانة'],
+    en: ['Bookings', 'No bookings yet', 'Book service'],
   );
 
   // Only the above-the-fold rows: this screen is a CustomScrollView, so
@@ -166,8 +167,40 @@ void main() {
   bilingualTest(
     'Add car screen',
     () => const AddCarScreen(),
-    ar: ['أضف سيارتك', 'الشركة المصنعة', 'الموديل', 'رقم اللوحة العمانية'],
-    en: ['Add your car', 'Make', 'Model', 'Oman plate number'],
+    ar: [
+      'أضف سيارتك',
+      'الشركة المصنعة',
+      'الموديل',
+      'رقم اللوحة العمانية',
+      'نوع الوقود / المحرك',
+      'كهربائي',
+    ],
+    en: [
+      'Add your car',
+      'Make',
+      'Model',
+      'Oman plate number',
+      'Fuel / powertrain',
+      'Electric',
+    ],
+  );
+
+  // The EV parts are new listings, and their spec sheets are the reason an EV
+  // owner can buy with confidence — so they get the same bilingual guarantee.
+  bilingualTest(
+    'Product detail screen — EV charging cable',
+    () => const ProductDetailScreen(productId: 'pr7'),
+    ar: ['كيبل شحن', 'نوع القابس', 'مخصصة لـ', 'الوصف'],
+    en: ['Type 2 charging cable', 'Connector', 'For: Electric', 'Description'],
+  );
+
+  // The My Car page with an empty garage: the state a first-run user meets,
+  // and the one that must not print English at an Arabic reader.
+  bilingualTest(
+    'My Car page (no car yet)',
+    () => const MaintenanceScreen(),
+    ar: ['سيارتي', 'لا توجد سيارة بعد', 'دفتر صيانة', 'أضف سيارة'],
+    en: ['My car', 'No car yet', 'maintenance book', 'Add car'],
   );
 
   bilingualTest(

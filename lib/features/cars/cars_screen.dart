@@ -499,6 +499,7 @@ class _AdCard extends ConsumerWidget {
                     child: CarImage(
                         make: listing.make,
                         model: listing.model,
+                        color: listing.exteriorColor,
                         height: 92),
                   ),
                   if (featured)

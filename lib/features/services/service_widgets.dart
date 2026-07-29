@@ -2,12 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart' as intl;
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
+
+final _money = intl.NumberFormat('#,##0.##', 'en');
+
+/// A price, with its fractional rials only when it has them.
+///
+/// The lists used to print `toStringAsFixed(0)`, which was harmless while
+/// every published price was a whole number. A discounted price is not: a
+/// service reduced to 4.5 rendered as "5", which is a wrong price on a screen
+/// the customer books from.
+String omrAmount(double value) => _money.format(value);
 
 /// Offerings split by whether their provider sits in the selected [region].
 ///
@@ -102,6 +113,30 @@ void _openCategory(BuildContext context, WidgetRef ref,
                               '${s.workshops(workshops)} in $regionLabel'),
                       style: TextStyle(fontSize: 12, color: ak.inkSub),
                     ),
+                    // Why this shortlist is shorter than the others: the
+                    // category needs a capability, and only some workshops
+                    // hold it. Stating it beats looking like missing data.
+                    if (category.requires case final capability?) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(capability.icon, size: 14, color: ak.inkSub),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              s.t(
+                                  'تظهر هنا الورش الحاملة لصفة: '
+                                      '${capability.label.ar}',
+                                  'Only workshops that are '
+                                      '${capability.label.en.toLowerCase()} '
+                                      'are listed'),
+                              style:
+                                  TextStyle(fontSize: 11, color: ak.inkSub),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Flexible(
                       child: ListView.separated(
@@ -307,15 +342,35 @@ class _ProviderOfferRow extends ConsumerWidget {
                 ],
               ),
             ),
-            Text(
-              offering.price != null
-                  ? '${s.omr} ${offering.price!.toStringAsFixed(0)}'
-                  : s.t('عرض سعر', 'Quote'),
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: ak.ink,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  offering.price != null
+                      ? '${s.omr} ${omrAmount(offering.price!)}'
+                      : s.t('عرض سعر', 'Quote'),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: ak.ink,
+                  ),
+                ),
+                // The price above is already the discounted one; this says why
+                // it is lower than the workshop's published price, so the row
+                // and the service page tell the same story.
+                if (ref
+                    .watch(serviceMarketplaceRepositoryProvider)
+                    .offerFor(offering.id)
+                    case final offer?)
+                  Text(
+                    '${s.omr} ${omrAmount(offer.referencePrice)}',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: ak.inkFaint,
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -395,8 +450,8 @@ class ServicePackageCard extends ConsumerWidget {
                 Text(
                   [
                     if (fromPrice != null)
-                      s.t('من ${fromPrice.toStringAsFixed(0)} ${s.omr}',
-                          'from ${s.omr} ${fromPrice.toStringAsFixed(0)}')
+                      s.t('من ${omrAmount(fromPrice)} ${s.omr}',
+                          'from ${s.omr} ${omrAmount(fromPrice)}')
                     else if (category.note != null)
                       category.note!.of(s),
                     if (local)
@@ -492,6 +547,11 @@ class OtherServiceTile extends ConsumerWidget {
 }
 
 /// "Car service" + "Other service" rails, shared by Home and Services.
+///
+/// A third rail carries the electric-car services. It moves to the top when
+/// the saved car plugs in — an EV owner's own services should not sit below
+/// two rails of engine work — and stays at the bottom, labelled for whom it
+/// is, for everyone else.
 class ServiceRails extends ConsumerWidget {
   const ServiceRails({super.key, this.packageHeight = 150});
 
@@ -503,7 +563,25 @@ class ServiceRails extends ConsumerWidget {
     final marketplace = ref.watch(serviceMarketplaceRepositoryProvider);
     final primaries = marketplace.primaryCategories;
     final others = marketplace.otherCategories;
-    return Column(
+    final evCategories = marketplace.evCategories;
+    final car = ref.watch(primaryCarProvider);
+    final evFirst = car?.plugsIn ?? false;
+
+    final evRail = evCategories.isEmpty
+        ? const SizedBox.shrink()
+        : _TileRail(
+            title: evFirst
+                ? s.t('عناية سيارتك الكهربائية', 'Care for your EV')
+                : s.t('خدمات السيارات الكهربائية', 'Electric-car services'),
+            subtitle: car != null && evFirst
+                ? s.t('مخصصة لـ ${car.displayName}',
+                    'Picked for your ${car.displayName}')
+                : s.t('للسيارات الكهربائية والهجينة القابلة للشحن',
+                    'For electric and plug-in hybrid cars'),
+            categories: evCategories,
+          );
+
+    final packagesRail = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
@@ -528,12 +606,62 @@ class ServiceRails extends ConsumerWidget {
             ),
           ),
         ),
-        const SizedBox(height: 20),
+      ],
+    );
+
+    final othersRail = _TileRail(
+      title: s.t('خدمات أخرى', 'Other services'),
+      categories: others,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, section) in (evFirst
+                ? [evRail, packagesRail, othersRail]
+                : [packagesRail, othersRail, evRail])
+            .indexed) ...[
+          if (i > 0) const SizedBox(height: 20),
+          section,
+        ],
+      ],
+    );
+  }
+}
+
+/// One horizontal rail of [OtherServiceTile]s under a heading.
+class _TileRail extends StatelessWidget {
+  const _TileRail({
+    required this.title,
+    required this.categories,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+  final List<ServiceCategory> categories;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Text(s.t('خدمات أخرى', 'Other services'),
-              style: const TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w800)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w800)),
+              if (subtitle case final line?) ...[
+                const SizedBox(height: 2),
+                Text(line,
+                    style: TextStyle(fontSize: 11.5, color: ak.inkSub)),
+              ],
+            ],
+          ),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -541,10 +669,10 @@ class ServiceRails extends ConsumerWidget {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: others.length,
+            itemCount: categories.length,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (context, i) =>
-                OtherServiceTile(category: others[i]),
+                OtherServiceTile(category: categories[i]),
           ),
         ),
       ],

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
 import 'package:ak_cars_mobil_app/data/datasources/mock/mock_cars_data.dart';
 import 'package:ak_cars_mobil_app/data/datasources/mock/mock_catalog_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
@@ -83,23 +84,41 @@ void main() {
   test('maintenance: remaining = interval − (current − lastServiceOdometer)',
       () async {
     final container = await createDataContainer();
+    const camry =
+        Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2021);
+    await container.read(garageProvider.notifier).add(camry);
 
-    final due = container.read(maintenanceDueProvider);
+    final maintenance = container.read(maintenanceProvider.notifier);
+    await container.read(garageProvider.notifier).setOdometer(camry.id, 128450);
+    await maintenance.addRecord(
+      camry.id,
+      ServiceRecord(
+        id: 'r-oil-1',
+        title: const L('تغيير زيت', 'Oil change'),
+        workshop: 'Gulf Auto Care',
+        odometerKm: 123000,
+        date: DateTime.now().subtract(const Duration(days: 30)),
+        itemKey: MaintenanceType.oil.key,
+      ),
+    );
+    await maintenance.setIntervals(camry.id, MaintenanceType.oil.key,
+        km: 7000, months: 12);
+
+    final due = container.read(maintenanceDueForCarProvider(camry.id));
     final oil = due.firstWhere((d) => d.type == MaintenanceType.oil);
-    // Seed: current 128,450, last oil 123,000, interval 7,000.
+    // Current 128,450, last oil 123,000, interval 7,000.
     expect(oil.remainingKm, 7000 - (128450 - 123000)); // 1,550
     expect(oil.status, DueStatus.near);
 
     // No record ⇒ never a percentage.
-    final coolant =
-        due.firstWhere((d) => d.type == MaintenanceType.coolant);
+    final coolant = due.firstWhere((d) => d.type == MaintenanceType.coolant);
     expect(coolant.status, DueStatus.noRecord);
     expect(coolant.progress, isNull);
 
     // Updating the odometer recomputes.
-    await container.read(maintenanceProvider.notifier).updateOdometer(130000);
+    await container.read(garageProvider.notifier).setOdometer(camry.id, 130000);
     final oil2 = container
-        .read(maintenanceDueProvider)
+        .read(maintenanceDueForCarProvider(camry.id))
         .firstWhere((d) => d.type == MaintenanceType.oil);
     expect(oil2.remainingKm, 0);
     expect(oil2.status, DueStatus.due);
@@ -107,13 +126,16 @@ void main() {
 
   test(
       'challenge: completing all steps awards points + badge + streak '
-      'and feeds the maintenance log', () async {
+      'and feeds the default car\'s maintenance book', () async {
     final container = await createDataContainer();
+    const camry =
+        Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2021);
+    await container.read(garageProvider.notifier).add(camry);
 
     final notifier = container.read(challengeProvider.notifier);
     final before = container.read(challengeProvider);
     final recordsBefore =
-        container.read(maintenanceProvider).records.length;
+        container.read(maintenanceBookProvider(camry.id)).records.length;
     expect(before.current, isNotNull);
 
     // Cannot complete until every step is done.
@@ -132,8 +154,9 @@ void main() {
     expect(after.current, isNull);
     expect(after.history.length, before.history.length + 1);
 
-    // The tyre-pressure challenge writes a maintenance record.
-    expect(container.read(maintenanceProvider).records.length,
+    // The tyre-pressure challenge writes a maintenance record — on the
+    // default car's book, not a global one.
+    expect(container.read(maintenanceBookProvider(camry.id)).records.length,
         recordsBefore + 1);
   });
 }

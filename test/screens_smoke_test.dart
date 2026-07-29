@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
 import 'package:ak_cars_mobil_app/features/challenge/challenge_screen.dart';
 import 'package:ak_cars_mobil_app/features/cars/cars_screen.dart';
@@ -16,20 +17,28 @@ import 'package:ak_cars_mobil_app/features/services/service_detail_screen.dart';
 import 'package:ak_cars_mobil_app/features/shop/product_detail_screen.dart';
 import 'package:ak_cars_mobil_app/features/shop/shop_screen.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
+import 'package:ak_cars_mobil_app/state/app_state.dart';
 
 import 'helpers/test_harness.dart';
 
 /// Pumps a screen inside the real theme + localization stack. Any layout
 /// overflow or build exception fails the test.
-Future<void> pumpScreen(
+Future<ProviderContainer> pumpScreen(
   WidgetTester tester,
   Widget screen, {
   String locale = 'ar',
   bool dark = false,
+  List<Car> garage = const [],
+  double height = 874,
 }) async {
   final container = await createTestContainer();
-  // Phone-sized surface like the design frames (402×874 logical).
-  tester.view.physicalSize = const Size(402 * 3, 874 * 3);
+  for (final car in garage) {
+    await container.read(garageProvider.notifier).add(car);
+  }
+  // Phone-sized surface like the design frames (402×874 logical). A taller one
+  // is passed for long scrolling pages: a `ListView` does not build a child
+  // that is off-screen, so a section below the fold cannot be found at all.
+  tester.view.physicalSize = Size(402 * 3, height * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
 
@@ -52,42 +61,210 @@ Future<void> pumpScreen(
     ),
   );
   await tester.pump(const Duration(milliseconds: 500));
+  return container;
 }
 
 void main() {
   testWidgets('Home renders in Arabic RTL (light)', (tester) async {
-    await pumpScreen(tester, const HomeScreen());
+    await pumpScreen(tester, const HomeScreen(), height: 2400);
     expect(find.text('أهلاً بك!'), findsOneWidget);
-    expect(find.textContaining('متابعة الصيانة'), findsOneWidget);
     expect(find.text('مساعدة طريق'), findsOneWidget);
-    // "الأكثر بحثاً" / "Most searched" until 2026-07-25: nothing records
-    // searches, and the rail was just the head of the feed. It now shows the
-    // newest ads and says so.
-    expect(find.text('أحدث الإعلانات'), findsOneWidget);
+    // The three sections the home-page spec fixes, plus the supporting ones.
+    // With an empty garage section 1 is the invitation, so it keeps the
+    // "سياراتي" heading rather than claiming to show a status.
+    expect(find.text('سياراتي'), findsOneWidget);
+    expect(find.text('عروض هذا الأسبوع'), findsOneWidget);
+    expect(find.text('ورش موثوقة'), findsOneWidget);
+    expect(find.text('الأكثر حجزاً'), findsOneWidget);
+    expect(find.text('من AK Cars'), findsOneWidget);
+    // With an empty garage the car list is one invitation, not a stand-in car,
+    // and there is nothing to recommend for.
+    expect(find.text('سجّل سيارتك'), findsOneWidget);
+    expect(find.text('مقترح لسيارتك'), findsNothing);
+    // "أحدث الإعلانات" was asserted here until the phase-1 refocus: the ads
+    // rail belongs to the cars marketplace, which is now behind
+    // AppFlags.carMarketplaceEnabled and absent from this build.
+    expect(find.text('أحدث الإعلانات'), findsNothing);
   });
 
   testWidgets('Home renders in English LTR', (tester) async {
-    await pumpScreen(tester, const HomeScreen(), locale: 'en');
+    await pumpScreen(tester, const HomeScreen(), locale: 'en', height: 2400);
     expect(find.text('Welcome!'), findsOneWidget);
-    expect(find.textContaining('Maintenance'), findsWidgets);
     expect(find.text('Roadside'), findsOneWidget);
+    expect(find.text('My cars'), findsOneWidget);
+    expect(find.text("This week's offers"), findsOneWidget);
+    expect(find.text('Trusted workshops'), findsOneWidget);
+    expect(find.text('Most booked'), findsOneWidget);
+  });
+
+  testWidgets('Home runs car status → offers → workshops, in that order',
+      (tester) async {
+    // The order the home-page handoff fixes (§1). Asserted by position rather
+    // than by presence, because "the three sections exist somewhere on the
+    // page" is not what the spec asks for — the sequence is the point:
+    // حاجة → فرصة → طمأنة.
+    await pumpScreen(
+      tester,
+      const HomeScreen(),
+      locale: 'en',
+      height: 2600,
+      garage: const [
+        Car(
+          id: 'c9',
+          make: 'Toyota',
+          model: 'Camry',
+          year: 2021,
+          odometerKm: 128450,
+          governorate: 'Muscat',
+          powertrain: Powertrain.petrol,
+        ),
+      ],
+    );
+
+    double y(String heading) => tester.getTopLeft(find.text(heading)).dy;
+
+    expect(y('My car status'), lessThan(y("This week's offers")));
+    expect(y("This week's offers"), lessThan(y('Trusted workshops')));
+    // The supporting rails sit below all three.
+    expect(y('Trusted workshops'), lessThan(y('Suggested for your car')));
+  });
+
+  testWidgets('Home offer cards show the discount, the old price and the '
+      'deadline', (tester) async {
+    await pumpScreen(tester, const HomeScreen(), locale: 'en', height: 2600);
+
+    // Qurum publishes 6 for tyre fitting and is running a validated offer at
+    // 4.5 — a 25% saving with an end date. The card carries all four numbers,
+    // and the discounted price keeps its half rial rather than rounding up to
+    // a price nobody charges.
+    expect(find.text('25% off'), findsWidgets);
+    expect(find.textContaining('4.5', findRichText: true), findsWidgets);
+    expect(find.text('6 OMR'), findsWidgets);
+    expect(find.textContaining('ends in'), findsWidgets);
+    // …and the section says what it is showing, without claiming more.
+    expect(
+      find.textContaining('Real discounts from approved workshops'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Home says "overdue" in the alert colour, and still books',
+      (tester) async {
+    const camry = Car(
+      id: 'c9',
+      make: 'Toyota',
+      model: 'Camry',
+      year: 2021,
+      odometerKm: 128450,
+      governorate: 'Muscat',
+      powertrain: Powertrain.petrol,
+    );
+    final container = await pumpScreen(
+      tester,
+      const HomeScreen(),
+      locale: 'en',
+      height: 2600,
+      garage: const [camry],
+    );
+
+    // An oil change logged 40,000 km and two years ago is well past both of
+    // its intervals — the state §1 asks for by name.
+    await container.read(maintenanceProvider.notifier).addRecord(
+          camry.id,
+          ServiceRecord(
+            id: 'r1',
+            title: const L('زيت', 'Oil'),
+            workshop: 'Al Noor',
+            odometerKm: 88000,
+            date: DateTime.now().subtract(const Duration(days: 730)),
+            itemKey: MaintenanceType.oil.key,
+          ),
+        );
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('Overdue — book now'), findsOneWidget);
+    expect(find.text('Book now'), findsNothing);
+  });
+
+  testWidgets('Home shows a registered car with its own details',
+      (tester) async {
+    await pumpScreen(
+      tester,
+      const HomeScreen(),
+      locale: 'en',
+      height: 2400,
+      garage: const [
+        Car(
+          id: 'c9',
+          make: 'Toyota',
+          model: 'Land Cruiser',
+          year: 2020,
+          plate: '5566 AA',
+          odometerKm: 88000,
+          governorate: 'Muscat',
+          powertrain: Powertrain.petrol,
+        ),
+      ],
+    );
+
+    expect(find.text('Toyota Land Cruiser 2020'), findsOneWidget);
+    expect(find.text('Default car'), findsOneWidget);
+    // Details the owner entered, and nothing they did not.
+    expect(find.text('5566 AA'), findsOneWidget);
+    expect(find.text('88,000 km'), findsOneWidget);
+    expect(find.text('Petrol'), findsOneWidget);
+    // Section 1's heading, once there is a car to have a status.
+    expect(find.text('My car status'), findsOneWidget);
+    // A car with no logged service shows no countdown. It asks for the one
+    // fact that would start one, naming the service rather than asking for
+    // "your service history" in the abstract, and offers the button that opens
+    // the record sheet.
+    expect(
+      find.textContaining('When did you last do engine oil'),
+      findsOneWidget,
+    );
+    expect(find.text('Add last engine oil'), findsOneWidget);
+    // Every reminder is also a booking button (spec §1).
+    expect(find.text('Book now'), findsWidgets);
+    // Now there is a car, so there is something to suggest for it.
+    expect(find.text('Suggested for your car'), findsOneWidget);
   });
 
   testWidgets('Home renders in dark "Ink" theme', (tester) async {
-    await pumpScreen(tester, const HomeScreen(), dark: true);
+    // With a car, so the picture, the meta chips and the countdown strip are
+    // all exercised in dark too — any overflow fails this test.
+    await pumpScreen(
+      tester,
+      const HomeScreen(),
+      dark: true,
+      height: 2400,
+      garage: const [
+        Car(
+          id: 'c9',
+          make: 'Nissan',
+          model: 'Patrol',
+          year: 2019,
+          plate: '7788 CD',
+          odometerKm: 45000,
+          governorate: 'Dhofar',
+        ),
+      ],
+    );
     expect(find.text('أهلاً بك!'), findsOneWidget);
+    expect(find.text('Nissan Patrol 2019'), findsOneWidget);
+    expect(find.text('حالة سيارتي'), findsOneWidget);
+    expect(find.text('ورش موثوقة'), findsOneWidget);
   });
 
-  testWidgets('Maintenance screen computes due items from entered data',
+  testWidgets('Maintenance screen asks for a car before it shows a schedule',
       (tester) async {
     await pumpScreen(tester, const MaintenanceScreen());
-    expect(find.text('متابعة الصيانة'), findsOneWidget);
-    expect(find.text('زيت المحرك + الفلتر'), findsOneWidget);
-    // 128,450 − 123,000 = 5,450 consumed of 7,000 ⇒ 1,550 remaining.
-    expect(find.textContaining('1,550'), findsWidgets);
-    // Coolant has no record ⇒ no percentage, manual-record CTA instead.
-    expect(find.text('لا يوجد سجل'), findsOneWidget);
-    expect(find.text('أضف سجلاً يدوياً'), findsOneWidget);
+    // The tab is titled "سيارتي" since the four-tab refocus.
+    expect(find.text('سيارتي'), findsOneWidget);
+    // Nothing to follow up with an empty garage, and nothing invented to
+    // illustrate the page with.
+    expect(find.text('لا توجد سيارة بعد'), findsOneWidget);
+    expect(find.text('زيت المحرك + الفلتر'), findsNothing);
   });
 
   testWidgets('Challenge screen shows steps, streak and stats',
@@ -331,30 +508,38 @@ void main() {
 
   // The home pill carried a "search services, parts, cars" hint but only
   // navigated to /services. These pin the search it now actually runs.
-  testWidgets('Search finds a car when the words are in the other order',
+  // Parts and car ads are excluded from search while their pillars are behind
+  // a flag — see searchResultsProvider. These assertions moved with them: the
+  // query still runs, it just has one catalogue to search.
+  testWidgets('Search returns no parts or cars while those pillars are hidden',
       (tester) async {
-    await pumpScreen(tester, const SearchScreen(), locale: 'en');
-    // The ad's title reads "2017 Toyota Camry SE", so the old substring
-    // match against displayTitle returned nothing for this query.
-    await tester.enterText(find.byType(TextField).first, 'camry 2017');
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.textContaining('Camry'), findsWidgets);
-  });
-
-  testWidgets('Search spans services, parts and cars', (tester) async {
     await pumpScreen(tester, const SearchScreen(), locale: 'en');
     await tester.enterText(find.byType(TextField).first, 'denso');
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Parts · 1'), findsOneWidget);
-    expect(find.text('Genuine oil filter'), findsOneWidget);
+    expect(find.textContaining('Parts ·'), findsNothing);
+    expect(find.textContaining('Nothing found'), findsOneWidget);
 
+    await tester.enterText(find.byType(TextField).first, 'camry 2017');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('Cars ·'), findsNothing);
+  });
+
+  testWidgets('Search spans the service catalogue', (tester) async {
+    await pumpScreen(tester, const SearchScreen(), locale: 'en');
     await tester.enterText(find.byType(TextField).first, 'battery');
     await tester.pump(const Duration(milliseconds: 300));
-    // Two services mention a battery (replacement, and the roadside boost)
-    // and one part is one.
-    expect(find.text('Battery replacement'), findsOneWidget);
-    expect(find.text('Roadside assistance'), findsOneWidget);
-    expect(find.text('Parts · 1'), findsOneWidget);
+    // Five services mention a battery — the EV health check, the high-voltage
+    // diagnostic, the charging check, the roadside boost and battery
+    // replacement.
+    Finder row(String label) => find.text(label, skipOffstage: false);
+    expect(row('Services · 5'), findsOneWidget);
+    expect(row('High-voltage battery diagnostic'), findsOneWidget);
+
+    // Sections show three rows and offer the rest behind "Show all".
+    await tester.tap(find.text('Show all (5)'));
+    await tester.pump();
+    expect(row('Battery replacement'), findsOneWidget);
+    expect(row('Roadside assistance'), findsOneWidget);
   });
 
   testWidgets('Search matches an Arabic place name', (tester) async {
@@ -363,7 +548,7 @@ void main() {
     await pumpScreen(tester, const SearchScreen(), locale: 'ar');
     await tester.enterText(find.byType(TextField).first, 'مسقط');
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.textContaining('السيارات'), findsWidgets);
+    expect(find.textContaining('الخدمات'), findsWidgets);
   });
 
   testWidgets('Search says so when nothing matches', (tester) async {

@@ -34,10 +34,12 @@ Built with Flutter · Riverpod · go_router — RTL-first, Arabic-native UI.
 - 🏁 **Onboarding** — splash, first-launch guide, and a "car now / car later" start choice.
 - 🔐 **Registration gate** — phone or email OTP (phone always required) enforced before any transaction.
 - 🛠️ **Service marketplace** — browse services by region and car, add-ons, provider capacity, mandatory Oman plate entry.
-- 📦 **Escrow flow** — proof → approve → release, with live tracking, call, and chat.
-- 🚙 **Cars marketplace** — browse, filter by make/model, view detailed listings and specs, post an ad.
-- 🛒 **Parts shop** — free filters (car, category, provider, price, region), cart, and orders.
-- 🚗 **My Garage** — save cars, manage favorites.
+- 📦 **Escrow state machine** — ten states, one explicit transition table, three roles (customer, workshop, founder); proof → approve → release, with a 72-hour auto-release window, live tracking, call, and chat.
+- 🧰 **Operator panels** — a workshop panel (accept, start, submit proof) and a founder panel (confirm funds held, resolve disputes), reachable after switching role in Settings.
+- 🚙 **Cars marketplace** *(phase 2 — hidden behind `AppFlags.carMarketplaceEnabled`)* — browse, filter by make/model, view detailed listings and specs, post an ad.
+- 🛒 **Parts shop** *(phase 2 — hidden behind `AppFlags.partsStoreEnabled`)* — free filters (car, category, provider, price, region), cart, and orders.
+- 🚗 **My Garage** — save cars (petrol, diesel, hybrid, plug-in or electric), manage favorites.
+- ⚡ **Built for EV owners too** — record a car's powertrain and the app follows it: EV maintenance without oil reminders, EV-certified workshops, charging parts, and an EV weekly challenge.
 - 👤 **Profile hub** — requests, payments, and account.
 
 ---
@@ -91,7 +93,10 @@ lib/
 
 ## 🗺️ Roadmap
 
-- **Phase 1 — UI & flows** (current): screens, navigation, mock data.
+- **Phase 1 — booking → escrow → approval** (current): four tabs
+  (الخدمات · حجوزاتي · سيارتي · حسابي), the escrow state machine, maintenance
+  follow-up, mock data. The parts store and the cars marketplace are hidden
+  behind feature flags, not removed — `lib/config/app_flags.dart`.
 - **Phase 2 — API integration:** wire screens to the AK Cars ASP.NET API (OTP, capacity, add-ons, chat, FCM).
 - **Phase 3 — Real escrow:** Thawani-backed payment escrow.
 

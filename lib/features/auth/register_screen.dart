@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -60,6 +61,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   /// user who never opened the picker under the wrong region.
   String? _region;
 
+  /// Canonical English wilayat key, always one of [_region]'s own wilayats.
+  String? _wilayat;
+
   /// Field key → message, shown under the offending row.
   final _errors = <String, String>{};
 
@@ -73,10 +77,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     // The field holds the local 8 digits only — the +968 is painted into the
     // row. Prefilling the stored "+968 9200 1234" verbatim would render the
     // dial code twice.
-    _phone.text = _local(profile.phone);
+    _phone.text = _grouped(_local(profile.phone));
     _email.text = profile.email;
     _address.text = profile.address;
     _region = profile.region.isEmpty ? null : profile.region;
+    _wilayat = profile.wilayat.isEmpty ? null : profile.wilayat;
   }
 
   @override
@@ -101,6 +106,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     return digits.startsWith('968') ? digits.substring(3) : digits;
   }
 
+  /// The 8 local digits split "9200 1234" for reading. Storage and every
+  /// comparison go through [_local], so the space is presentation only.
+  static String _grouped(String local) =>
+      local.length > 4 ? '${local.substring(0, 4)} ${local.substring(4)}' : local;
+
   static String _normEmail(String v) => v.trim().toLowerCase();
 
   /// Which contact detail still has to be proven, or null when nothing does.
@@ -120,7 +130,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   /// Full E.164-ish phone as stored and displayed, built from the local field.
-  String get _fullPhone => '+968 ${_local(_phone.text)}';
+  String get _fullPhone => '+968 ${_grouped(_local(_phone.text))}';
 
   String get _otpTarget =>
       _pendingChannel == OtpChannel.email ? _email.text.trim() : _fullPhone;
@@ -177,6 +187,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
     if (local.length != 8) {
       return s.t('رقم عُماني من 8 أرقام', 'An 8-digit Oman number');
+    }
+    // The code arrives by SMS, so a landline (2x) cannot receive it.
+    if (!RegExp(r'^[79]').hasMatch(local)) {
+      return s.t('رقم هاتف نقّال عُماني يبدأ بـ 7 أو 9',
+          'An Oman mobile number starting with 7 or 9');
     }
     return null;
   }
@@ -252,6 +267,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       phone: _fullPhone,
       email: _email.text.trim(),
       region: _region!,
+      wilayat: _wilayat ?? '',
       address: _address.text.trim(),
     );
 
@@ -288,11 +304,49 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _pickRegion() async {
     final s = S.of(context);
     final locations = ref.read(locationCatalogProvider);
+    final picked = await _pickLocation(
+      title: s.t('المحافظة', 'Governorate'),
+      options: locations.governorates.keys.toList(),
+      selected: _region,
+    );
+    if (picked == null || picked == _region) return;
+    setState(() {
+      _region = picked;
+      // The wilayats belong to the governorate — keeping the old one would
+      // file the user in a wilayat that is not in their region.
+      _wilayat = null;
+      _errors.remove('region');
+    });
+  }
+
+  Future<void> _pickWilayat() async {
+    final region = _region;
+    if (region == null) return;
+    final s = S.of(context);
+    final locations = ref.read(locationCatalogProvider);
+    final picked = await _pickLocation(
+      title: s.isAr
+          ? 'الولاية — ${locations.localized(region, true)}'
+          : 'Wilayat — $region',
+      options: locations.wilayatsOf(region),
+      selected: _wilayat,
+    );
+    if (picked != null) setState(() => _wilayat = picked);
+  }
+
+  /// One sheet for both location pickers — same rows, same look, so the
+  /// wilayat list behaves exactly like the governorate list above it.
+  Future<String?> _pickLocation({
+    required String title,
+    required List<String> options,
+    required String? selected,
+  }) {
+    final s = S.of(context);
+    final locations = ref.read(locationCatalogProvider);
     final ak = AkColors.of(context);
-    final governorates = locations.governorates.keys.toList();
     HapticFeedback.selectionClick();
 
-    final picked = await showModalBottomSheet<String>(
+    return showModalBottomSheet<String>(
       context: context,
       backgroundColor: ak.surface,
       isScrollControlled: true,
@@ -311,7 +365,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
                 child: Text(
-                  s.t('المحافظة', 'Governorate'),
+                  title,
                   style: const TextStyle(
                       fontSize: 17, fontWeight: FontWeight.w800),
                 ),
@@ -321,11 +375,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                   children: [
-                    for (final g in governorates)
+                    for (final option in options)
                       _RegionOption(
-                        label: locations.localized(g, s.isAr),
-                        selected: g == _region,
-                        onTap: () => Navigator.pop(context, g),
+                        label: locations.localized(option, s.isAr),
+                        selected: option == selected,
+                        onTap: () => Navigator.pop(context, option),
                       ),
                   ],
                 ),
@@ -335,12 +389,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
       ),
     );
-    if (picked != null) {
-      setState(() {
-        _region = picked;
-        _errors.remove('region');
-      });
-    }
   }
 
   // ----------------------------------------------------------------- build
@@ -403,6 +451,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     error: _errors['phone'],
                     keyboardType: TextInputType.phone,
                     numeric: true,
+                    // A phone number reads left-to-right in both languages —
+                    // under RTL the row otherwise rendered as "98765432 968+".
+                    forceLtr: true,
+                    formatters: const [_OmanMobileFormatter()],
                     onChanged: (_) => _clear('phone'),
                   ),
                   _FieldRow(
@@ -425,10 +477,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     error: _errors['region'],
                     onTap: _pickRegion,
                   ),
+                  _PickerRow(
+                    icon: Icons.location_on_outlined,
+                    label: s.t('الولاية', 'Wilayat'),
+                    value: _wilayat == null
+                        ? null
+                        : locations.localized(_wilayat!, s.isAr),
+                    hint: _region == null
+                        ? s.t('اختر المحافظة أولاً', 'Choose a governorate first')
+                        : s.t('اختر من القائمة', 'Choose from the list'),
+                    enabled: _region != null,
+                    optional: true,
+                    onTap: _pickWilayat,
+                  ),
                   _FieldRow(
                     icon: Icons.home_outlined,
                     label: s.t('العنوان', 'Address'),
-                    hint: s.t('الولاية، المنطقة', 'Wilayat, area'),
+                    hint: s.t('المنطقة، الشارع', 'Area, street'),
                     controller: _address,
                     optional: true,
                     onChanged: (_) => _clear('address'),
@@ -736,6 +801,8 @@ class _FieldRow extends StatelessWidget {
     this.error,
     this.optional = false,
     this.numeric = false,
+    this.forceLtr = false,
+    this.formatters,
     this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
   });
@@ -751,8 +818,20 @@ class _FieldRow extends StatelessWidget {
   final String? error;
   final bool optional;
   final bool numeric;
+
+  /// Renders the value row left-to-right whatever the app language is, for
+  /// content that is never Arabic-ordered (dial code + digits).
+  final bool forceLtr;
+
+  /// Replaces the default digits-only filter when the field needs its own
+  /// formatting rules.
+  final List<TextInputFormatter>? formatters;
   final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
+
+  Widget _maybeLtr(Widget child) => forceLtr
+      ? Directionality(textDirection: TextDirection.ltr, child: child)
+      : child;
 
   @override
   Widget build(BuildContext context) {
@@ -789,45 +868,118 @@ class _FieldRow extends StatelessWidget {
               ],
             ],
           ),
-          Row(
-            children: [
-              if (prefix != null)
-                Text(
-                  prefix!,
-                  style: AppTheme.numeric(
-                      size: 13.5, weight: FontWeight.w700, color: ak.inkSub),
-                ),
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  onChanged: onChanged,
-                  keyboardType: keyboardType,
-                  textCapitalization: textCapitalization,
-                  inputFormatters: numeric
-                      ? [FilteringTextInputFormatter.digitsOnly]
-                      : null,
-                  style: numeric
-                      ? AppTheme.numeric(size: 13.5, color: ak.ink)
-                      : const TextStyle(
-                          fontSize: 13.5, fontWeight: FontWeight.w700),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: false,
-                    hintText: hint,
-                    hintStyle: TextStyle(
-                        fontSize: 13, color: ak.inkFaint,
-                        fontWeight: FontWeight.w500),
+          _maybeLtr(
+            Row(
+              children: [
+                if (prefix != null) ...[
+                  Text(
+                    prefix!,
+                    style: AppTheme.numeric(
+                        size: 13.5, weight: FontWeight.w700, color: ak.inkSub),
+                  ),
+                  // Keeps the dial code visually attached to the number
+                  // instead of drifting to the far edge of the row.
+                  Container(
+                    width: 1,
+                    height: 15,
+                    margin: const EdgeInsets.only(right: 8),
+                    color: ak.divider,
+                  ),
+                ],
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    onChanged: onChanged,
+                    keyboardType: keyboardType,
+                    textCapitalization: textCapitalization,
+                    textDirection: forceLtr ? TextDirection.ltr : null,
+                    textAlign: forceLtr ? TextAlign.left : TextAlign.start,
+                    inputFormatters: formatters ??
+                        (numeric
+                            ? [FilteringTextInputFormatter.digitsOnly]
+                            : null),
+                    style: numeric
+                        ? AppTheme.numeric(size: 13.5, color: ak.ink)
+                        : const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w700),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      filled: false,
+                      hintText: hint,
+                      hintTextDirection:
+                          forceLtr ? TextDirection.ltr : null,
+                      hintStyle: TextStyle(
+                          fontSize: 13, color: ak.inkFaint,
+                          fontWeight: FontWeight.w500),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Keeps the phone field holding exactly the 8 local Oman digits, shown as
+/// "9200 1234".
+///
+/// Typing is only half of it — people paste. "+968 9200 1234", "00968…",
+/// "096892001234" and "9200-1234" all reduce to the same eight digits here
+/// rather than failing validation for a reason the user can't see.
+class _OmanMobileFormatter extends TextInputFormatter {
+  const _OmanMobileFormatter();
+
+  static const _maxLocalDigits = 8;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final all = newValue.text.replaceAll(RegExp(r'\D'), '');
+
+    // Digits dropped off the front, so the caret can be moved back by the
+    // same amount instead of jumping.
+    var dropped = 0;
+    var local = all;
+    if (local.startsWith('00968')) {
+      local = local.substring(5);
+      dropped = 5;
+    } else if (local.startsWith('968')) {
+      local = local.substring(3);
+      dropped = 3;
+    }
+    while (local.startsWith('0')) {
+      local = local.substring(1);
+      dropped += 1;
+    }
+    if (local.length > _maxLocalDigits) {
+      local = local.substring(0, _maxLocalDigits);
+    }
+
+    final text = local.length > 4
+        ? '${local.substring(0, 4)} ${local.substring(4)}'
+        : local;
+
+    // A collapsed caret reports end == -1 before the field has focus.
+    final caret = newValue.selection.end < 0
+        ? newValue.text.length
+        : math.min(newValue.selection.end, newValue.text.length);
+    final typedBefore =
+        newValue.text.substring(0, caret).replaceAll(RegExp(r'\D'), '').length;
+    final keptBefore = math.max(0, math.min(typedBefore - dropped, local.length));
+    final offset = keptBefore > 4 ? keptBefore + 1 : keptBefore;
+
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: offset),
     );
   }
 }
@@ -841,6 +993,8 @@ class _PickerRow extends StatelessWidget {
     this.value,
     this.hint,
     this.error,
+    this.enabled = true,
+    this.optional = false,
   });
 
   final IconData icon;
@@ -850,44 +1004,68 @@ class _PickerRow extends StatelessWidget {
   final String? hint;
   final String? error;
 
+  /// A row that cannot be opened yet (wilayat before a governorate). It stays
+  /// visible and says why in its hint rather than vanishing.
+  final bool enabled;
+  final bool optional;
+
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
+    final s = S.of(context);
     final filled = value != null;
-    return _FieldShell(
-      icon: icon,
-      filled: filled,
-      error: error,
-      onTap: onTap,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: ak.inkSub,
-                    fontWeight: FontWeight.w600,
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: _FieldShell(
+        icon: icon,
+        filled: filled,
+        error: error,
+        onTap: enabled ? onTap : null,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: ak.inkSub,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (optional && !filled) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          s.t('اختياري', 'optional'),
+                          style: TextStyle(fontSize: 10.5, color: ak.inkFaint),
+                        ),
+                      ],
+                    ],
                   ),
-                ),
-                Text(
-                  value ?? hint ?? '',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: filled ? FontWeight.w700 : FontWeight.w500,
-                    color: filled ? ak.ink : ak.inkFaint,
+                  Text(
+                    value ?? hint ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: filled ? FontWeight.w700 : FontWeight.w500,
+                      color: filled ? ak.ink : ak.inkFaint,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Icon(Icons.expand_more_rounded, color: ak.inkFaint),
-        ],
+            Icon(Icons.expand_more_rounded, color: ak.inkFaint),
+          ],
+        ),
       ),
     );
   }

@@ -121,25 +121,21 @@ void main() {
     expect(find.text('Guest'), findsOneWidget);
   });
 
-  testWidgets('shop-orders row reports orders, not cart contents',
-      (tester) async {
+  // Was 'shop-orders row reports orders, not cart contents'. The parts store
+  // is behind AppFlags.partsStoreEnabled for phase 1, so those rows are not
+  // rendered at all and there is no route for them to push to — what this
+  // now guards is that hiding the pillar hid the whole of it.
+  testWidgets('hidden pillars leave no rows behind', (tester) async {
     final container = await pumpProfile(tester, locale: 'en');
     final product = container.read(filteredProductsProvider).first;
     container.read(cartProvider.notifier).toggle(product);
     await tester.pump();
 
-    // The old screen printed the cart count on the "Shop orders" row.
-    final ordersRow = find.ancestor(
-      of: find.text('Shop orders'),
-      matching: find.byType(Row),
-    );
-    expect(
-      find.descendant(of: ordersRow.first, matching: find.textContaining('1')),
-      findsNothing,
-      reason: 'cart count must not be rendered on the Shop orders row',
-    );
-    // It gets its own row instead.
-    expect(find.textContaining('Shopping cart'), findsOneWidget);
+    expect(find.textContaining('Shop orders'), findsNothing);
+    expect(find.textContaining('Shopping cart'), findsNothing);
+    expect(find.textContaining('My car ads'), findsNothing);
+    // The pillar that stayed.
+    expect(find.textContaining('My bookings'), findsOneWidget);
   });
 
   testWidgets('stat tiles count garage cars', (tester) async {

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
@@ -45,12 +46,14 @@ class _StartChoiceScreenState extends ConsumerState<StartChoiceScreen> {
     // finishing the form.
     final saved = await context.push<bool>('/add-car');
     if (!mounted) return;
-    if (saved ?? false) context.go('/home');
+    // `/add-car` records the choice itself when it saves (add_car_screen.dart),
+    // so there is nothing to mark here.
+    if (saved ?? false) context.go(AppFlags.startLocation);
   }
 
   void _skip() {
     ref.read(authProvider.notifier).markStartChoiceMade();
-    context.go('/home');
+    context.go(AppFlags.startLocation);
   }
 
   @override

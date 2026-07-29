@@ -1,4 +1,9 @@
+import 'dart:convert';
+
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../config/app_config.dart';
+import '../../core/constants/app_constants.dart';
 import '../models/user_profile.dart';
 import 'mock_service_base.dart';
 
@@ -24,33 +29,51 @@ abstract interface class AuthService {
   Future<void> signOut();
 }
 
-/// Holds the registered profile in memory for the length of the session.
+/// Stands in for the server *and* the session store.
+///
+/// The profile is written to SharedPreferences rather than kept in a field:
+/// holding it in memory meant every cold start came back anonymous, so a
+/// registered user was sent through the sign-up form again the next time they
+/// tried to check out. The REST implementation restores the same way, from
+/// [AppConstants.prefsAuthToken].
 class MockAuthService with MockServiceBase implements AuthService {
-  MockAuthService({required this.config});
+  MockAuthService({required this.config, required this.prefs});
 
   @override
   final AppConfig config;
 
-  UserProfile? _current;
+  final SharedPreferences prefs;
 
   @override
-  Future<UserProfile?> fetchCurrentUser() => respond(_current);
-
-  @override
-  Future<UserProfile> register(UserProfile profile) {
-    _current = profile;
-    return respond(profile);
+  Future<UserProfile?> fetchCurrentUser() {
+    final raw = prefs.getString(AppConstants.prefsProfile);
+    if (raw == null) return respond(null);
+    try {
+      return respond(
+        UserProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>),
+      );
+    } catch (_) {
+      // A stored profile from an older build shouldn't wedge the app on
+      // launch — drop it and come up anonymous.
+      prefs.remove(AppConstants.prefsProfile);
+      return respond(null);
+    }
   }
 
   @override
-  Future<UserProfile> updateProfile(UserProfile profile) {
-    _current = profile;
-    return respond(profile);
-  }
+  Future<UserProfile> register(UserProfile profile) => _save(profile);
+
+  @override
+  Future<UserProfile> updateProfile(UserProfile profile) => _save(profile);
 
   @override
   Future<void> signOut() {
-    _current = null;
+    prefs.remove(AppConstants.prefsProfile);
     return respond(null);
+  }
+
+  Future<UserProfile> _save(UserProfile profile) {
+    prefs.setString(AppConstants.prefsProfile, jsonEncode(profile.toJson()));
+    return respond(profile);
   }
 }

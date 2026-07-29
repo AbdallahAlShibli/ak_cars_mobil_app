@@ -9,6 +9,7 @@ import '../../core/i18n/strings.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/contact.dart';
+import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../state/app_state.dart';
@@ -167,12 +168,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       pinned: true,
       backgroundColor: ak.bg,
       surfaceTintColor: Colors.transparent,
-      leading: Padding(
-        padding: const EdgeInsets.all(8),
-        child: _RoundAction(
-          icon: Icons.arrow_back_rounded,
-          onTap: () => Navigator.of(context).maybePop(),
-        ),
+      leading: const Padding(
+        padding: EdgeInsets.all(8),
+        child: SandBackButton(translucent: true),
       ),
       actions: [
         Padding(
@@ -362,6 +360,11 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Widget _fitmentCard(Product product, Car? car, S s, AkColors ak) {
     final fits = car != null && product.fitsCar(car);
     final unknown = car == null;
+    // Powertrain is a harder no than make/model: the right make with the wrong
+    // powertrain still cannot use a charging cable, so it is said outright
+    // rather than left to the compatibility list below.
+    final powertrainMismatch =
+        car != null && !product.fitsPowertrain(car.powertrain);
     final (background, border, icon, tint) = switch (true) {
       _ when product.universalFit => (
           ak.surfaceDim,
@@ -375,6 +378,12 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           Icons.help_outline_rounded,
           ak.amberText
         ),
+      _ when powertrainMismatch => (
+          ak.dangerSoft,
+          ak.dangerBorder,
+          Icons.block_rounded,
+          ak.dangerText
+        ),
       _ when fits => (
           ak.successSoft,
           ak.successSoft,
@@ -386,18 +395,30 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
     final title = product.universalFit
         ? s.t('تناسب كل السيارات', 'Fits all cars')
-        : unknown
-            ? s.t('حدد سيارتك للتأكد', 'Select your car to check fitment')
-            : fits
-                ? s.t('تناسب ${car.label}', 'Fits your ${car.label}')
-                : s.t('قد لا تناسب ${car.label}',
-                    'May not fit your ${car.label}');
+        : powertrainMismatch
+            ? s.t('ليست لـ ${car.label}', 'Not for your ${car.label}')
+            : unknown
+                ? s.t('حدد سيارتك للتأكد', 'Select your car to check fitment')
+                : fits
+                    ? s.t('تناسب ${car.label}', 'Fits your ${car.label}')
+                    : s.t('قد لا تناسب ${car.label}',
+                        'May not fit your ${car.label}');
 
-    final subtitle = product.universalFit
-        ? s.t('قطعة عامة لا تعتمد على الموديل.',
+    final forPowertrains = product.powertrains.isEmpty
+        ? null
+        : s.t(
+            'مخصصة لـ: ${product.powertrains.map((p) => p.label.ar).join('، ')}',
+            'For: ${product.powertrains.map((p) => p.label.en).join(', ')}');
+
+    final subtitle = [
+      if (product.universalFit)
+        s.t('قطعة عامة لا تعتمد على الموديل.',
             'A universal part — not model-specific.')
-        : s.t('تناسب: ${product.fits.join('، ')}',
-            'Compatible with: ${product.fits.join(', ')}');
+      else if (!product.fits.contains('any'))
+        s.t('تناسب: ${product.fits.join('، ')}',
+            'Compatible with: ${product.fits.join(', ')}'),
+      ?forPowertrains,
+    ].join(s.t(' · ', ' · '));
 
     return Container(
       padding: const EdgeInsets.all(14),
