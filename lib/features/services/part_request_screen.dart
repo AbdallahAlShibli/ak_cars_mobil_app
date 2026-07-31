@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -180,8 +181,8 @@ class _PartRequestScreenState extends ConsumerState<PartRequestScreen> {
               child: Row(
                 children: [
                   IconTile(car == null
-                      ? Icons.add_rounded
-                      : Icons.directions_car_outlined),
+                      ? LucideIcons.plus
+                      : LucideIcons.car),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -192,7 +193,7 @@ class _PartRequestScreenState extends ConsumerState<PartRequestScreen> {
                           fontSize: 13, fontWeight: FontWeight.w700),
                     ),
                   ),
-                  Icon(Icons.chevron_right_rounded, color: ak.inkFaint),
+                  Icon(LucideIcons.chevronRight, color: ak.inkFaint),
                 ],
               ),
             ),
@@ -325,8 +326,8 @@ class _WorkshopOption extends ConsumerWidget {
         children: [
           IconTile(
             selected
-                ? Icons.check_circle_rounded
-                : Icons.storefront_outlined,
+                ? LucideIcons.circleCheckBig
+                : LucideIcons.store,
             background: selected ? ak.successSoft : null,
             foreground: selected ? ak.success : null,
           ),
@@ -349,7 +350,7 @@ class _WorkshopOption extends ConsumerWidget {
             ),
           ),
           if (provider.verified)
-            Icon(Icons.verified_rounded, size: 17, color: ak.primary),
+            Icon(LucideIcons.badgeCheck, size: 17, color: ak.primary),
         ],
       ),
     );

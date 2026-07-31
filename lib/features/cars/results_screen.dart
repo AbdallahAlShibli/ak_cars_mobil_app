@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -117,8 +118,8 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                         children: [
                           Icon(
                             _filter.sort == sort
-                                ? Icons.radio_button_checked_rounded
-                                : Icons.radio_button_off_rounded,
+                                ? LucideIcons.circleDot
+                                : LucideIcons.circle,
                             size: 19,
                             color: _filter.sort == sort
                                 ? ak.ink
@@ -171,7 +172,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
         actions: [
           IconButton(
             onPressed: _openSort,
-            icon: const Icon(Icons.sort_rounded),
+            icon: const Icon(LucideIcons.arrowUpDown),
           ),
           Padding(
             padding: const EdgeInsetsDirectional.only(end: 8),
@@ -180,7 +181,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
               label: Text('${_filter.activeCount}'),
               child: IconButton(
                 onPressed: _openFilters,
-                icon: const Icon(Icons.tune_rounded),
+                icon: const Icon(LucideIcons.slidersHorizontal),
               ),
             ),
           ),
@@ -223,7 +224,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.search_off_rounded,
+                            Icon(LucideIcons.searchX,
                                 size: 40, color: ak.inkFaint),
                             const SizedBox(height: 8),
                             Text(

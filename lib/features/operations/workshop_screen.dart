@@ -2,94 +2,243 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/escrow_timeline.dart';
+import '../../core/widgets/status_indicator.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../state/app_state.dart';
 import '../services/proof_upload_sheet.dart';
 import 'escrow_action_bar.dart';
+import 'queue_urgency.dart';
 
 /// The workshop's panel (spec §2 and §6): accept or reject a job, start work,
 /// submit the completion proof.
 ///
-/// Deliberately plain. Spec §6 is explicit that these panels exist to operate
-/// the pilot, not to impress anyone — every pixel spent styling this is a
-/// pixel not spent on the customer's booking flow.
+/// Not decorated, but no longer undifferentiated. It was one flat list in
+/// which a job waiting on this workshop looked exactly like a job waiting on
+/// the customer, and the numbers that describe the day were nowhere. Now it is
+/// two layers (§5): a fixed strip of counts at the top, which is reading
+/// material, and below it the queues, which are the work — "needs you" first,
+/// because that is the only queue anyone opens this screen to clear.
 class WorkshopScreen extends ConsumerWidget {
   const WorkshopScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = S.of(context);
+    final ak = AkColors.of(context);
     final requests = ref.watch(requestsProvider);
-    final queue = [
+    final open = [
       for (final r in requests)
         if (!r.escrow.isTerminal) r,
+    ];
+    // The split that matters to a workshop: what the table lets *it* move
+    // versus what it is only waiting on. Derived from the transition table, so
+    // adding a transition puts the job in the right queue on its own.
+    final mine = [
+      for (final r in open)
+        if (r.escrow.transitionsFor(EscrowActor.workshop).isNotEmpty) r,
+    ];
+    final waiting = [
+      for (final r in open)
+        if (r.escrow.transitionsFor(EscrowActor.workshop).isEmpty) r,
+    ];
+    final breaching = [
+      for (final r in mine)
+        if (QueueSla.levelFor(r,
+                window: QueueSla.workshop, waitingOnMe: true) ==
+            UrgencyLevel.overdue)
+          r,
     ];
 
     return Scaffold(
       appBar: AppBar(title: Text(s.t('لوحة الورشة', 'Workshop panel'))),
       body: SafeArea(
-        child: queue.isEmpty
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Text(
-                    s.t('لا توجد طلبات مفتوحة.', 'No open jobs.'),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 13, color: AppColors.ink3),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ------------------------------------------- metrics layer
+            // Pinned, so the shape of the day stays visible while the operator
+            // scrolls through the jobs that make it up.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, 0,
+                  AppSpacing.screenMargin, AppSpacing.lg),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: MetricTile(
+                      value: '${mine.length}',
+                      label: s.t('بانتظار إجرائك', 'Waiting on you'),
+                      tone: mine.isEmpty ? null : ak.amberText,
+                    ),
                   ),
-                ),
-              )
-            : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                itemCount: queue.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                itemBuilder: (context, i) => _JobCard(request: queue[i]),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: MetricTile(
+                      value: '${waiting.length}',
+                      label: s.t('بانتظار غيرك', 'Waiting on others'),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: MetricTile(
+                      value: '${breaching.length}',
+                      label: s.t('تجاوزت المهلة', 'Past the window'),
+                      tone: breaching.isEmpty ? null : ak.danger,
+                    ),
+                  ),
+                ],
               ),
+            ),
+            Divider(height: 1, color: ak.divider),
+            // -------------------------------------------- queue layer
+            Expanded(
+              child: open.isEmpty
+                  ? Center(
+                      child: SingleChildScrollView(
+                        child: EmptyState(
+                          icon: LucideIcons.coffee,
+                          title: s.t('لا طلبات مفتوحة', 'Nothing open'),
+                          message: s.t(
+                            'لا طلبات مفتوحة حالياً — راحة بال مستحقة. سيظهر أي طلب جديد هنا فور وصوله.',
+                            'No open jobs right now — a quiet moment, well earned. Anything new lands here the second it arrives.',
+                          ),
+                        ),
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.screenMargin,
+                          AppSpacing.lg,
+                          AppSpacing.screenMargin,
+                          AppSpacing.xl),
+                      children: [
+                        _Queue(
+                          title: s.t('بانتظار إجرائك', 'Waiting on you'),
+                          requests: mine,
+                          waitingOnMe: true,
+                          empty: s.t(
+                            'لا شيء بانتظارك الآن — كل الطلبات المفتوحة عند غيرك.',
+                            'Nothing is on you right now — every open job is with someone else.',
+                          ),
+                        ),
+                        if (waiting.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.sectionGap),
+                          _Queue(
+                            title: s.t('بانتظار غيرك', 'Waiting on others'),
+                            requests: waiting,
+                            waitingOnMe: false,
+                            empty: '',
+                          ),
+                        ],
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
+/// One titled queue: a heading, a rule, and its cards — or its empty message.
+///
+/// The heading and the divider are what stop the second queue from reading as
+/// a continuation of the first, which is the whole point of §5's "clear
+/// separator".
+class _Queue extends StatelessWidget {
+  const _Queue({
+    required this.title,
+    required this.requests,
+    required this.waitingOnMe,
+    required this.empty,
+  });
+
+  final String title;
+  final List<ServiceRequest> requests;
+  final bool waitingOnMe;
+  final String empty;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionHeader('$title · ${requests.length}'),
+        const SizedBox(height: AppSpacing.headingGap),
+        if (requests.isEmpty)
+          EmptyState(
+            compact: true,
+            icon: LucideIcons.circleCheck,
+            message: empty.isEmpty ? s.t('لا شيء هنا.', 'Nothing here.') : empty,
+          )
+        else
+          for (final (i, r) in requests.indexed) ...[
+            if (i > 0) const SizedBox(height: AppSpacing.itemGap + 2),
+            _JobCard(request: r, waitingOnMe: waitingOnMe),
+          ],
+      ],
+    );
+  }
+}
+
 class _JobCard extends ConsumerWidget {
-  const _JobCard({required this.request});
+  const _JobCard({required this.request, required this.waitingOnMe});
 
   final ServiceRequest request;
+  final bool waitingOnMe;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = S.of(context);
+    final ak = AkColors.of(context);
     final proof = request.proof;
+    final level = QueueSla.levelFor(request,
+        window: QueueSla.workshop, waitingOnMe: waitingOnMe);
 
-    return AppCard(
+    return UrgencyCard(
+      level: level,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           OperatorRequestHeader(request: request),
+          const SizedBox(height: AppSpacing.md),
+          // The escrow position at a glance, and how long it has held still.
+          Row(
+            children: [
+              Expanded(
+                child: EscrowTimeline(
+                    state: request.escrow,
+                    size: EscrowTimelineSize.compact),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              UrgencyLabel(QueueSla.waitedLabel(s, request), level: level),
+            ],
+          ),
           if (proof != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpacing.md),
             Text(
               proof.notes.isEmpty
-                  ? s.t(
-                      'رُفع الإثبات بلا ملاحظات.',
-                      'Proof submitted with no notes.',
-                    )
+                  ? s.t('رُفع الإثبات بلا ملاحظات.',
+                      'Proof submitted with no notes.')
                   : proof.notes,
-              style: const TextStyle(
-                fontSize: 11.5,
-                color: AppColors.ink3,
-                height: 1.6,
-              ),
+              style: context.text.bodySecondary.copyWith(height: 1.6),
             ),
           ],
           if (request.partRequest != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpacing.md),
             _PartRequestBrief(request: request),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.lg),
           EscrowActionBar(
             request: request,
             actor: EscrowActor.workshop,
@@ -97,13 +246,19 @@ class _JobCard extends ConsumerWidget {
             onSubmitQuote: () => _submitQuote(context, ref, request),
           ),
           if (_reviewable(ref, request)) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () => context.push(
-                '/review/${request.id}?direction=${ReviewDirection.workshopToCustomer.key}',
+            const SizedBox(height: AppSpacing.sm),
+            // §5: the secondary action is a text button, not a second full
+            // button competing with the escrow transition above it.
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: ak.inkSub),
+                onPressed: () => context.push(
+                  '/review/${request.id}?direction=${ReviewDirection.workshopToCustomer.key}',
+                ),
+                icon: const Icon(LucideIcons.star, size: 15),
+                label: Text(s.t('قيّم العميل', 'Rate the customer')),
               ),
-              icon: const Icon(Icons.star_outline_rounded, size: 17),
-              label: Text(s.t('قيّم العميل', 'Rate the customer')),
             ),
           ],
         ],
@@ -209,45 +364,40 @@ class _PartRequestBrief extends StatelessWidget {
         children: [
           Text(
             s.t('طلب قطعة + تركيب', 'Part + fitting request'),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: ak.inkSub,
-            ),
+            style: context.text.bodySecondary
+                .copyWith(fontSize: 11, fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 5),
-          Text(
-            part.description,
-            style: const TextStyle(fontSize: 12.5, height: 1.6),
-          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(part.description,
+              style: context.text.bodyPrimary.copyWith(height: 1.6)),
           if ((part.preferredBrand ?? '').isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Text(
-              s.t(
-                'يفضّل: ${part.preferredBrand}',
-                'Prefers: ${part.preferredBrand}',
-              ),
-              style: TextStyle(fontSize: 11.5, color: ak.inkSub),
+              s.t('يفضّل: ${part.preferredBrand}',
+                  'Prefers: ${part.preferredBrand}'),
+              style: context.text.bodySecondary,
             ),
           ],
           if ((part.symptom ?? '').isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Text(
               s.t('الأعراض: ${part.symptom}', 'Symptom: ${part.symptom}'),
-              style: TextStyle(fontSize: 11.5, color: ak.inkSub),
+              style: context.text.bodySecondary,
             ),
           ],
           if (quote != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.md),
+            // §2: the workshop's own number leads at price weight; how it
+            // was arrived at follows underneath.
+            Text('${s.omr} ${quote.total.toStringAsFixed(2)}',
+                style: context.text.price),
+            const SizedBox(height: AppSpacing.xs / 2),
             Text(
               s.t(
-                'عرضك: قطعة ${quote.partPrice.toStringAsFixed(2)} + تركيب ${quote.laborPrice.toStringAsFixed(2)} = ${quote.total.toStringAsFixed(2)} ر.ع',
-                'Your quote: part ${quote.partPrice.toStringAsFixed(2)} + fitting ${quote.laborPrice.toStringAsFixed(2)} = OMR ${quote.total.toStringAsFixed(2)}',
+                'عرضك: قطعة ${quote.partPrice.toStringAsFixed(2)} + تركيب ${quote.laborPrice.toStringAsFixed(2)}',
+                'Your quote: part ${quote.partPrice.toStringAsFixed(2)} + fitting ${quote.laborPrice.toStringAsFixed(2)}',
               ),
-              style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-              ),
+              style: context.text.bodySecondary,
             ),
           ],
         ],
@@ -310,7 +460,6 @@ class _QuoteSheetState extends State<_QuoteSheet> {
   @override
   Widget build(BuildContext context) {
     final s = widget.s;
-    final ak = AkColors.of(context);
     final total = (_partAmount ?? 0) + (_laborAmount ?? 0);
 
     return Padding(
@@ -325,19 +474,16 @@ class _QuoteSheetState extends State<_QuoteSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              s.t('عرض سعر', 'Quote'),
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
+            Text(s.t('عرض سعر', 'Quote'), style: context.text.screenTitle),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               s.t(
                 'سعر القطعة وأجرة التركيب منفصلان — هكذا يراهما العميل، وهذا ما يوافق عليه.',
                 'The part and the fitting are priced separately — that is how the customer sees them, and what they agree to.',
               ),
-              style: TextStyle(fontSize: 12, color: ak.inkSub),
+              style: context.text.bodySecondary.copyWith(height: 1.5),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpacing.lg),
             TextField(
               controller: _part,
               onChanged: (_) => setState(() {}),
@@ -416,15 +562,18 @@ class _QuoteSheetState extends State<_QuoteSheet> {
                 ),
               ),
             ),
-            const SizedBox(height: 14),
-            Text(
-              s.t(
-                'الإجمالي: ${total.toStringAsFixed(2)} ر.ع',
-                'Total: OMR ${total.toStringAsFixed(2)}',
-              ),
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+            const SizedBox(height: AppSpacing.lg),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(s.t('الإجمالي', 'Total'),
+                      style: context.text.bodySecondary),
+                ),
+                Text('${s.omr} ${total.toStringAsFixed(2)}',
+                    style: context.text.price),
+              ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.lg),
             FilledButton(
               onPressed: _ready ? _submit : null,
               child: Text(s.t('إرسال العرض', 'Send the quote')),

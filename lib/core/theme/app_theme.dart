@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../widgets/sand_widgets.dart';
 import 'app_colors.dart';
+import 'app_typography.dart';
 
 /// Sand & Ink theme. Typography: IBM Plex Sans Arabic for text,
 /// Chakra Petch for numbers/values (prices, odometer, counters).
@@ -45,10 +46,16 @@ abstract final class AppTheme {
       splashFactory: InkSparkle.splashFactory,
     );
 
-    final text = GoogleFonts.ibmPlexSansArabicTextTheme(base.textTheme).apply(
-      bodyColor: ak.ink,
-      displayColor: ak.ink,
-    );
+    final text = GoogleFonts.ibmPlexSansArabicTextTheme(base.textTheme)
+        .apply(bodyColor: ak.ink, displayColor: ak.ink)
+        // `bodySmall` is the supporting rank (`AppTypographyX.bodySecondary`),
+        // so its dimmer color is set once here rather than at every call site.
+        .copyWith(
+          bodySmall: GoogleFonts.ibmPlexSansArabic(
+            textStyle: base.textTheme.bodySmall,
+            color: ak.inkSub,
+          ),
+        );
 
     return base.copyWith(
       extensions: [ak],
@@ -60,11 +67,9 @@ abstract final class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: text.titleLarge?.copyWith(
-          fontWeight: FontWeight.w700,
-          fontSize: 19,
-          color: ak.ink,
-        ),
+        // One rank — `AppTypographyX.screenTitle` — so an `AppBar` title and a
+        // `SandHeader` title are the same size on adjacent screens.
+        titleTextStyle: text.screenTitle.copyWith(color: ak.ink),
       ),
       // Every AppBar back arrow in the app renders as the Sand & Ink circular
       // chevron instead of the stock Material arrow — one place, no per-screen
@@ -83,7 +88,7 @@ abstract final class AppTheme {
           shape: const StadiumBorder(),
           textStyle: text.labelLarge?.copyWith(
             fontWeight: FontWeight.w700,
-            fontSize: 13.5,
+            fontSize: 14,
           ),
         ),
       ),
@@ -91,11 +96,15 @@ abstract final class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: ak.ink,
           minimumSize: const Size.fromHeight(52),
-          side: BorderSide(color: ak.ink, width: 1.5),
+          // §8: the secondary action is always visually lighter than the
+          // primary one. A 1px border rather than 1.5, and w600 rather than
+          // w700, so an `OutlinedButton` beside a `FilledButton` never reads
+          // as its equal.
+          side: BorderSide(color: ak.border, width: 1.5),
           shape: const StadiumBorder(),
           textStyle: text.labelLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
           ),
         ),
       ),

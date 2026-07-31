@@ -8,7 +8,7 @@ import 'package:ak_cars_mobil_app/data/datasources/mock/mock_garage_data.dart';
 import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/datasources/mock/mock_shop_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
-import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Proves the models are genuinely wire-ready: every one survives a trip
@@ -209,7 +209,7 @@ void main() {
         id: 'n1',
         title: const L('عنوان', 'Title'),
         body: const L('نص', 'Body'),
-        icon: Icons.fact_check_outlined,
+        icon: LucideIcons.clipboardList,
         time: DateTime.utc(2026, 7, 21, 12),
         read: true,
         route: '/track/1042',
@@ -379,6 +379,19 @@ void main() {
         'providerCount': 1,
       });
       expect(decoded.icon, IconCodec.fallback);
+    });
+
+    // `IconCodec.encode` reverses the registry by code point, so two keys
+    // pointing at the same icon would silently make one of them un-encodable
+    // — a booking or promotion would round-trip through JSON and come back
+    // wearing a different icon. Cheap to assert, invisible to debug.
+    test('every registered icon key maps to a distinct icon', () {
+      final keys = IconCodec.keys.toList();
+      for (final key in keys) {
+        expect(IconCodec.encode(IconCodec.decode(key)), key,
+            reason: '"$key" does not survive a decode/encode round trip — '
+                'another key almost certainly shares its icon');
+      }
     });
 
     test('an unknown enum value falls back to the default', () {

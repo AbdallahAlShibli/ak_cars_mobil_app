@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 
 /// Rounded surface card used across the app. Colors resolve from the
 /// theme-aware [AkColors] (light "Sand" / dark "Ink") unless overridden.
@@ -9,7 +12,7 @@ class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(14),
+    this.padding = const EdgeInsets.all(AppSpacing.cardPadding),
     this.color,
     this.border,
     this.onTap,
@@ -208,22 +211,13 @@ class SectionHeader extends StatelessWidget {
     final ak = AkColors.of(context);
     return Row(
       children: [
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-          ),
-        ),
+        Expanded(child: Text(title, style: context.text.cardTitle)),
         if (action != null)
           GestureDetector(
             onTap: onAction,
             child: Text(
               action!,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: ak.ink,
-              ),
+              style: context.text.labelStrong.copyWith(color: ak.ink),
             ),
           ),
       ],
@@ -336,7 +330,7 @@ class EscrowBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.lock_outline_rounded, size: 17, color: ak.amberText),
+          Icon(LucideIcons.lock, size: 16, color: ak.amberText),
           const SizedBox(width: 9),
           Expanded(
             child: Text(

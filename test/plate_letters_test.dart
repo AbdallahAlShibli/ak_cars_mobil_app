@@ -1,6 +1,7 @@
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
 import 'package:ak_cars_mobil_app/core/widgets/oman_plate_input.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -123,7 +124,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Use "AB"'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.backspace_outlined));
+      await tester.tap(find.byIcon(LucideIcons.delete));
       await tester.pumpAndSettle();
       expect(find.text('Use "A"'), findsOneWidget);
     });

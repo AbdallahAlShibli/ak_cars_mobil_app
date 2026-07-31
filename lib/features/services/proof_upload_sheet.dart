@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/i18n/strings.dart';
@@ -270,7 +271,7 @@ class _MediaStrip extends StatelessWidget {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: busy ? null : onCamera,
-                icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                icon: const Icon(LucideIcons.camera, size: 18),
                 label: Text(s.t('تصوير', 'Camera')),
               ),
             ),
@@ -278,7 +279,7 @@ class _MediaStrip extends StatelessWidget {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: busy ? null : onGallery,
-                icon: const Icon(Icons.photo_library_outlined, size: 18),
+                icon: const Icon(LucideIcons.images, size: 18),
                 label: Text(s.t('من المعرض', 'Gallery')),
               ),
             ),
@@ -318,7 +319,7 @@ class _Thumb extends StatelessWidget {
                 color: ak.surfaceDim,
                 alignment: Alignment.center,
                 child: Icon(
-                  Icons.broken_image_outlined,
+                  LucideIcons.imageOff,
                   size: 22,
                   color: ak.inkFaint,
                 ),
@@ -337,7 +338,7 @@ class _Thumb extends StatelessWidget {
               onTap: onRemove,
               child: const Padding(
                 padding: EdgeInsets.all(4),
-                child: Icon(Icons.close_rounded, size: 14, color: Colors.white),
+                child: Icon(LucideIcons.x, size: 14, color: Colors.white),
               ),
             ),
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -269,7 +270,7 @@ void main() {
       final container =
           await pumpGarage(tester, garage: const [_camry, _patrol]);
 
-      await tester.tap(find.byIcon(Icons.more_vert_rounded).last);
+      await tester.tap(find.byIcon(LucideIcons.ellipsisVertical).last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Make default'));
       await tester.pumpAndSettle();
@@ -393,7 +394,7 @@ void main() {
 
       await tester.tap(find.text('Edit'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byIcon(Icons.delete_outline_rounded));
+      await tester.tap(find.byIcon(LucideIcons.trash2));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
       await tester.pumpAndSettle();

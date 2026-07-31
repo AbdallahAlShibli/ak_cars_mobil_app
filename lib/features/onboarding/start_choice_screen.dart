@@ -478,8 +478,8 @@ class _ChoiceCardState extends State<_ChoiceCard> {
                                         Icon(
                                           Directionality.of(context) ==
                                                   TextDirection.rtl
-                                              ? Icons.chevron_left_rounded
-                                              : Icons.chevron_right_rounded,
+                                              ? LucideIcons.chevronLeft
+                                              : LucideIcons.chevronRight,
                                           size: 15,
                                           color: ak.inkFaint,
                                         ),

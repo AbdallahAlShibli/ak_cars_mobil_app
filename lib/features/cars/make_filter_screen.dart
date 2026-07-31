@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -77,7 +78,7 @@ class _MakeFilterScreenState extends ConsumerState<MakeFilterScreen> {
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
                       hintText: s.t('ابحث…', 'Search…'),
-                      prefixIcon: const Icon(Icons.search_rounded),
+                      prefixIcon: const Icon(LucideIcons.search),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -120,7 +121,7 @@ class _MakeFilterScreenState extends ConsumerState<MakeFilterScreen> {
                                   MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  Icons.directions_car_filled_rounded,
+                                  LucideIcons.carFront,
                                   size: 30,
                                   color: selected
                                       ? AppColors.brand
@@ -159,7 +160,7 @@ class _MakeFilterScreenState extends ConsumerState<MakeFilterScreen> {
                           hint: Text(s.t('من', 'From')),
                           decoration: const InputDecoration(
                             prefixIcon: Icon(
-                                Icons.calendar_today_outlined,
+                                LucideIcons.calendar,
                                 size: 17),
                           ),
                           items: [
@@ -189,7 +190,7 @@ class _MakeFilterScreenState extends ConsumerState<MakeFilterScreen> {
                           hint: Text(s.t('إلى', 'To')),
                           decoration: const InputDecoration(
                             prefixIcon: Icon(
-                                Icons.calendar_today_outlined,
+                                LucideIcons.calendar,
                                 size: 17),
                           ),
                           items: [

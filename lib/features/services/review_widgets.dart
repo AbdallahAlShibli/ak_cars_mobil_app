@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,10 +26,10 @@ class StarRow extends StatelessWidget {
         for (var i = 1; i <= 5; i++)
           Icon(
             rating >= i
-                ? Icons.star_rounded
+                ? LucideIcons.star
                 : rating >= i - 0.5
-                    ? Icons.star_half_rounded
-                    : Icons.star_outline_rounded,
+                    ? LucideIcons.starHalf
+                    : LucideIcons.star,
             size: size,
             color: ak.amberText,
           ),
@@ -239,7 +240,7 @@ class StarPicker extends StatelessWidget {
               onChanged(i);
             },
             icon: Icon(
-              rating >= i ? Icons.star_rounded : Icons.star_outline_rounded,
+              rating >= i ? LucideIcons.star : LucideIcons.star,
               size: 38,
               color: rating >= i ? ak.amberText : ak.inkFaint,
             ),

@@ -7,6 +7,8 @@ import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
@@ -86,7 +88,8 @@ class HomeScreen extends ConsumerWidget {
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, AppSpacing.md,
+              AppSpacing.screenMargin, AppSpacing.xxl),
           children: [
             // ------------------------------------------------ greeting row
             Row(
@@ -108,7 +111,7 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,13 +120,9 @@ class HomeScreen extends ConsumerWidget {
                         firstName != null
                             ? s.greeting(firstName)
                             : s.t('أهلاً بك!', 'Welcome!'),
-                        style: const TextStyle(
-                            fontSize: 16.5, fontWeight: FontWeight.w700),
+                        style: context.text.cardTitle,
                       ),
-                      Text(
-                        s.greetingSub,
-                        style: TextStyle(fontSize: 11, color: ak.inkSub),
-                      ),
+                      Text(s.greetingSub, style: context.text.bodySecondary),
                     ],
                   ),
                 ),
@@ -133,13 +132,14 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 15),
+            const SizedBox(height: AppSpacing.lg),
             // ------------------------------------------------ search pill
             GestureDetector(
               onTap: () => context.push('/search'),
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                    const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg, vertical: AppSpacing.md + 2),
                 decoration: BoxDecoration(
                   color: ak.surface,
                   border: Border.all(color: ak.border),
@@ -148,12 +148,10 @@ class HomeScreen extends ConsumerWidget {
                 child: Row(
                   children: [
                     Icon(LucideIcons.search, size: 16, color: ak.inkSub),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: AppSpacing.md),
                     Expanded(
-                      child: Text(
-                        s.searchHint,
-                        style: TextStyle(fontSize: 12, color: ak.inkSub),
-                      ),
+                      child: Text(s.searchHint,
+                          style: context.text.bodySecondary),
                     ),
                     Container(
                       width: 30,
@@ -167,7 +165,7 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 13),
+            const SizedBox(height: AppSpacing.lg),
             // ------------------------------------------------ quick actions
             Row(
               children: [
@@ -208,7 +206,7 @@ class HomeScreen extends ConsumerWidget {
             ),
             // ---------------------------------------------- the sections
             for (final (i, section) in sections.indexed) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpacing.sectionGap),
               Entrance(delayMs: 60 * i, child: section),
             ],
           ],
@@ -246,7 +244,7 @@ class _CarStatusSection extends StatelessWidget {
           action: cars.isEmpty ? null : s.addCar,
           onAction: cars.isEmpty ? null : () => context.push('/add-car'),
         ),
-        const SizedBox(height: 11),
+        const SizedBox(height: AppSpacing.headingGap),
         if (cars.isEmpty)
           const HomeAddCarCard()
         else

@@ -2,14 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/escrow_timeline.dart';
 import '../../core/widgets/sand_widgets.dart';
+import '../../core/widgets/status_indicator.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import 'escrow_action_bar.dart';
+import 'queue_urgency.dart';
 
 /// The founder's panel (spec §3, note 2 and §6).
 ///
@@ -47,70 +55,101 @@ class AdminScreen extends ConsumerWidget {
     final held = requests.fold<double>(
         0, (sum, r) => r.escrow.holdsFunds ? sum + r.total : sum);
 
+    final ak = AkColors.of(context);
+
     return Scaffold(
       appBar: AppBar(title: Text(s.t('لوحة المؤسس', 'Founder panel'))),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            AppCard(
-              child: Row(
+            // ------------------------------------------- metrics layer
+            // Fixed at the top and deliberately inert: these are the three
+            // numbers the founder checks, not three things to press.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, 0,
+                  AppSpacing.screenMargin, AppSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          s.t('محجوز حالياً في الضمان',
-                              'Currently held in escrow'),
-                          style: const TextStyle(
-                              fontSize: 11.5, color: AppColors.ink3),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: MetricTile(
+                          value: '${s.omr} ${held.toStringAsFixed(2)}',
+                          label: s.t('محجوز في الضمان', 'Held in escrow'),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${s.omr} ${held.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: MetricTile(
+                          value: '${needsFunds.length}',
+                          label:
+                              s.t('بانتظار تأكيدك', 'Awaiting your confirmation'),
+                          tone: needsFunds.isEmpty ? null : ak.amberText,
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: MetricTile(
+                          value: '${disputes.length}',
+                          label: s.t('نزاعات مفتوحة', 'Open disputes'),
+                          tone: disputes.isEmpty ? null : ak.danger,
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: AppSpacing.sm),
                   Text(
-                    s.t('${running.length} طلب جارٍ',
-                        '${running.length} active'),
-                    style: const TextStyle(
-                        fontSize: 11.5, color: AppColors.ink3),
+                    s.t('الأرقام هنا تعكس ما سجّله التطبيق فقط. تحويل المبالغ فعلياً يتم خارجه في هذه المرحلة.',
+                        'These figures reflect only what the app recorded. Actual transfers happen outside it at this stage.'),
+                    style: context.text.bodySecondary
+                        .copyWith(fontSize: 11, height: 1.6),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              s.t('الأرقام هنا تعكس ما سجّله التطبيق فقط. تحويل المبالغ فعلياً يتم خارجه في هذه المرحلة.',
-                  'These figures reflect only what the app recorded. Actual transfers happen outside it at this stage.'),
-              style: const TextStyle(
-                  fontSize: 10.5, color: AppColors.ink3, height: 1.7),
+            Divider(height: 1, color: ak.divider),
+            // -------------------------------------------- queue layer
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin,
+                    AppSpacing.lg, AppSpacing.screenMargin, AppSpacing.xl),
+                children: [
+                  _Section(
+                    title: s.t('بانتظار تأكيد استلام المبلغ',
+                        'Awaiting funds confirmation'),
+                    emptyIcon: LucideIcons.banknote,
+                    empty: s.t(
+                        'لا تحويلات بانتظارك — كل حجز مدفوع مؤكَّد.',
+                        'No transfers waiting on you — every paid booking is confirmed.'),
+                    requests: needsFunds,
+                    waitingOnFounder: true,
+                  ),
+                  const SizedBox(height: AppSpacing.sectionGap),
+                  _Section(
+                    title: s.t('نزاعات', 'Disputes'),
+                    emptyIcon: LucideIcons.handshake,
+                    empty: s.t('لا نزاعات مفتوحة — الطرفان راضيان حتى الآن.',
+                        'No open disputes — both sides are happy so far.'),
+                    requests: disputes,
+                    showDisputeNote: true,
+                    waitingOnFounder: true,
+                  ),
+                  const SizedBox(height: AppSpacing.sectionGap),
+                  _Section(
+                    title: s.t('طلبات جارية', 'In flight'),
+                    emptyIcon: LucideIcons.wrench,
+                    empty: s.t('لا طلبات جارية الآن.',
+                        'Nothing in flight right now.'),
+                    requests: running,
+                    readOnly: true,
+                  ),
+                  const SizedBox(height: AppSpacing.sectionGap),
+                  const _OffersSection(),
+                ],
+              ),
             ),
-            const SizedBox(height: 18),
-            _Section(
-              title: s.t('بانتظار تأكيد استلام المبلغ',
-                  'Awaiting funds confirmation'),
-              empty: s.t('لا شيء بانتظار التأكيد.', 'Nothing awaiting confirmation.'),
-              requests: needsFunds,
-            ),
-            _Section(
-              title: s.t('نزاعات', 'Disputes'),
-              empty: s.t('لا نزاعات مفتوحة.', 'No open disputes.'),
-              requests: disputes,
-              showDisputeNote: true,
-            ),
-            _Section(
-              title: s.t('طلبات جارية', 'In flight'),
-              empty: s.t('لا طلبات جارية.', 'Nothing in flight.'),
-              requests: running,
-              readOnly: true,
-            ),
-            const _OffersSection(),
           ],
         ),
       ),
@@ -144,29 +183,28 @@ class _OffersSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionHeader(s.t('العروض', 'Offers')),
-        const SizedBox(height: 6),
+        SectionHeader('${s.t('العروض', 'Offers')} · ${audit.length}'),
+        const SizedBox(height: AppSpacing.sm),
         Text(
           s.t('$live من ${audit.length} عرضاً تظهر الآن في الرئيسية. '
               'العرض لا يظهر إلا إذا استوفى كل الشروط.',
               '$live of ${audit.length} offers are showing on the home page. '
                   'An offer appears only when it meets every condition.'),
-          style: const TextStyle(
-              fontSize: 10.5, color: AppColors.ink3, height: 1.7),
+          style: context.text.bodySecondary.copyWith(height: 1.6),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppSpacing.headingGap),
         if (audit.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 20),
-            child: Text(
-              s.t('لا عروض بعد.', 'No offers yet.'),
-              style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
-            ),
+          EmptyState(
+            compact: true,
+            icon: LucideIcons.tag,
+            message: s.t(
+                'لا عروض مقدَّمة بعد — سيظهر هنا أي عرض ترفعه ورشة، بسبب ظهوره أو حجبه.',
+                'No offers submitted yet — anything a workshop puts forward lands here, with the reason it is showing or hidden.'),
           )
         else
-          for (final row in audit) ...[
+          for (final (i, row) in audit.indexed) ...[
+            if (i > 0) const SizedBox(height: AppSpacing.itemGap + 2),
             _OfferRow(offer: row.offer, rejection: row.rejection),
-            const SizedBox(height: 10),
           ],
       ],
     );
@@ -191,7 +229,13 @@ class _OfferRow extends ConsumerWidget {
     final blockedByOther =
         rejection != null && rejection != OfferRejection.notApprovedByFounder;
 
-    return AppCard(
+    final ak = AkColors.of(context);
+    // A blocked offer is a workshop waiting on an answer, so it carries the
+    // warning tone; a live one is simply working.
+    final level = blockedByOther ? UrgencyLevel.upcoming : UrgencyLevel.normal;
+
+    return UrgencyCard(
+      level: level,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -203,56 +247,53 @@ class _OfferRow extends ConsumerWidget {
                       offer.serviceOfferingId,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w800),
+                  style: context.text.cardTitle,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.sm),
               live
                   ? StatusBadge.good(s.t('ظاهر', 'Live'))
                   : StatusBadge(s.t('غير ظاهر', 'Hidden')),
             ],
           ),
-          const SizedBox(height: 3),
-          Text(
-            offering?.provider.name.of(s) ?? offer.workshopId,
-            style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
+          const SizedBox(height: AppSpacing.xs / 2),
+          Text(offering?.provider.name.of(s) ?? offer.workshopId,
+              style: context.text.bodySecondary),
+          const SizedBox(height: AppSpacing.md),
+          // §2: the discounted price is what this row is about, so it leads;
+          // the price it replaced and the percentage support it.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('${s.omr} ${offer.discountedPrice.toStringAsFixed(2)}',
+                  style: context.text.price),
+              const SizedBox(width: AppSpacing.sm),
+              Flexible(
+                child: Text(
+                  '${s.omr} ${offer.referencePrice.toStringAsFixed(2)} · ${offer.discountPercent.round()}%',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.text.bodySecondary
+                      .copyWith(decoration: TextDecoration.lineThrough),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 7),
-          Text.rich(
-            TextSpan(children: [
-              TextSpan(
-                text: '${s.omr} ${offer.discountedPrice.toStringAsFixed(2)}  ',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-              TextSpan(
-                text: '${s.omr} ${offer.referencePrice.toStringAsFixed(2)}',
-                style: const TextStyle(
-                    color: AppColors.ink3,
-                    decoration: TextDecoration.lineThrough),
-              ),
-              TextSpan(
-                text: '  ·  ${offer.discountPercent.round()}%',
-                style: const TextStyle(color: AppColors.ink3),
-              ),
-            ]),
-            style: const TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 3),
+          const SizedBox(height: AppSpacing.xs / 2),
           Text(
             s.t('من ${_date(offer.startsAt)} إلى ${_date(offer.endsAt)}',
                 '${_date(offer.startsAt)} → ${_date(offer.endsAt)}'),
-            style: const TextStyle(fontSize: 10.5, color: AppColors.ink3),
+            style: context.text.bodySecondary,
           ),
           if (rejection != null) ...[
-            const SizedBox(height: 7),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               s.isAr ? rejection!.reason.$1 : rejection!.reason.$2,
-              style: const TextStyle(
-                  fontSize: 11, color: AppColors.ink2, height: 1.5),
+              style: context.text.bodySecondary
+                  .copyWith(height: 1.5, color: ak.inkSub),
             ),
           ],
-          const SizedBox(height: 11),
+          const SizedBox(height: AppSpacing.lg),
           Row(
             children: [
               InkPill(
@@ -260,22 +301,22 @@ class _OfferRow extends ConsumerWidget {
                     ? s.t('أوقف العرض', 'Stop offer')
                     : s.t('فعّل العرض', 'Enable offer'),
                 outlined: offer.activeByFounder,
-                fontSize: 11,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                fontSize: 12,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg + 2, vertical: AppSpacing.sm + 2),
                 onTap: () => ref.read(offersAdminProvider).setActive(
                       offer.id,
                       active: !offer.activeByFounder,
                     ),
               ),
               if (blockedByOther) ...[
-                const SizedBox(width: 10),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Text(
                     s.t('التفعيل وحده لن يُظهره — السبب أعلاه.',
                         'Enabling alone will not show it — see the reason above.'),
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.ink3, height: 1.4),
+                    style: context.text.bodySecondary
+                        .copyWith(fontSize: 11, height: 1.4),
                   ),
                 ),
               ],
@@ -290,17 +331,25 @@ class _OfferRow extends ConsumerWidget {
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
+/// One queue of the founder's panel.
+///
+/// Every section gets the same three parts in the same order — heading with
+/// its count, then either its cards or its empty state — so the eye can tell
+/// where one queue ends and the next begins without reading either title.
 class _Section extends ConsumerWidget {
   const _Section({
     required this.title,
     required this.empty,
+    required this.emptyIcon,
     required this.requests,
     this.showDisputeNote = false,
     this.readOnly = false,
+    this.waitingOnFounder = false,
   });
 
   final String title;
   final String empty;
+  final IconData emptyIcon;
   final List<ServiceRequest> requests;
   final bool showDisputeNote;
 
@@ -308,71 +357,87 @@ class _Section extends ConsumerWidget {
   /// customer own those transitions.
   final bool readOnly;
 
+  /// Whether a delay in this queue is the founder's to answer for. Only these
+  /// rows can go amber or red — see [QueueSla].
+  final bool waitingOnFounder;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = S.of(context);
+    final ak = AkColors.of(context);
     final window = ref.watch(appConfigProvider).approvalWindow;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionHeader(title),
-        const SizedBox(height: 10),
+        SectionHeader('$title · ${requests.length}'),
+        const SizedBox(height: AppSpacing.headingGap),
         if (requests.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 20),
-            child: Text(empty,
-                style: const TextStyle(
-                    fontSize: 11.5, color: AppColors.ink3)),
-          )
+          EmptyState(compact: true, icon: emptyIcon, message: empty)
         else
-          for (final r in requests) ...[
-            AppCard(
-              onTap: () => context.push('/track/${r.id}'),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  OperatorRequestHeader(request: r),
-                  if (showDisputeNote && r.disputeNote.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      // The customer's own words, unedited — a summarised
-                      // complaint is a mis-stated complaint.
-                      '"${r.disputeNote}"',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.ink2, height: 1.6),
+          for (final (i, r) in requests.indexed) ...[
+            if (i > 0) const SizedBox(height: AppSpacing.itemGap + 2),
+            Builder(builder: (context) {
+              final level = QueueSla.levelFor(r,
+                  window: QueueSla.founder, waitingOnMe: waitingOnFounder);
+              return UrgencyCard(
+                level: level,
+                onTap: () => context.push('/track/${r.id}'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    OperatorRequestHeader(request: r),
+                    const SizedBox(height: AppSpacing.md),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: EscrowTimeline(
+                              state: r.escrow,
+                              size: EscrowTimelineSize.compact),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        UrgencyLabel(QueueSla.waitedLabel(s, r), level: level),
+                      ],
                     ),
+                    if (showDisputeNote && r.disputeNote.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      Text(
+                        // The customer's own words, unedited — a summarised
+                        // complaint is a mis-stated complaint.
+                        '"${r.disputeNote}"',
+                        style: context.text.bodyPrimary
+                            .copyWith(height: 1.6, color: ak.inkSub),
+                      ),
+                    ],
+                    if (r.escrow == EscrowState.awaitingApproval)
+                      _deadlineLine(context, s, r, window),
+                    if (!readOnly) ...[
+                      const SizedBox(height: AppSpacing.lg),
+                      EscrowActionBar(request: r, actor: EscrowActor.founder),
+                    ],
                   ],
-                  if (r.escrow == EscrowState.awaitingApproval)
-                    _deadlineLine(s, r, window),
-                  if (!readOnly) ...[
-                    const SizedBox(height: 12),
-                    EscrowActionBar(
-                        request: r, actor: EscrowActor.founder),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
+                ),
+              );
+            }),
           ],
-        const SizedBox(height: 8),
       ],
     );
   }
 
-  Widget _deadlineLine(S s, ServiceRequest request, Duration window) {
+  Widget _deadlineLine(
+      BuildContext context, S s, ServiceRequest request, Duration window) {
     final deadline = request.approvalDeadline(window);
     if (deadline == null) return const SizedBox.shrink();
     final hours = deadline.difference(DateTime.now()).inHours;
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
       child: Text(
         hours <= 0
             ? s.t('انتهت مهلة العميل — تحرير تلقائي.',
                 "Customer's window has closed — auto-releasing.")
             : s.t('يتبقى للعميل $hours ساعة قبل التحرير التلقائي.',
                 'Customer has $hours hours before the automatic release.'),
-        style: const TextStyle(fontSize: 10.5, color: AppColors.ink3),
+        style: context.text.bodySecondary,
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -176,7 +177,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         Padding(
           padding: const EdgeInsets.all(8),
           child: _RoundAction(
-            icon: saved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            icon: saved ? LucideIcons.heart : LucideIcons.heart,
             foreground: saved ? ak.danger : null,
             onTap: () {
               final next = {...ref.read(savedPartsProvider)};
@@ -191,7 +192,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         Padding(
           padding: const EdgeInsetsDirectional.only(end: 12, top: 8, bottom: 8),
           child: _RoundAction(
-            icon: Icons.share_outlined,
+            icon: LucideIcons.share2,
             onTap: () => _copy(
               '${product.name.of(s)} — OMR ${product.price.toStringAsFixed(2)} · AK Cars',
               s.t('تم نسخ تفاصيل القطعة', 'Part details copied'),
@@ -210,7 +211,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               onPageChanged: (i) => setState(() => _photo = i),
               itemBuilder: (context, i) => Center(
                 child: Icon(
-                  i == 0 ? product.icon : Icons.photo_outlined,
+                  i == 0 ? product.icon : LucideIcons.image,
                   size: 96,
                   color: ak.inkFaint,
                 ),
@@ -307,7 +308,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                         ),
                       ),
                       const SizedBox(width: 4),
-                      Icon(Icons.copy_rounded, size: 12, color: ak.inkFaint),
+                      Icon(LucideIcons.copy, size: 12, color: ak.inkFaint),
                     ],
                   ),
                 ),
@@ -369,28 +370,28 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       _ when product.universalFit => (
           ak.surfaceDim,
           ak.border,
-          Icons.check_circle_outline_rounded,
+          LucideIcons.circleCheck,
           ak.ink
         ),
       _ when unknown => (
           ak.amberBgSoft,
           ak.amberBorder,
-          Icons.help_outline_rounded,
+          LucideIcons.circleHelp,
           ak.amberText
         ),
       _ when powertrainMismatch => (
           ak.dangerSoft,
           ak.dangerBorder,
-          Icons.block_rounded,
+          LucideIcons.ban,
           ak.dangerText
         ),
       _ when fits => (
           ak.successSoft,
           ak.successSoft,
-          Icons.verified_rounded,
+          LucideIcons.badgeCheck,
           ak.success
         ),
-      _ => (ak.amberBgSoft, ak.amberBorder, Icons.info_outline_rounded, ak.amberText),
+      _ => (ak.amberBgSoft, ak.amberBorder, LucideIcons.info, ak.amberText),
     };
 
     final title = product.universalFit
@@ -471,18 +472,18 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     final rows = <(IconData, String, Color)>[
       product.inStock
           ? (
-              Icons.inventory_2_outlined,
+              LucideIcons.package,
               s.t('متوفرة — ${product.stock} قطعة لدى المتجر',
                   'In stock — ${product.stock} at the shop'),
               ak.success
             )
           : (
-              Icons.inventory_2_outlined,
+              LucideIcons.package,
               s.t('غير متوفرة حالياً', 'Out of stock'),
               ak.amberText
             ),
       (
-        Icons.local_shipping_outlined,
+        LucideIcons.truckElectric,
         product.deliveryDays == 1
             ? s.t('التوصيل خلال يوم عمل واحد', 'Delivery in 1 working day')
             : s.t('التوصيل خلال ${product.deliveryDays} أيام عمل',
@@ -491,7 +492,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       ),
       if (product.fittingAvailable && seller != null)
         (
-          Icons.build_outlined,
+          LucideIcons.wrench,
           s.t('التركيب متاح في ${seller.name.ar}',
               'Fitting available at ${seller.name.en}'),
           ak.inkSub
@@ -592,17 +593,17 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Widget _assurances(Product product, S s, AkColors ak) {
     final items = <(IconData, String, String)>[
       (
-        Icons.shield_outlined,
+        LucideIcons.shield,
         s.t('ضمان', 'Warranty'),
         s.t('${product.warrantyMonths} شهراً', '${product.warrantyMonths} months'),
       ),
       (
-        Icons.assignment_return_outlined,
+        LucideIcons.undo2,
         s.t('إرجاع', 'Returns'),
         s.t('خلال ${product.returnDays} أيام', '${product.returnDays} days'),
       ),
       (
-        Icons.lock_outline_rounded,
+        LucideIcons.lock,
         s.t('الدفع', 'Payment'),
         s.t('محتجز حتى الاستلام', 'Held until delivery'),
       ),
@@ -675,7 +676,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                       children: [
                         IconButton(
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.remove_rounded, size: 18),
+                          icon: const Icon(LucideIcons.minus, size: 18),
                           onPressed:
                               _qty > 1 ? () => setState(() => _qty--) : null,
                         ),
@@ -684,7 +685,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                 fontSize: 14, fontWeight: FontWeight.w800)),
                         IconButton(
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.add_rounded, size: 18),
+                          icon: const Icon(LucideIcons.plus, size: 18),
                           onPressed: _qty < product.stock
                               ? () => setState(() => _qty++)
                               : null,
@@ -748,7 +749,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                   'مرحباً، متى تتوفر "${product.name.ar}"؟',
                                   'Hi, when will "${product.name.en}" be back in stock?'),
                             ),
-                    icon: const Icon(Icons.chat_rounded, size: 16),
+                    icon: const Icon(LucideIcons.messageCircle, size: 16),
                     label: Text(s.t('اسأل المتجر', 'Ask the shop'),
                         style: const TextStyle(fontSize: 12.5)),
                   ),

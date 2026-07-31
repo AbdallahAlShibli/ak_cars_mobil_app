@@ -4,6 +4,7 @@ import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/features/services/proof_upload_sheet.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
@@ -128,7 +129,7 @@ void main() {
     final submit = find.widgetWithText(FilledButton, 'Submit proof');
     expect(tester.widget<FilledButton>(submit).onPressed, isNotNull);
 
-    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.tap(find.byIcon(LucideIcons.x));
     await tester.pumpAndSettle();
 
     // Back to nothing attached — and back to being unable to submit.

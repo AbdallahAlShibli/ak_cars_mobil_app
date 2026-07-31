@@ -2,11 +2,16 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/utils/contact.dart';
+import '../../core/widgets/escrow_timeline.dart';
 import '../../core/widgets/sand_widgets.dart';
+import '../../core/widgets/status_indicator.dart';
 import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
@@ -26,6 +31,7 @@ class TrackingScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = S.of(context);
+    final ak = AkColors.of(context);
     final request = ref
         .watch(requestsProvider)
         .where((r) => r.id == requestId)
@@ -97,8 +103,17 @@ class TrackingScreen extends ConsumerWidget {
         title: Text(s.t('الطلب #${request.id}', 'Request #${request.id}')),
         actions: [
           Padding(
-            padding: const EdgeInsetsDirectional.only(end: 16),
-            child: Center(child: StatusBadge(escrow.label(s))),
+            padding:
+                const EdgeInsetsDirectional.only(end: AppSpacing.screenMargin),
+            // Same urgency mapping as the escrow card below, so the badge in
+            // the bar and the card in the page can never disagree about how
+            // worried the customer should be.
+            child: Center(
+              child: UrgencyLabel(
+                escrow.label(s),
+                level: _EscrowCard.levelFor(escrow),
+              ),
+            ),
           ),
         ],
       ),
@@ -107,27 +122,24 @@ class TrackingScreen extends ConsumerWidget {
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin,
+                    AppSpacing.xs, AppSpacing.screenMargin, AppSpacing.md),
                 children: [
                   AppCard(
                     child: Row(
                       children: [
-                        const IconTile(Icons.storefront_rounded,
-                            radius: 999),
-                        const SizedBox(width: 10),
+                        const IconTile(LucideIcons.store, radius: 999),
+                        const SizedBox(width: AppSpacing.md),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(request.offering.provider.name.of(s),
-                                  style: const TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w700)),
+                                  style: context.text.cardTitle),
+                              const SizedBox(height: AppSpacing.xs / 2),
                               Text(
                                 '${request.offering.name.of(s)} · ${request.car.label} · ${request.plate}',
-                                style: const TextStyle(
-                                    fontSize: 11.5,
-                                    color: AppColors.ink3),
+                                style: context.text.bodySecondary,
                               ),
                             ],
                           ),
@@ -141,12 +153,28 @@ class TrackingScreen extends ConsumerWidget {
                   // for a price, having one, and having accepted it is a
                   // difference about *numbers*, which belong here.
                   if (request.type == BookingType.customQuote) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                     _QuoteCard(request: request),
                   ],
-                  const SizedBox(height: 14),
+                  const SizedBox(height: AppSpacing.sectionGap),
+                  // Where the money is, as a picture. This is the answer the
+                  // customer opened the screen for, so it comes before the
+                  // written narrative rather than under it.
+                  _EscrowCard(
+                    request: request,
+                    amount: amount,
+                    line: _escrowLine(s, request, amount),
+                    window: config.approvalWindow,
+                  ),
+                  const SizedBox(height: AppSpacing.sectionGap),
+                  SectionHeader(s.t('تفاصيل الطلب', 'Booking detail')),
+                  const SizedBox(height: AppSpacing.headingGap),
                   AppCard(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.cardPadding,
+                        AppSpacing.cardPadding,
+                        AppSpacing.cardPadding,
+                        AppSpacing.sm),
                     child: Column(
                       children: [
                         for (final (i, step) in steps.indexed)
@@ -163,12 +191,8 @@ class TrackingScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  EscrowBanner(_escrowLine(s, request, amount)),
-                  if (escrow == EscrowState.awaitingApproval)
-                    _DeadlineNote(request: request, window: config.approvalWindow),
                   if (escrow == EscrowState.createdPendingPayment) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.lg),
                     OutlinedButton(
                       onPressed: () => ref
                           .read(requestsProvider.notifier)
@@ -179,71 +203,85 @@ class TrackingScreen extends ConsumerWidget {
                   ],
                   if (config.simulateProviderLifecycle &&
                       escrow.happyPathNext != null) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                     Row(
                       children: [
-                        const Icon(Icons.autorenew_rounded,
-                            size: 14, color: AppColors.ink3),
-                        const SizedBox(width: 6),
+                        Icon(LucideIcons.refreshCw, size: 14, color: ak.inkFaint),
+                        const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: Text(
                             s.t('نسخة تجريبية — تتقدّم الحالة تلقائياً.',
                                 'Demo build — the state advances on its own.'),
-                            style: const TextStyle(
-                                fontSize: 11.5, color: AppColors.ink3),
+                            style: context.text.bodySecondary,
                           ),
                         ),
                         TextButton(
                           onPressed: () => ref
                               .read(requestsProvider.notifier)
                               .advance(request.id),
-                          child: Text(s.t('تخطَّ للأمام', 'Skip ahead'),
-                              style: const TextStyle(fontSize: 12)),
+                          child: Text(s.t('تخطَّ للأمام', 'Skip ahead')),
                         ),
                       ],
-                    ),
-                  ],
-                  if (escrow == EscrowState.awaitingApproval) ...[
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: () =>
-                          context.push('/approve/${request.id}'),
-                      child: Text(s.t('راجع العمل المنجز',
-                          'Review completed work')),
                     ),
                   ],
                 ],
               ),
             ),
+            // §8: one primary action per screen. "Review completed work" is
+            // the only thing this screen ever asks for, so when it exists it
+            // takes the filled button and chat steps down to an outline —
+            // two solid buttons side by side would make the customer choose
+            // between them, and one of the two is the whole point of the page.
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: Row(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, 0,
+                  AppSpacing.screenMargin, AppSpacing.lg),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    // Disabled rather than dialling a stand-in number when the
-                    // workshop has not given one: a call button that reaches
-                    // someone else is worse than no call button.
-                    child: OutlinedButton.icon(
-                      onPressed: switch (request.offering.provider.phone) {
-                        final String phone when phone.isNotEmpty => () =>
-                            Contact.call(context, phone),
-                        _ => null,
-                      },
-                      icon: const Icon(Icons.phone_outlined, size: 17),
-                      label: Text(s.t('اتصال', 'Call')),
+                  if (escrow == EscrowState.awaitingApproval) ...[
+                    FilledButton.icon(
+                      onPressed: () => context.push('/approve/${request.id}'),
+                      icon: const Icon(LucideIcons.clipboardCheck, size: 17),
+                      label: Text(
+                          s.t('راجع العمل المنجز', 'Review completed work')),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.ink),
-                      onPressed: () =>
-                          context.push('/chat/${request.id}'),
-                      icon: const Icon(Icons.chat_bubble_outline_rounded,
-                          size: 17),
-                      label: Text(s.t('محادثة', 'Chat')),
-                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        // Disabled rather than dialling a stand-in number when
+                        // the workshop has not given one: a call button that
+                        // reaches someone else is worse than no call button.
+                        child: OutlinedButton.icon(
+                          onPressed: switch (request.offering.provider.phone) {
+                            final String phone when phone.isNotEmpty => () =>
+                                Contact.call(context, phone),
+                            _ => null,
+                          },
+                          icon: const Icon(LucideIcons.phone, size: 17),
+                          label: Text(s.t('اتصال', 'Call')),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: escrow == EscrowState.awaitingApproval
+                            ? OutlinedButton.icon(
+                                onPressed: () =>
+                                    context.push('/chat/${request.id}'),
+                                icon: const Icon(LucideIcons.messageCircle,
+                                    size: 17),
+                                label: Text(s.t('محادثة', 'Chat')),
+                              )
+                            : FilledButton.icon(
+                                onPressed: () =>
+                                    context.push('/chat/${request.id}'),
+                                icon: const Icon(LucideIcons.messageCircle,
+                                    size: 17),
+                                label: Text(s.t('محادثة', 'Chat')),
+                              ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -324,12 +362,14 @@ class _QuoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    final ak = AkColors.of(context);
     final quote = request.quote;
     final decide = request.escrow == EscrowState.quoted;
 
-    return AppCard(
-      color: decide ? ak.amberSoft : null,
+    // A quote the customer has to decide on is the one thing on the page that
+    // is waiting for them — so it, and only it, takes the amber treatment.
+    return UrgencyCard(
+      level: decide ? UrgencyLevel.upcoming : UrgencyLevel.normal,
+      radius: 20,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -338,36 +378,42 @@ class _QuoteCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   s.t('طلب قطعة + تركيب', 'Part + fitting request'),
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w800),
+                  style: context.text.cardTitle,
                 ),
               ),
-              StatusBadge(request.escrow.label(s)),
+              UrgencyLabel(
+                request.escrow.label(s),
+                level: decide ? UrgencyLevel.upcoming : UrgencyLevel.normal,
+              ),
             ],
           ),
           if (request.partRequest != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpacing.sm),
             Text(request.partRequest!.description,
-                style: TextStyle(
-                    fontSize: 12, height: 1.6, color: ak.inkSub)),
+                style: context.text.bodySecondary.copyWith(height: 1.6)),
           ],
           if (quote == null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               s.t('لم تصل تسعيرة بعد. سنُعلمك فور وصولها.',
                   'No price yet. We will tell you the moment it arrives.'),
-              style: TextStyle(fontSize: 11.5, color: ak.inkSub),
+              style: context.text.bodySecondary,
             ),
           ] else ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpacing.md),
+            // §2 price rule: the total leads at price weight, the breakdown
+            // that explains it follows in supporting text. The customer is
+            // deciding on the number, not on the arithmetic.
+            Text('${s.omr} ${quote.total.toStringAsFixed(2)}',
+                style: context.text.price),
+            const SizedBox(height: AppSpacing.xs),
             Text(
-              s.t('القطعة ${quote.partPrice.toStringAsFixed(2)} + التركيب ${quote.laborPrice.toStringAsFixed(2)} = ${quote.total.toStringAsFixed(2)} ${s.omr}',
-                  'Part ${quote.partPrice.toStringAsFixed(2)} + fitting ${quote.laborPrice.toStringAsFixed(2)} = ${s.omr} ${quote.total.toStringAsFixed(2)}'),
-              style: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w800),
+              s.t('القطعة ${quote.partPrice.toStringAsFixed(2)} + التركيب ${quote.laborPrice.toStringAsFixed(2)}',
+                  'Part ${quote.partPrice.toStringAsFixed(2)} + fitting ${quote.laborPrice.toStringAsFixed(2)}'),
+              style: context.text.bodySecondary,
             ),
             if (decide) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.lg),
               FilledButton(
                 onPressed: () => context.push('/quote/${request.id}'),
                 child: Text(s.t('راجع العرض وقرّر', 'Review the quote')),
@@ -380,29 +426,98 @@ class _QuoteCard extends StatelessWidget {
   }
 }
 
-/// How long the customer has left before the escrow releases itself.
-class _DeadlineNote extends StatelessWidget {
-  const _DeadlineNote({required this.request, required this.window});
+/// The escrow, shown as a position rather than described as a status.
+///
+/// One card carries the whole answer: the four-station rail, the sentence that
+/// names the amount, and — only where the clock is actually running — how long
+/// the customer has left. Its urgency color is a fixed function of the escrow
+/// state (§3): every state maps to exactly one of normal / upcoming / overdue,
+/// so the card never changes shape between two states that mean the same
+/// thing to the person reading it.
+class _EscrowCard extends StatelessWidget {
+  const _EscrowCard({
+    required this.request,
+    required this.amount,
+    required this.line,
+    required this.window,
+  });
 
   final ServiceRequest request;
+  final String amount;
+  final String line;
   final Duration window;
+
+  /// The one mapping. Amber means "you or your money are waiting on
+  /// something"; red means "something went wrong"; plain means "nothing is
+  /// being asked of you".
+  static UrgencyLevel levelFor(EscrowState state) => switch (state) {
+        EscrowState.disputed => UrgencyLevel.overdue,
+        EscrowState.quoted ||
+        EscrowState.createdPendingPayment ||
+        EscrowState.awaitingApproval =>
+          UrgencyLevel.upcoming,
+        _ => UrgencyLevel.normal,
+      };
 
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    final deadline = request.approvalDeadline(window);
-    if (deadline == null) return const SizedBox.shrink();
-    final hours = deadline.difference(DateTime.now()).inHours;
+    final ak = AkColors.of(context);
+    final escrow = request.escrow;
+    final level = levelFor(escrow);
+    final style = UrgencyStyle.of(context, level);
+    final deadline = escrow == EscrowState.awaitingApproval
+        ? request.approvalDeadline(window)
+        : null;
 
+    return UrgencyCard(
+      level: level,
+      radius: 20,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.shieldCheck,
+                  size: 17,
+                  color: level == UrgencyLevel.normal ? ak.ink : style.text),
+              const SizedBox(width: AppSpacing.sm),
+              Text(s.t('الضمان', 'Escrow'), style: context.text.cardTitle),
+              const SizedBox(width: AppSpacing.sm),
+              // The state name is the long half of this row, so it takes the
+              // slack and ellipsizes; the word "Escrow" never truncates.
+              Expanded(
+                child: Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: UrgencyLabel(escrow.label(s), level: level),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          EscrowTimeline(state: escrow),
+          const SizedBox(height: AppSpacing.lg),
+          Text(line, style: context.text.bodySecondary.copyWith(height: 1.6)),
+          if (deadline != null) _deadlineLine(context, s, deadline),
+        ],
+      ),
+    );
+  }
+
+  Widget _deadlineLine(BuildContext context, S s, DateTime deadline) {
+    final hours = deadline.difference(DateTime.now()).inHours;
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
       child: Text(
         hours <= 0
             ? s.t('انتهت مهلة المراجعة — يُحرَّر المبلغ الآن.',
                 'The review window has closed — the payment is releasing now.')
             : s.t('أمامك $hours ساعة للمراجعة، ثم يُحرَّر المبلغ تلقائياً.',
                 'You have $hours hours to review, after which the payment releases automatically.'),
-        style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
+        style: context.text.bodySecondary.copyWith(
+          fontWeight: FontWeight.w700,
+          color: UrgencyStyle.of(context, UrgencyLevel.upcoming).text,
+        ),
       ),
     );
   }
@@ -425,22 +540,11 @@ class _TimelineStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
     final (bg, fg, icon) = switch (state) {
-      _StepState.done => (
-          AppColors.goodSoft,
-          AppColors.good,
-          Icons.check_rounded
-        ),
-      _StepState.now => (
-          AppColors.brand,
-          Colors.white,
-          Icons.timelapse_rounded
-        ),
-      _StepState.next => (
-          AppColors.field,
-          AppColors.ink3,
-          Icons.circle_outlined
-        ),
+      _StepState.done => (ak.successSoft, ak.success, LucideIcons.check),
+      _StepState.now => (ak.primary, ak.onPrimary, LucideIcons.loader),
+      _StepState.next => (ak.surfaceDim, ak.inkFaint, LucideIcons.circle),
     };
 
     return IntrinsicHeight(
@@ -456,12 +560,7 @@ class _TimelineStep extends StatelessWidget {
                   color: bg,
                   shape: BoxShape.circle,
                   boxShadow: state == _StepState.now
-                      ? [
-                          BoxShadow(
-                            color: AppColors.brandSoft,
-                            spreadRadius: 4,
-                          )
-                        ]
+                      ? [BoxShadow(color: ak.surfaceDim, spreadRadius: 4)]
                       : null,
                 ),
                 child: Icon(icon, size: 14, color: fg),
@@ -471,37 +570,34 @@ class _TimelineStep extends StatelessWidget {
                   child: Container(
                     width: 2.5,
                     margin: const EdgeInsets.symmetric(vertical: 2),
-                    color: state == _StepState.done
-                        ? AppColors.good
-                        : const Color(0xFFE2E8F0),
+                    color:
+                        state == _StepState.done ? ak.success : ak.border,
                   ),
                 ),
             ],
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 4 : 16),
+              padding: EdgeInsets.only(
+                  bottom: isLast ? AppSpacing.xs : AppSpacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
-                      fontSize: 13,
+                    style: context.text.bodyPrimary.copyWith(
                       fontWeight: state == _StepState.next
-                          ? FontWeight.w600
+                          ? FontWeight.w500
                           : FontWeight.w700,
                       color: switch (state) {
-                        _StepState.now => AppColors.brand,
-                        _StepState.next => AppColors.ink3,
-                        _ => AppColors.ink,
+                        _StepState.next => ak.inkFaint,
+                        _ => ak.ink,
                       },
                     ),
                   ),
-                  Text(subtitle,
-                      style: const TextStyle(
-                          fontSize: 11.5, color: AppColors.ink3)),
+                  const SizedBox(height: AppSpacing.xs / 2),
+                  Text(subtitle, style: context.text.bodySecondary),
                 ],
               ),
             ),

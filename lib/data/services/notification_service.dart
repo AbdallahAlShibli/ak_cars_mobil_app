@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../config/app_config.dart';
 import '../../core/i18n/strings.dart';
@@ -46,7 +47,7 @@ class MockNotificationService
   Future<AppNotification> push({
     required L title,
     required L body,
-    IconData icon = Icons.notifications_outlined,
+    IconData icon = LucideIcons.bell,
     String? route,
   }) {
     final notification = AppNotification(

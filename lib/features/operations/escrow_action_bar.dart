@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
 import '../../data/models/models.dart';
 import '../../state/app_state.dart';
 
@@ -35,36 +37,62 @@ class EscrowActionBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = S.of(context);
+    final ak = AkColors.of(context);
     final available = request.escrow.transitionsFor(actor);
     if (available.isEmpty) {
       return Text(
         s.t('لا إجراء مطلوب منك في هذه الحالة.',
             'Nothing for you to do at this state.'),
-        style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
+        style: context.text.bodySecondary,
       );
     }
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    // §8, applied to a bar whose buttons the transition table decides: exactly
+    // one filled button, and it is the *forward* move. Rejecting a job and
+    // accepting it are not equal choices — one of them is what the operator
+    // opened the panel to do — and rendering them as two identical buttons
+    // was inviting the wrong tap on an action that cannot be undone.
+    final forward = [
+      for (final t in available)
+        if (!t.event.isDestructive) t,
+    ];
+    final destructive = [
+      for (final t in available)
+        if (t.event.isDestructive) t,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final t in available)
-          t.event.isDestructive
-              ? OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.bad,
-                    side: const BorderSide(
-                        color: Color(0xFFF3D2D2), width: 1.5),
+        for (final (i, t) in forward.indexed) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.sm),
+          if (i == 0)
+            FilledButton(
+              onPressed: () => _fire(context, ref, t),
+              child: Text(t.event.label.of(s)),
+            )
+          else
+            OutlinedButton(
+              onPressed: () => _fire(context, ref, t),
+              child: Text(t.event.label.of(s)),
+            ),
+        ],
+        if (destructive.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.only(
+                top: forward.isEmpty ? 0 : AppSpacing.xs),
+            child: Wrap(
+              spacing: AppSpacing.sm,
+              children: [
+                for (final t in destructive)
+                  TextButton(
+                    style: TextButton.styleFrom(foregroundColor: ak.dangerText),
+                    onPressed: () => _fire(context, ref, t),
+                    child: Text(t.event.label.of(s)),
                   ),
-                  onPressed: () => _fire(context, ref, t),
-                  child: Text(t.event.label.of(s),
-                      style: const TextStyle(fontSize: 12.5)),
-                )
-              : FilledButton(
-                  onPressed: () => _fire(context, ref, t),
-                  child: Text(t.event.label.of(s),
-                      style: const TextStyle(fontSize: 12.5)),
-                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -134,30 +162,30 @@ class OperatorRequestHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: Text(
                 '#${request.id} · ${request.offering.name.of(s)}',
-                style: const TextStyle(
-                    fontSize: 13.5, fontWeight: FontWeight.w700),
+                style: context.text.cardTitle,
               ),
             ),
-            Text(
-              '${s.omr} ${request.total.toStringAsFixed(2)}',
-              style: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w800),
-            ),
+            const SizedBox(width: AppSpacing.sm),
+            // §2: the amount is the heaviest thing on an operator row. It is
+            // what the panel exists to move.
+            Text('${s.omr} ${request.total.toStringAsFixed(2)}',
+                style: context.text.price),
           ],
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: AppSpacing.xs),
         Text(
-          '${request.car.label} · ${request.plate} · ${request.slot}',
-          style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
+          '${request.car.label} · ${request.plate}'
+          '${request.slot.isEmpty ? '' : ' · ${request.slot}'}',
+          style: context.text.bodySecondary,
         ),
-        const SizedBox(height: 3),
         Text(
           '${request.offering.provider.name.of(s)} · ${request.escrow.label(s)}',
-          style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
+          style: context.text.bodySecondary,
         ),
       ],
     );

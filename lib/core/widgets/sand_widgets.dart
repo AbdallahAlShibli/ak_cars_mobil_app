@@ -3,13 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 
 /// Theme-aware Sand & Ink card: surface + 1px border, no heavy shadow.
 class SandCard extends StatelessWidget {
   const SandCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(14),
+    this.padding = const EdgeInsets.all(AppSpacing.cardPadding),
     this.radius = 18,
     this.color,
     this.border,
@@ -341,17 +343,21 @@ class SandStatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm + 2, vertical: AppSpacing.xs),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(999),
       ),
+      // 11px is the floor for a pill: below that the weight stops reading and
+      // the color is doing all the work on its own.
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 9.5,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
           color: foreground,
+          height: 1.2,
         ),
       ),
     );
@@ -383,14 +389,9 @@ class SandHeader extends StatelessWidget {
       children: [
         if (showBack) ...[
           SandBackButton(onTap: onBack),
-          const SizedBox(width: 10),
+          const SizedBox(width: AppSpacing.md),
         ],
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
-          ),
-        ),
+        Expanded(child: Text(title, style: context.text.screenTitle)),
         ?trailing,
       ],
     );
@@ -412,18 +413,13 @@ class SandSectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
-          ),
-        ),
+        Expanded(child: Text(title, style: context.text.cardTitle)),
         if (action != null)
           GestureDetector(
             onTap: onAction,
             child: Text(
               '$action ›',
-              style: TextStyle(fontSize: 11, color: ak.inkSub),
+              style: context.text.bodySecondary.copyWith(color: ak.inkSub),
             ),
           ),
       ],

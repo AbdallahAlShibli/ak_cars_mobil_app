@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
 
@@ -33,10 +34,10 @@ extension PowertrainX on Powertrain {
 
   IconData get icon => switch (this) {
         Powertrain.petrol || Powertrain.diesel =>
-          Icons.local_gas_station_outlined,
-        Powertrain.hybrid => Icons.eco_outlined,
-        Powertrain.pluginHybrid => Icons.electrical_services_outlined,
-        Powertrain.electric => Icons.electric_bolt_rounded,
+          LucideIcons.fuel,
+        Powertrain.hybrid => LucideIcons.leaf,
+        Powertrain.pluginHybrid => LucideIcons.plugZap,
+        Powertrain.electric => LucideIcons.zap,
       };
 
   /// Has a combustion engine to change oil in.

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -210,7 +211,7 @@ class WidenSearchButton extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.travel_explore_rounded, size: 18, color: ak.inkSub),
+            Icon(LucideIcons.compass, size: 18, color: ak.inkSub),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -223,7 +224,7 @@ class WidenSearchButton extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(Icons.expand_more_rounded, size: 18, color: ak.inkFaint),
+            Icon(LucideIcons.chevronDown, size: 18, color: ak.inkFaint),
           ],
         ),
       ),
@@ -287,7 +288,7 @@ class _ProviderOfferRow extends ConsumerWidget {
                       ),
                       if (p.verified) ...[
                         const SizedBox(width: 4),
-                        Icon(Icons.verified_rounded,
+                        Icon(LucideIcons.badgeCheck,
                             size: 14, color: ak.ink),
                       ],
                     ],
@@ -296,7 +297,7 @@ class _ProviderOfferRow extends ConsumerWidget {
                   Row(
                     children: [
                       if (outsideRegion) ...[
-                        Icon(Icons.explore_outlined,
+                        Icon(LucideIcons.compass,
                             size: 12, color: ak.inkFaint),
                         const SizedBox(width: 4),
                       ],

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
 
@@ -44,32 +46,22 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       body: SafeArea(
         child: items.isEmpty
             ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconTile(Icons.shopping_bag_outlined,
-                        size: 64,
-                        radius: 22,
-                        background: ak.surfaceDim,
-                        foreground: ak.inkFaint),
-                    const SizedBox(height: 12),
-                    Text(s.t('سلتك فارغة', 'Your cart is empty'),
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    Text(
-                        s.t('القطع التي تضيفها ستظهر هنا.',
-                            'Parts you add will appear here.'),
-                        style: TextStyle(fontSize: 12.5, color: ak.inkSub)),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: 180,
+                child: SingleChildScrollView(
+                  child: EmptyState(
+                    icon: LucideIcons.shoppingBag,
+                    title: s.t('سلتك فارغة', 'Your cart is empty'),
+                    message: s.t(
+                      'القطع التي تضيفها تنتظرك هنا حتى تقرّر.',
+                      'Anything you add waits here until you decide.',
+                    ),
+                    action: SizedBox(
+                      width: 200,
                       child: FilledButton(
                         onPressed: () => context.go('/shop'),
                         child: Text(s.t('تصفّح القطع', 'Browse parts')),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               )
             : Column(
@@ -213,7 +205,7 @@ class _QtyStepper extends StatelessWidget {
           IconButton(
             visualDensity: VisualDensity.compact,
             icon: Icon(
-              qty == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
+              qty == 1 ? LucideIcons.trash2 : LucideIcons.minus,
               size: 17,
               color: qty == 1 ? ak.danger : ak.inkSub,
             ),
@@ -233,7 +225,7 @@ class _QtyStepper extends StatelessWidget {
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
-            icon: Icon(Icons.add_rounded, size: 17, color: ak.ink),
+            icon: Icon(LucideIcons.plus, size: 17, color: ak.ink),
             onPressed: () {
               HapticFeedback.selectionClick();
               onChanged(qty + 1);

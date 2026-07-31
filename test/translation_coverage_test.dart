@@ -118,7 +118,7 @@ void main() {
   bilingualTest(
     'Bookings screen (empty state)',
     () => const RequestsScreen(),
-    ar: ['حجوزاتي', 'لا توجد حجوزات بعد', 'حجز صيانة'],
+    ar: ['حجوزاتي', 'لا حجوزات بعد', 'حجز صيانة'],
     en: ['Bookings', 'No bookings yet', 'Book service'],
   );
 
@@ -199,8 +199,9 @@ void main() {
   bilingualTest(
     'My Car page (no car yet)',
     () => const MaintenanceScreen(),
-    ar: ['سيارتي', 'لا توجد سيارة بعد', 'دفتر صيانة', 'أضف سيارة'],
-    en: ['My car', 'No car yet', 'maintenance book', 'Add car'],
+    ar: ['سيارتي', 'ابدأ دفتر صيانة سيارتك', 'دفتر صيانة', 'أضف سيارة'],
+    en: ['My car', 'Start your car\'s maintenance book', 'maintenance book',
+        'Add car'],
   );
 
   bilingualTest(

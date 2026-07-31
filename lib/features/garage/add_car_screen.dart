@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -286,7 +287,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
         return _OptionList(
           options: models,
           selected: _model,
-          icon: Icons.directions_car_outlined,
+          icon: LucideIcons.car,
         );
       },
     );
@@ -307,7 +308,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
       builder: (context, _) => _OptionList(
         options: trims,
         selected: _trim,
-        icon: Icons.tune_rounded,
+        icon: LucideIcons.slidersHorizontal,
       ),
     );
     if (trim != null) setState(() => _trim = trim);
@@ -319,7 +320,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
       builder: (context, _) => _OptionList(
         options: [for (final y in _vehicles.years) '$y'],
         selected: '${_year ?? ''}',
-        icon: Icons.calendar_today_outlined,
+        icon: LucideIcons.calendar,
         onPick: (v) => Navigator.pop(context, int.parse(v)),
       ),
     );
@@ -333,7 +334,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
       builder: (context, _) => _OptionList(
         options: [for (final c in _specs.colors) c.value],
         selected: _color,
-        icon: Icons.palette_outlined,
+        icon: LucideIcons.palette,
         labelOf: (c) => _specs.localized(c, s.isAr),
         swatchOf: _specs.swatchOf,
       ),
@@ -353,7 +354,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                 _locations.localized(g, true).contains(query))
             .toList(),
         selected: _governorate,
-        icon: Icons.map_outlined,
+        icon: LucideIcons.map,
         labelOf: (g) => _locations.localized(g, s.isAr),
       ),
     );
@@ -380,7 +381,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                 _locations.localized(w, true).contains(query))
             .toList(),
         selected: _wilayat,
-        icon: Icons.location_on_outlined,
+        icon: LucideIcons.mapPin,
         labelOf: (w) => _locations.localized(w, s.isAr),
       ),
     );
@@ -432,7 +433,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
           if (widget.isEditing)
             IconButton(
               tooltip: s.t('حذف', 'Remove'),
-              icon: Icon(Icons.delete_outline_rounded, color: ak.danger),
+              icon: Icon(LucideIcons.trash2, color: ak.danger),
               onPressed: _confirmDelete,
             ),
         ],
@@ -455,13 +456,13 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                   const SizedBox(height: 14),
                   _SectionLabel(s.t('السيارة', 'The car')),
                   _PickerField(
-                    icon: Icons.factory_outlined,
+                    icon: LucideIcons.factory,
                     label: s.t('الشركة المصنعة', 'Make'),
                     value: _make?.name,
                     onTap: _pickMake,
                   ),
                   _PickerField(
-                    icon: Icons.directions_car_outlined,
+                    icon: LucideIcons.car,
                     label: s.t('الموديل', 'Model'),
                     value: _model,
                     hint: _make == null
@@ -505,20 +506,20 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                   ),
                   if (trims.isNotEmpty)
                     _PickerField(
-                      icon: Icons.tune_rounded,
+                      icon: LucideIcons.slidersHorizontal,
                       label: s.t('الفئة', 'Trim'),
                       value: _trim,
                       optional: true,
                       onTap: _pickTrim,
                     ),
                   _PickerField(
-                    icon: Icons.calendar_today_outlined,
+                    icon: LucideIcons.calendar,
                     label: s.t('سنة الصنع', 'Made year'),
                     value: _year == null ? null : '$_year',
                     onTap: _pickYear,
                   ),
                   _PickerField(
-                    icon: Icons.palette_outlined,
+                    icon: LucideIcons.palette,
                     label: s.t('اللون', 'Colour'),
                     value: _color == null
                         ? null
@@ -537,7 +538,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                         () => _powertrain = _powertrain == p ? null : p),
                   ),
                   _TextField(
-                    icon: Icons.badge_outlined,
+                    icon: LucideIcons.idCard,
                     label: s.t('اسم مختصر', 'Nickname'),
                     hint: s.t('مثال: سيارة الوالد', 'e.g. Dad\'s car'),
                     controller: _nickname,
@@ -547,7 +548,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                   const SizedBox(height: 6),
                   _SectionLabel(s.t('الاستخدام والموقع', 'Usage & location')),
                   _TextField(
-                    icon: Icons.speed_rounded,
+                    icon: LucideIcons.gauge,
                     label: s.t('الممشى الحالي (كم)', 'Current mileage (km)'),
                     hint: '128450',
                     controller: _odometer,
@@ -558,7 +559,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                     onChanged: (_) => setState(() {}),
                   ),
                   _PickerField(
-                    icon: Icons.map_outlined,
+                    icon: LucideIcons.map,
                     label: s.t('المحافظة', 'Governorate'),
                     value: _governorate == null
                         ? null
@@ -567,7 +568,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                     onTap: _pickGovernorate,
                   ),
                   _PickerField(
-                    icon: Icons.location_on_outlined,
+                    icon: LucideIcons.mapPin,
                     label: s.t('الولاية', 'Wilayat'),
                     value: _wilayat == null
                         ? null
@@ -603,7 +604,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
                         border: Border.all(color: ak.successSoft),
                         child: Row(
                           children: [
-                            Icon(Icons.check_circle_rounded,
+                            Icon(LucideIcons.circleCheckBig,
                                 color: ak.success, size: 20),
                             const SizedBox(width: 10),
                             Expanded(
@@ -679,7 +680,7 @@ class _PowertrainField extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(selected?.icon ?? Icons.local_gas_station_outlined,
+              Icon(selected?.icon ?? LucideIcons.fuel,
                   size: 17, color: ak.inkSub),
               const SizedBox(width: 8),
               Flexible(
@@ -856,7 +857,7 @@ class _PickerField extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.expand_more_rounded, color: ak.inkFaint),
+                Icon(LucideIcons.chevronDown, color: ak.inkFaint),
               ],
             ),
           ),
@@ -1030,7 +1031,7 @@ class _PopupScaffoldState extends State<_PopupScaffold> {
                       setState(() => _query = v.trim().toLowerCase()),
                   decoration: InputDecoration(
                     hintText: S.of(context).t('ابحث…', 'Search…'),
-                    prefixIcon: const Icon(Icons.search_rounded),
+                    prefixIcon: const Icon(LucideIcons.search),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1121,7 +1122,7 @@ class _OptionList extends StatelessWidget {
                               fontSize: 13.5, fontWeight: FontWeight.w600)),
                     ),
                     if (selected == o)
-                      Icon(Icons.check_rounded, size: 18, color: ak.primary),
+                      Icon(LucideIcons.check, size: 18, color: ak.primary),
                   ],
                 ),
               ),

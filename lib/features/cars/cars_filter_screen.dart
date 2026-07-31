@@ -1175,8 +1175,8 @@ class _RadioRow extends StatelessWidget {
               ],
               Icon(
                 selected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_off_rounded,
+                    ? LucideIcons.circleDot
+                    : LucideIcons.circle,
                 size: 18,
                 color: selected ? ak.ink : ak.inkFaint,
               ),
@@ -1391,7 +1391,7 @@ class _PopupScaffoldState extends State<_PopupScaffold> {
                       setState(() => _query = v.trim().toLowerCase()),
                   decoration: InputDecoration(
                     hintText: s.t('ابحث…', 'Search…'),
-                    prefixIcon: const Icon(Icons.search_rounded),
+                    prefixIcon: const Icon(LucideIcons.search, size: 18),
                   ),
                 ),
                 const SizedBox(height: 12),

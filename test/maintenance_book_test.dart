@@ -866,7 +866,12 @@ void main() {
     testWidgets('asks for a car when the garage is empty', (tester) async {
       await _pump(tester, await _container(), const MaintenanceScreen());
 
-      expect(find.text('No car yet'), findsOneWidget);
+      // The empty state names what the page is for and offers the one way to
+      // fill it — see `EmptyState`, which is deliberately not "No data".
+      expect(
+        find.text('Start your car\'s maintenance book'),
+        findsOneWidget,
+      );
       expect(find.text('Add car'), findsOneWidget);
       expect(find.textContaining('Engine oil'), findsNothing);
     });
@@ -889,7 +894,7 @@ void main() {
       expect(find.text('Add last service'), findsWidgets);
       expect(find.text('Book service'), findsWidgets);
       expect(
-        find.textContaining('No services recorded for this car yet'),
+        find.textContaining('Nothing logged for this car yet'),
         findsOneWidget,
       );
       // Nothing claimed about how far along anything is.

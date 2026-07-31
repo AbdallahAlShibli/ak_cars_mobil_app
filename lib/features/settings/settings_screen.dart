@@ -412,7 +412,7 @@ class _ThemePreviewCard extends StatelessWidget {
                 height: 20,
                 decoration:
                     BoxDecoration(color: ak.primary, shape: BoxShape.circle),
-                child: Icon(Icons.check, size: 12, color: ak.onPrimary),
+                child: Icon(LucideIcons.check, size: 12, color: ak.onPrimary),
               ),
             ),
         ],

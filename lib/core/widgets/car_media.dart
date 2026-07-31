@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../config/app_config.dart';
 import '../../data/models/models.dart';
@@ -92,7 +93,7 @@ class CarImage extends StatelessWidget {
     this.color,
     this.variant = 0,
     this.expand = false,
-    this.fallbackIcon = Icons.directions_car_filled_rounded,
+    this.fallbackIcon = LucideIcons.carFront,
   });
 
   final String make;

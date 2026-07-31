@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,11 +16,11 @@ import 'product_widgets.dart';
 import 'shop_filter_sheet.dart';
 
 const _categoryIcons = {
-  'filters': Icons.filter_alt_outlined,
-  'batteries': Icons.battery_charging_full_rounded,
-  'brakes': Icons.album_outlined,
-  'tyres': Icons.tire_repair,
-  'lights': Icons.lightbulb_outline_rounded,
+  'filters': LucideIcons.funnel,
+  'batteries': LucideIcons.batteryCharging,
+  'brakes': LucideIcons.disc,
+  'tyres': LucideIcons.lifeBuoy,
+  'lights': LucideIcons.lightbulb,
 };
 
 /// Parts shop — pinned search, a real offer banner, category rail, quick
@@ -68,7 +69,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                     title: Text(option.label(s),
                         style: const TextStyle(fontSize: 13.5)),
                     trailing: option == filter.sort
-                        ? Icon(Icons.check_rounded, size: 19, color: ak.ink)
+                        ? Icon(LucideIcons.check, size: 19, color: ak.ink)
                         : null,
                     onTap: () => Navigator.pop(context, option),
                   ),
@@ -125,7 +126,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                         isLabelVisible: cart.isNotEmpty,
                         label: Text('${cart.length}'),
                         child: IconButton(
-                          icon: const Icon(Icons.shopping_bag_outlined),
+                          icon: const Icon(LucideIcons.shoppingBag),
                           onPressed: () {
                             if (!ensureRegistered(context, ref)) return;
                             context.push('/cart');
@@ -177,7 +178,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 20),
                           children: [
                             _CategoryAvatar(
-                              icon: Icons.apps_rounded,
+                              icon: LucideIcons.layoutGrid,
                               label: s.t('الكل', 'All'),
                               selected: filter.categoryId == null,
                               onTap: () => ref
@@ -188,7 +189,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                                 in ref.watch(partCategoriesProvider).entries)
                               _CategoryAvatar(
                                 icon: _categoryIcons[e.key] ??
-                                    Icons.category_outlined,
+                                    LucideIcons.layoutGrid,
                                 label: e.value.of(s),
                                 selected: filter.categoryId == e.key,
                                 onTap: () => ref
@@ -237,7 +238,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                           horizontal: 14, vertical: 10),
                       child: Row(
                         children: [
-                          Icon(Icons.directions_car_outlined,
+                          Icon(LucideIcons.car,
                               size: 17, color: ak.ink),
                           const SizedBox(width: 8),
                           Expanded(
@@ -284,7 +285,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                           if (evShortcut) ...[
                             SelectChip(
                               label: s.t('قطع السيارات الكهربائية', 'EV parts'),
-                              icon: Icons.electric_bolt_rounded,
+                              icon: LucideIcons.zap,
                               selected: filter.powertrain != null,
                               onTap: () => ref
                                   .read(shopFilterProvider.notifier)
@@ -298,7 +299,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                           ],
                           SelectChip(
                             label: s.t('المتوفر الآن', 'In stock'),
-                            icon: Icons.inventory_2_outlined,
+                            icon: LucideIcons.package,
                             selected: filter.inStockOnly,
                             onTap: () => ref
                                 .read(shopFilterProvider.notifier)
@@ -308,7 +309,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                           const SizedBox(width: 7),
                           SelectChip(
                             label: s.t('عليها عرض', 'On offer'),
-                            icon: Icons.local_offer_outlined,
+                            icon: LucideIcons.tag,
                             selected: filter.onOfferOnly,
                             onTap: () => ref
                                 .read(shopFilterProvider.notifier)
@@ -318,7 +319,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                           const SizedBox(width: 7),
                           SelectChip(
                             label: filter.sort.label(s),
-                            icon: Icons.swap_vert_rounded,
+                            icon: LucideIcons.arrowUpDown,
                             selected: filter.sort != ShopSort.recommended,
                             onTap: () => _pickSort(filter),
                           ),
@@ -407,11 +408,11 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                 hintText: s.t('ابحث بالاسم أو رقم القطعة…',
                     'Search name or part number…'),
                 hintStyle: TextStyle(fontSize: 12.5, color: ak.inkFaint),
-                prefixIcon: Icon(Icons.search_rounded, size: 19, color: ak.inkSub),
+                prefixIcon: Icon(LucideIcons.search, size: 19, color: ak.inkSub),
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: Icon(Icons.close_rounded,
+                        icon: Icon(LucideIcons.x,
                             size: 17, color: ak.inkSub),
                         onPressed: () => setState(() => _query = ''),
                       ),
@@ -438,7 +439,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
           label: Text('${filter.activeCount}'),
           child: GestureDetector(
             onTap: _openFilters,
-            child: IconTile(Icons.tune_rounded,
+            child: IconTile(LucideIcons.slidersHorizontal,
                 size: 46,
                 radius: 999,
                 background: ak.surface,
@@ -454,7 +455,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
       child: Column(
         children: [
-          Icon(Icons.search_off_rounded, size: 40, color: ak.inkFaint),
+          Icon(LucideIcons.searchX, size: 40, color: ak.inkFaint),
           const SizedBox(height: 10),
           Text(
             searching
@@ -967,10 +968,10 @@ class _ProductCard extends ConsumerWidget {
                   ),
                   child: Icon(
                     !product.inStock
-                        ? Icons.block_rounded
+                        ? LucideIcons.ban
                         : inCart
-                            ? Icons.check_rounded
-                            : Icons.add_rounded,
+                            ? LucideIcons.check
+                            : LucideIcons.plus,
                     size: 17,
                     color: !product.inStock
                         ? ak.inkFaint
@@ -1051,7 +1052,7 @@ class _CartBar extends ConsumerWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.shopping_bag_rounded, color: ak.onPrimary, size: 19),
+            Icon(LucideIcons.shoppingBag, color: ak.onPrimary, size: 19),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -1075,7 +1076,7 @@ class _CartBar extends ConsumerWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
+            Icon(LucideIcons.chevronRight,
                 color: ak.onPrimary.withValues(alpha: 0.75)),
           ],
         ),

@@ -17,6 +17,169 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-07-31 · Sand & Ink polish pass — spacing, hierarchy, state, icons
+
+**Baseline:** `7468760` (working tree)
+**Request:** `@"C:\Projects\Cars Project\MobileApp-Design\AK_Cars_تعليمات_تحسين_الواجهة.md"` —
+"check this file and study it with my project then apply the instructions"
+
+The brief is a visual review of 24 real screenshots. It is explicit that this is
+a **polish pass, not a redesign**: the `AkColors` palette and the layer
+structure stay exactly as they are. It diagnoses three faults that repeat on
+every screen — a flat visual hierarchy, density with no breathing room, and no
+designed empty/loading states — and traces all three to one root cause: the app
+had a real colour system but **no spacing scale and no typographic ranking**, so
+every screen invented its own numbers.
+
+### What was actually wrong
+
+Measured before touching anything: nine different `fontSize:` values were in
+active use (21, 19, 15, 14.5, 13.5, 12.5, 11.5, 10.5, 9.5), several of them one
+step apart *inside the same card*. Nine sizes that close is not a hierarchy —
+it is nine ways of saying "normal", and the eye cannot rank them. Gaps were
+equally ad hoc (14, 13, 11, 9, 7…), so a gap between two sections and a gap
+between two list items were frequently the same size, which is what makes a
+page read as one undifferentiated block.
+
+### The changes, by section of the brief
+
+**§1–§2 Foundation.** `AppSpacing` (4px scale + semantic aliases —
+`cardPadding`, `sectionGap`, `itemGap`, `screenMargin`) and `AppTypographyX`
+(four levels: `screenTitle` / `cardTitle` / `bodyPrimary` / `bodySecondary`,
+plus `price` and `labelStrong`, which are *weight variants of `cardTitle`*, not
+a fifth and sixth size). `bodySmall`'s dim colour moved into `AppTheme` so
+`bodySecondary` carries it without every call site restating it. The shared
+widgets (`AppCard`, `SandCard`, `SandHeader`, `SectionHeader`,
+`SandSectionHeader`, `SandStatusPill`) now read from both, so a large part of
+the app inherited the scale without being edited.
+
+**§2 price rule.** On every services surface the price now outranks the service
+name (`context.text.price`, w800). The name is the same on every card in a
+list; the price is what the customer is comparing.
+
+**§3 Instant state legibility.** `UrgencyCard` / `UrgencyLabel` /
+`UrgencyStyle` in `core/widgets/status_indicator.dart` — a coloured leading
+edge, a background tint, *and* an icon for overdue. Three signals rather than
+one, so it survives a colour-blind reader and a 200ms glance alike. Applied to
+maintenance `DueItem`s (the case the brief names: "overdue" and "1,500 km left"
+were the same white card), both operator queues, the bookings list, and the
+tracking screen's escrow card.
+
+**§4 Escrow timeline.** `core/widgets/escrow_timeline.dart` — a reusable
+four-station rail (`held → in progress → proof → released`) in `full` and
+`compact` sizes, with connectors that fill progressively and a pulsing ring on
+the current station. The ten `EscrowState` values map onto the four stations
+via a new `EscrowStationX` extension. **A dispute is not a fifth station**: it
+is not further along than "proof submitted", it is sideways from it, so it
+renders as a branch below the rail in the danger colour — as do cancelled and
+refunded, which never entered the rail at all.
+
+**§5 Operator panels.** Both panels split into a pinned metrics strip
+(`MetricTile` — quiet, inert, reading material) and scrollable queues below a
+divider. The workshop panel now splits its queue by *who the transition table
+says can act*, so "waiting on you" is a real query rather than a label. Queue
+urgency comes from `QueueSla` against a new `ServiceRequest.inCurrentStateSince`
+read from the escrow audit trail — a card goes red because a transition really
+has not happened, never because of an invented clock. Rows the operator only
+watches stay neutral: colouring a delay someone cannot act on trains them to
+ignore the colour.
+
+**§6 Empty and loading states.** `core/widgets/empty_state.dart` (`EmptyState`,
+`ListSkeleton`, `MetricSkeleton`, `MetricTile`), applied to the maintenance
+garage and history, bookings, both operator panels, offers, services search,
+shop orders, cart and notifications. Messages follow the brief's rule —
+positive and directed, not neutral: "No open jobs right now — a quiet moment,
+well earned", not "No data".
+
+**§7 One icon set.** The brief asks for Lucide throughout. Four screens mixed
+the two sets outright; the rest of the app was uniformly Material *per file*
+while sitting under a Lucide bottom nav, which is the same violation one level
+up. All of it is now Lucide — **including the data layer**, where the service
+categories, powertrains, shop products, notifications and vehicle types carried
+Material `IconData`. `IconCodec` moved with them: the values are Lucide, the
+**wire keys are unchanged**, so no stored record breaks.
+
+**§8 One primary action.** `OutlinedButton`'s theme is lighter than
+`FilledButton`'s now (border in `ak.border`, w600 not w700). The escrow action
+bar derives one filled button (the forward move) with destructive transitions
+demoted to danger-coloured text buttons — accepting and rejecting a job were
+two identical buttons on an irreversible action. Same treatment on the approval
+screen ("I have an issue") and the tracking screen (chat drops to outlined when
+"Review completed work" is present).
+
+### Two real bugs found on the way
+
+1. **`EscrowTimeline` crashed on dispose.** `late final AnimationController`
+   is lazy, and three of four stations are never active — so `dispose()`
+   reading it *constructed* it on an already-deactivated element
+   ("Looking up a deactivated widget's ancestor is unsafe"). Now built eagerly
+   in `initState`. Caught by `tracking_back_test.dart` and
+   `operator_panels_test.dart`.
+2. **Escrow-machine notifications had no `IconCodec` key** (`request_quote`,
+   `gavel`, `undo`, `hourglass`, `lock`, `star`, `build_circle`), so any that
+   went through JSON came back as the fallback circle. Registered, with a new
+   test asserting every key survives a decode→encode round trip — without it,
+   two keys sharing an icon silently makes one un-encodable.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/core/theme/app_spacing.dart` | **new** — 4px scale + semantic aliases |
+| `lib/core/theme/app_typography.dart` | **new** — four-level `TextTheme` extension + `context.text` |
+| `lib/core/widgets/status_indicator.dart` | **new** — `UrgencyLevel`, `UrgencyStyle`, `UrgencyCard`, `UrgencyLabel` |
+| `lib/core/widgets/escrow_timeline.dart` | **new** — `EscrowTimeline`, `EscrowStation`, `EscrowStationX` |
+| `lib/core/widgets/empty_state.dart` | **new** — `EmptyState`, `ListSkeleton`, `MetricSkeleton`, `MetricTile` |
+| `lib/features/operations/queue_urgency.dart` | **new** — `QueueSla`, shared by both operator panels |
+| `lib/core/theme/app_theme.dart` | `bodySmall` colour, `screenTitle` app-bar title, lighter `OutlinedButton` |
+| `lib/core/widgets/widgets.dart`, `sand_widgets.dart` | token-driven padding/type |
+| `lib/core/json/icon_codec.dart` | values → Lucide (keys unchanged); 7 escrow notification keys added |
+| `lib/features/services/tracking_screen.dart` | `_EscrowCard` (timeline + amount + deadline) replaces the flat banner; `_DeadlineNote` folded in; theme-aware step rail |
+| `lib/features/services/requests_screen.dart` | urgency cards, compact timeline, price weight, `EmptyState` |
+| `lib/features/services/services_screen.dart` | price outranks name; `EmptyState`; icons |
+| `lib/features/services/approval_screen.dart` | "I have an issue" demoted to a text button |
+| `lib/features/operations/workshop_screen.dart` | metrics strip + "waiting on you" / "waiting on others" queues |
+| `lib/features/operations/admin_screen.dart` | metrics strip + separated queues, urgency, compact timelines |
+| `lib/features/operations/escrow_action_bar.dart` | one filled forward action, destructive → text button |
+| `lib/features/garage/maintenance_screen.dart` | `UrgencyCard` per due item, `EmptyState`, tokens |
+| `lib/features/home/home_screen.dart` | tokens on the page chrome |
+| `lib/data/models/service_request.dart` | `inCurrentStateSince`, `stalledFor` |
+| `lib/data/**`, `lib/features/**` (30 files) | Material → Lucide icon migration |
+| `lib/features/shop/{orders,cart}_screen.dart`, `lib/features/home/notifications_screen.dart` | `EmptyState` |
+
+### Verified
+- `flutter analyze lib test` — clean apart from one pre-existing `info` in
+  `lib/core/utils/contact.dart:23` that predates this work.
+- `flutter test` — **396/396 pass.** Eight tests were updated, all of them
+  assertions on copy this pass deliberately rewrote (§6 empty-state messages,
+  "Currently held in escrow" → "Held in escrow") or `find.byIcon` finders
+  pointing at now-migrated Material icons. One test was **added**
+  (`models_json_test.dart`: every `IconCodec` key round-trips).
+- `flutter build web --release` — succeeded (`√ Built build\web`, 56.5s).
+  Note on the tree-shake output: `MaterialIcons-Regular.otf` is **still
+  shipped**, shrunk 99.5% to 7,736 bytes. That is not a leftover from this
+  pass — it is the Material *framework* referencing its own glyphs internally
+  (dropdown arrows, date-picker chrome, dialog affordances), which no amount of
+  app-level migration removes while the app is built on Material widgets. Every
+  icon *this codebase* names is Lucide; `grep` for a non-Lucide `Icons.` across
+  `lib/` returns nothing.
+- **Not verified:** no on-device or emulator screenshot pass. Layout was
+  checked only through the widget tests, which do fail on overflow (one such
+  overflow *was* caught and fixed: the escrow card's title row against a long
+  state name). Dark mode was not re-reviewed visually, though the pass removed
+  a number of hard-coded light `AppColors` literals from the tracking and
+  operator screens, which should improve it rather than regress it.
+
+### Left alone deliberately
+- The category grid's icon *choices* were mapped one-for-one to their nearest
+  Lucide equivalent. A few are approximations (`rv_hookup` → `siren` for
+  roadside, `local_car_wash` → `sparkles` for detailing) and are worth a
+  designer's eye before launch.
+- `AppColors` (the legacy static light tokens) still exists and is still used by
+  several detail screens. Replacing it with `AkColors.of(context)` everywhere is
+  the dark-mode migration already tracked in memory, not this pass.
+
+---
+
 ## 2026-07-31 · The booking details page had no way out
 
 **Baseline:** `819d58c` (working tree)

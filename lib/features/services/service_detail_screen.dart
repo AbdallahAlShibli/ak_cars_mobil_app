@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -104,7 +105,7 @@ class ServiceDetailScreen extends ConsumerWidget {
                 color: ak.surfaceDim,
                 alignment: Alignment.center,
                 child: Icon(
-                  category?.icon ?? Icons.build_rounded,
+                  category?.icon ?? LucideIcons.wrench,
                   size: 84,
                   color: ak.inkFaint,
                 ),
@@ -138,7 +139,7 @@ class ServiceDetailScreen extends ConsumerWidget {
                       ),
                       if (provider.verified) ...[
                         const SizedBox(width: 5),
-                        Icon(Icons.verified_rounded,
+                        Icon(LucideIcons.badgeCheck,
                             size: 14, color: ak.success),
                       ],
                       const SizedBox(width: 8),
@@ -246,7 +247,7 @@ class ServiceDetailScreen extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.request_quote_outlined, size: 19, color: ak.amberText),
+            Icon(LucideIcons.receiptText, size: 19, color: ak.amberText),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -336,7 +337,7 @@ class ServiceDetailScreen extends ConsumerWidget {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.local_offer_outlined,
+                  Icon(LucideIcons.tag,
                       size: 16, color: ak.dangerText),
                   const SizedBox(width: 9),
                   Expanded(
@@ -391,14 +392,14 @@ class ServiceDetailScreen extends ConsumerWidget {
   Widget _facts(ServiceOffering offering, S s, AkColors ak) {
     final items = <(IconData, String, String)>[
       (
-        Icons.schedule_rounded,
+        LucideIcons.clock,
         s.t('المدة', 'Duration'),
         offering.durationMin != null
             ? s.t('${offering.durationMin} دقيقة', '${offering.durationMin} min')
             : s.t('حسب العمل', 'Open-ended'),
       ),
       (
-        Icons.shield_outlined,
+        LucideIcons.shield,
         s.t('ضمان العمل', 'Workmanship'),
         offering.warrantyMonths != null
             ? s.t('${offering.warrantyMonths} شهراً',
@@ -406,7 +407,7 @@ class ServiceDetailScreen extends ConsumerWidget {
             : s.t('لا ينطبق', 'Not applicable'),
       ),
       (
-        Icons.verified_user_outlined,
+        LucideIcons.shieldCheck,
         s.t('الدفع', 'Payment'),
         s.t('بعد الإنجاز', 'After completion'),
       ),
@@ -448,7 +449,7 @@ class ServiceDetailScreen extends ConsumerWidget {
       onTap: car == null ? () => context.push('/add-car') : null,
       child: Row(
         children: [
-          Icon(Icons.directions_car_outlined, size: 17, color: ak.ink),
+          Icon(LucideIcons.car, size: 17, color: ak.ink),
           const SizedBox(width: 10),
           Expanded(
             child: Text.rich(
@@ -485,7 +486,7 @@ class ServiceDetailScreen extends ConsumerWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.check_circle_rounded, size: 16, color: ak.success),
+                Icon(LucideIcons.circleCheckBig, size: 16, color: ak.success),
                 const SizedBox(width: 9),
                 Expanded(
                   child: Text(

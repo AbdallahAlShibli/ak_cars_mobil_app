@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
 
@@ -37,25 +39,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       body: SafeArea(
         child: items.isEmpty
             ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconTile(Icons.notifications_none_rounded,
-                        size: 64,
-                        radius: 22,
-                        background: ak.surfaceDim,
-                        foreground: ak.inkFaint),
-                    const SizedBox(height: 12),
-                    Text(s.t('لا جديد لديك', "You're all caught up"),
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    Text(
-                      s.t('تحديثات الحجز وأحداث الدفع تظهر هنا.',
-                          'Booking updates and payment events land here.'),
-                      style: TextStyle(fontSize: 12.5, color: ak.inkSub),
+                child: SingleChildScrollView(
+                  child: EmptyState(
+                    icon: LucideIcons.bell,
+                    title: s.t('لا جديد لديك', "You're all caught up"),
+                    message: s.t(
+                      'لا شيء ينتظرك الآن — تحديثات الحجز وأحداث الدفع تصلك هنا فور حدوثها.',
+                      'Nothing is waiting on you — booking updates and payment events reach you here the moment they happen.',
                     ),
-                  ],
+                  ),
                 ),
               )
             : ListView.separated(
@@ -103,7 +95,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                             ),
                           ),
                           if (n.route != null)
-                            Icon(Icons.chevron_right_rounded,
+                            Icon(LucideIcons.chevronRight,
                                 color: ak.inkFaint),
                         ],
                       ),

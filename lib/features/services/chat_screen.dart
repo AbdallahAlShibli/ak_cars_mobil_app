@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -159,7 +160,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         color: AppColors.brand,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.send_rounded,
+                      child: const Icon(LucideIcons.sendHorizontal,
                           color: Colors.white, size: 20),
                     ),
                   ),

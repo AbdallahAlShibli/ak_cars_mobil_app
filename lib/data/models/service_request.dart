@@ -230,6 +230,26 @@ class ServiceRequest {
     return reached;
   }
 
+  /// When this booking entered the state it is in now, read from [history].
+  ///
+  /// Falls back to [createdAt] for a booking that has not moved since it was
+  /// made — which is the same answer, since the state it is in is the one it
+  /// started in.
+  ///
+  /// This is the only honest basis for "how long has this been sitting here":
+  /// it comes from the audit trail the machine already writes, so an operator
+  /// queue can sort by neglect without the app inventing a clock.
+  DateTime get inCurrentStateSince {
+    for (final entry in history.reversed) {
+      if (entry.state == escrow) return entry.at;
+    }
+    return createdAt;
+  }
+
+  /// How long it has been sitting in its current state.
+  Duration stalledFor({DateTime? now}) =>
+      (now ?? DateTime.now()).difference(inCurrentStateSince);
+
   /// Whether that deadline has passed as of [now].
   bool autoReleaseDue(Duration window, {DateTime? now}) {
     final deadline = approvalDeadline(window);

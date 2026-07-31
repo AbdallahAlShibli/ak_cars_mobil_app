@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -73,11 +74,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 hintText: s.searchHint,
                 hintStyle: TextStyle(fontSize: 12.5, color: ak.inkFaint),
                 prefixIcon:
-                    Icon(Icons.search_rounded, size: 19, color: ak.inkSub),
+                    Icon(LucideIcons.search, size: 19, color: ak.inkSub),
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: Icon(Icons.close_rounded,
+                        icon: Icon(LucideIcons.x,
                             size: 17, color: ak.inkSub),
                         onPressed: () {
                           _controller.clear();
@@ -126,7 +127,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                           rows: [
                             for (final o in results.services)
                               _ResultRow(
-                                icon: Icons.build_rounded,
+                                icon: LucideIcons.wrench,
                                 title: o.name.of(s),
                                 subtitle: o.provider.name.of(s),
                                 trailing: o.price == null
@@ -314,7 +315,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_off_rounded, size: 44, color: ak.inkFaint),
+            Icon(LucideIcons.searchX, size: 44, color: ak.inkFaint),
             const SizedBox(height: 12),
             Text(
               s.t('لا نتائج لـ "$_query"', 'Nothing found for "$_query"'),

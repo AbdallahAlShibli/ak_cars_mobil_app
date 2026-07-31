@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n/strings.dart';
@@ -89,7 +90,7 @@ class PaymentsScreen extends ConsumerWidget {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.lock_outline_rounded,
+                            Icon(LucideIcons.lock,
                                 size: 15, color: ak.amberText),
                             const SizedBox(width: 6),
                             Text(s.t('محتجز في الضمان', 'Held in escrow'),
@@ -122,7 +123,7 @@ class PaymentsScreen extends ConsumerWidget {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.lock_open_rounded,
+                            Icon(LucideIcons.lockOpen,
                                 size: 15, color: ak.success),
                             const SizedBox(width: 6),
                             Text(s.t('محرّر', 'Released'),
@@ -174,9 +175,9 @@ class PaymentsScreen extends ConsumerWidget {
                       children: [
                         IconTile(
                           switch (e.$4) {
-                            0 => Icons.lock_outline_rounded,
-                            2 => Icons.gavel_rounded,
-                            _ => Icons.lock_open_rounded,
+                            0 => LucideIcons.lock,
+                            2 => LucideIcons.scale,
+                            _ => LucideIcons.lockOpen,
                           },
                           size: 38,
                           radius: 12,

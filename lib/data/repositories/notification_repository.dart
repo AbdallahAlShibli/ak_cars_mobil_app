@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
 import '../models/app_notification.dart';
@@ -83,7 +84,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
   Future<AppNotification> push({
     required L title,
     required L body,
-    IconData icon = Icons.notifications_outlined,
+    IconData icon = LucideIcons.bell,
     String? route,
   }) =>
       _service.push(title: title, body: body, icon: icon, route: route);
@@ -101,7 +102,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
         body: L(
             'المبلغ ${request.total.toStringAsFixed(2)} ر.ع بانتظار التأكيد، ثم يُعرض الطلب على ${request.offering.provider.name.ar}.',
             'OMR ${request.total.toStringAsFixed(2)} is awaiting confirmation, then the job goes to ${request.offering.provider.name.en}.'),
-        icon: Icons.schedule_send_outlined,
+        icon: LucideIcons.sendHorizontal,
         route: '/track/${request.id}',
       );
 
@@ -114,7 +115,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
         body: L(
             'وصل وصفك إلى ${request.offering.provider.name.ar}. تسعّر القطعة والتركيب كلاً على حدة، ثم تقرّر أنت.',
             'Your description reached ${request.offering.provider.name.en}. They price the part and the fitting separately, then it is your call.'),
-        icon: Icons.build_circle_outlined,
+        icon: LucideIcons.hammer,
         route: '/track/${request.id}',
       );
 
@@ -130,7 +131,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
             'A quote arrived for #${request.id}'),
         body: L('من ${provider.ar} — افتح الطلب لمراجعته.',
             'From ${provider.en} — open the request to review it.'),
-        icon: Icons.request_quote_outlined,
+        icon: LucideIcons.receiptText,
         route: '/track/${request.id}',
       );
     }
@@ -141,7 +142,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
       body: L(
           'القطعة $part ر.ع + التركيب $labor ر.ع = ${quote.total.toStringAsFixed(2)} ر.ع. اقبل أو ارفض.',
           'Part OMR $part + fitting OMR $labor = OMR ${quote.total.toStringAsFixed(2)}. Accept or decline.'),
-      icon: Icons.request_quote_outlined,
+      icon: LucideIcons.receiptText,
       route: '/quote/${request.id}',
     );
   }
@@ -152,7 +153,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
         body: L(
             'قيّم ${request.offering.provider.name.ar} عن الطلب #${request.id}. تقييمك يظهر لأنه عن حجز مكتمل فعلاً.',
             'Rate ${request.offering.provider.name.en} for #${request.id}. Your review shows because it comes from a booking that actually completed.'),
-        icon: Icons.star_outline_rounded,
+        icon: LucideIcons.star,
         route: '/review/${request.id}',
       );
 
@@ -162,7 +163,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
         body: L(
             '${ad.year} ${ad.make} ${ad.model} أصبح الآن في المعرض.',
             '${ad.year} ${ad.make} ${ad.model} is now in the gallery.'),
-        icon: Icons.campaign_outlined,
+        icon: LucideIcons.megaphone,
         route: '/cars/listing/${ad.id}',
       );
 
@@ -180,7 +181,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
           body: L(
               'تم تأكيد حجز $amount ر.ع كضمان — بانتظار قبول ${provider.ar}.',
               'OMR $amount is confirmed held in escrow — waiting for ${provider.en} to accept.'),
-          icon: Icons.lock_outline_rounded,
+          icon: LucideIcons.lock,
           route: '/track/${request.id}',
         ),
       EscrowState.acceptedByWorkshop => push(
@@ -189,7 +190,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
           body: L(
               'قبلت ${provider.ar} حجزك في ${request.slot}.',
               '${provider.en} accepted your booking for ${request.slot}.'),
-          icon: Icons.thumb_up_alt_outlined,
+          icon: LucideIcons.thumbsUp,
           route: '/track/${request.id}',
         ),
       EscrowState.inProgress => push(
@@ -198,7 +199,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
           body: L(
               '${provider.ar} تعمل الآن على سيارتك ${request.car.label}.',
               '${provider.en} is working on your ${request.car.label}.'),
-          icon: Icons.build_rounded,
+          icon: LucideIcons.wrench,
           route: '/track/${request.id}',
         ),
       EscrowState.awaitingApproval => push(
@@ -207,7 +208,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
           body: L(
               'رفعت ${provider.ar} إثبات الإنجاز للطلب #${request.id}. وافق لتحرير $amount ر.ع.',
               '${provider.en} submitted proof of work for #${request.id}. Approve to release OMR $amount.'),
-          icon: Icons.fact_check_outlined,
+          icon: LucideIcons.clipboardList,
           route: '/approve/${request.id}',
         ),
       EscrowState.releasedToWorkshop => push(
@@ -215,7 +216,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
           body: L(
               'تم تحرير $amount ر.ع إلى ${provider.ar} عن الطلب #${request.id}.',
               'OMR $amount released to ${provider.en} for #${request.id}.'),
-          icon: Icons.lock_open_rounded,
+          icon: LucideIcons.lockOpen,
           route: '/payments',
         ),
       EscrowState.disputed => push(
@@ -224,14 +225,14 @@ class NotificationRepositoryImpl implements NotificationRepository {
           body: const L(
               'المبلغ ما زال محجوزاً. سنراجع الطرفين ونعود إليك.',
               'The funds stay held. We will review both sides and get back to you.'),
-          icon: Icons.gavel_rounded,
+          icon: LucideIcons.scale,
           route: '/track/${request.id}',
         ),
       EscrowState.refunded => push(
           title: L('تمت إعادة المبلغ للطلب #${request.id}',
               'Refunded for #${request.id}'),
           body: L('أُعيد $amount ر.ع إليك.', 'OMR $amount has been returned to you.'),
-          icon: Icons.undo_rounded,
+          icon: LucideIcons.undo2,
           route: '/payments',
         ),
       // createdPendingPayment is the booking confirmation itself
@@ -253,7 +254,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
       body: L(
           'إن لم ترد خلال $hours ساعة، سيُحرَّر ${request.total.toStringAsFixed(2)} ر.ع تلقائياً إلى ${request.offering.provider.name.ar}.',
           'If you do not respond within $hours hours, OMR ${request.total.toStringAsFixed(2)} releases automatically to ${request.offering.provider.name.en}.'),
-      icon: Icons.hourglass_bottom_rounded,
+      icon: LucideIcons.hourglass,
       route: '/approve/${request.id}',
     );
   }
@@ -267,7 +268,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
             body: L(
                 'المتجر يجهّز ${order.items.length} قطعة من طلبك.',
                 'The store is packing your ${order.items.length} part(s).'),
-            icon: Icons.inventory_2_outlined,
+            icon: LucideIcons.package,
             route: '/orders',
           ),
         OrderStatus.delivered => push(
@@ -276,7 +277,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
             body: L(
                 'أكد الاستلام لتحرير ${order.total.toStringAsFixed(2)} ر.ع للمتجر.',
                 'Confirm receipt to release OMR ${order.total.toStringAsFixed(2)} to the store.'),
-            icon: Icons.local_shipping_outlined,
+            icon: LucideIcons.truckElectric,
             route: '/orders',
           ),
         _ => Future.value(null),
@@ -288,7 +289,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
         body: L(
             'تم احتجاز ${order.total.toStringAsFixed(2)} ر.ع — تُحرّر عند تأكيد الاستلام.',
             'OMR ${order.total.toStringAsFixed(2)} held — released when you confirm receipt.'),
-        icon: Icons.inventory_2_outlined,
+        icon: LucideIcons.package,
         route: '/orders',
       );
 
@@ -299,7 +300,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
         body: L(
             'تم تحرير ${order.total.toStringAsFixed(2)} ر.ع للمتجر — شكراً لتأكيدك.',
             'OMR ${order.total.toStringAsFixed(2)} released to the store — thanks for confirming.'),
-        icon: Icons.lock_open_rounded,
+        icon: LucideIcons.lockOpen,
         route: '/payments',
       );
 }

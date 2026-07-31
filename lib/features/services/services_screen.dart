@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
@@ -216,10 +220,10 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                       decoration: InputDecoration(
                         hintText: s.t('ابحث عن خدمة أو ورشة…',
                             'Search services or workshops…'),
-                        prefixIcon: const Icon(Icons.search_rounded),
+                        prefixIcon: const Icon(LucideIcons.search, size: 18),
                         suffixIcon: searching
                             ? IconButton(
-                                icon: const Icon(Icons.close_rounded,
+                                icon: const Icon(LucideIcons.x,
                                     size: 18),
                                 onPressed: () {
                                   _search.clear();
@@ -244,7 +248,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                               ? s.t('$regionLabel وما حولها',
                                   '$regionLabel & around')
                               : '$regionLabel · ${s.workshops(regionWorkshops)}',
-                          icon: Icons.location_on_outlined,
+                          icon: LucideIcons.mapPin,
                           selected: true,
                           onTap: _pickRegion,
                         ),
@@ -262,7 +266,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                             final c => c.label,
                           },
                           icon: car?.powertrain?.icon ??
-                              Icons.directions_car_outlined,
+                              LucideIcons.car,
                           selected: true,
                           onTap: () => context
                               .push(car == null ? '/add-car' : '/garage'),
@@ -318,7 +322,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                       child: _Notice(
-                        icon: Icons.travel_explore_rounded,
+                        icon: LucideIcons.compass,
                         text: searching
                             ? s.t(
                                 'لا نتائج في $regionLabel — إليك الأقرب إليها',
@@ -329,23 +333,12 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                       ),
                     ),
                   if (shown.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 24),
-                      child: Column(
-                        children: [
-                          Icon(Icons.search_off_rounded,
-                              size: 40,
-                              color: AkColors.of(context).inkFaint),
-                          const SizedBox(height: 8),
-                          Text(
-                              s.t('لا توجد خدمات تطابق بحثك',
-                                  'No services match your search'),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: AkColors.of(context).inkSub)),
-                        ],
+                    EmptyState(
+                      icon: LucideIcons.searchX,
+                      title: s.t('لا نتائج مطابقة', 'Nothing matched'),
+                      message: s.t(
+                        'جرّب كلمة أعمّ، أو وسّع البحث لمحافظة مجاورة — الورش تُضاف تباعاً.',
+                        'Try a broader word, or widen the search to a neighbouring governorate — workshops are being added all the time.',
                       ),
                     )
                   else
@@ -384,7 +377,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                       child: TextButton.icon(
                         onPressed: () =>
                             setState(() => _widenedFrom = null),
-                        icon: const Icon(Icons.filter_alt_rounded, size: 16),
+                        icon: const Icon(LucideIcons.funnel, size: 16),
                         label: Text(s.t('اعرض $regionLabel فقط',
                             'Show only $regionLabel')),
                       ),
@@ -423,7 +416,7 @@ class _OfferingCard extends ConsumerWidget {
                   category.emergency ? ak.dangerSoft : ak.surfaceDim,
               foreground:
                   category.emergency ? ak.danger : ak.ink),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,29 +426,32 @@ class _OfferingCard extends ConsumerWidget {
                     Flexible(
                       child: Text(offering.name.of(s),
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700)),
+                          // §2: the *service name* is body rank. It is the
+                          // same on every card in the list; the price beside
+                          // it is what the customer is actually comparing, so
+                          // the price outweighs it rather than matching it.
+                          style: context.text.bodyPrimary
+                              .copyWith(fontWeight: FontWeight.w600)),
                     ),
                     if (offering.provider.verified) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.verified_rounded,
-                          size: 13, color: ak.ink),
+                      const SizedBox(width: AppSpacing.xs),
+                      Icon(LucideIcons.badgeCheck, size: 13, color: ak.ink),
                     ],
                   ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: AppSpacing.xs / 2),
                 Text(
                   '${offering.provider.name.of(s)} · ${locations.localized(offering.provider.area, s.isAr)}'
                   '${local ? '' : ' · ${locations.localized(offering.provider.region, s.isAr)}'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 11.5, color: ak.inkFaint),
+                  style: context.text.bodySecondary
+                      .copyWith(color: ak.inkFaint),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: AppSpacing.sm),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -463,35 +459,31 @@ class _OfferingCard extends ConsumerWidget {
                 offering.price != null
                     ? '${s.omr} ${omrAmount(offering.price!)}'
                     : s.t('عرض سعر', 'Quote'),
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w800,
-                  color: ak.ink,
-                ),
+                style: offering.price != null
+                    ? context.text.price
+                    : context.text.bodySecondary
+                        .copyWith(fontWeight: FontWeight.w700),
               ),
+              const SizedBox(height: AppSpacing.xs),
               // Distance is the honest version of "near you" once results can
               // come from further out.
               if (local)
                 StatusBadge.good(
                     '${offering.provider.distanceKm.toStringAsFixed(0)} ${s.km}')
               else
-                SizedBox(
-                  height: 18,
-                  child: Row(
-                    children: [
-                      Icon(Icons.explore_outlined,
-                          size: 11, color: ak.inkFaint),
-                      const SizedBox(width: 3),
-                      Text(
-                        '${offering.provider.distanceKm.toStringAsFixed(0)} ${s.km}',
-                        style: TextStyle(
-                          fontSize: 10.5,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.compass, size: 11, color: ak.inkFaint),
+                    const SizedBox(width: AppSpacing.xs - 1),
+                    Text(
+                      '${offering.provider.distanceKm.toStringAsFixed(0)} ${s.km}',
+                      style: context.text.bodySecondary.copyWith(
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: ak.inkFaint,
-                        ),
-                      ),
-                    ],
-                  ),
+                          color: ak.inkFaint),
+                    ),
+                  ],
                 ),
             ],
           ),
@@ -522,7 +514,7 @@ class _PartInstallCta extends StatelessWidget {
       color: ak.surfaceDim,
       child: Row(
         children: [
-          IconTile(Icons.build_circle_outlined,
+          IconTile(LucideIcons.wrench,
               background: ak.primary.withValues(alpha: 0.12),
               foreground: ak.primary),
           const SizedBox(width: 12),
@@ -546,7 +538,13 @@ class _PartInstallCta extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right_rounded, color: ak.inkFaint),
+          Icon(
+            Directionality.of(context) == TextDirection.rtl
+                ? LucideIcons.chevronLeft
+                : LucideIcons.chevronRight,
+            size: 18,
+            color: ak.inkFaint,
+          ),
         ],
       ),
     );
@@ -622,8 +620,8 @@ class _RegionOption extends StatelessWidget {
           children: [
             Icon(
                 selected
-                    ? Icons.check_circle_rounded
-                    : Icons.location_on_outlined,
+                    ? LucideIcons.circleCheck
+                    : LucideIcons.mapPin,
                 size: 18,
                 color: selected ? ak.ink : ak.inkFaint),
             const SizedBox(width: 10),

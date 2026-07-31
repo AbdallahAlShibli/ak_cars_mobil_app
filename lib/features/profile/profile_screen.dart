@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -55,7 +56,7 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
                 _CircleButton(
-                  icon: Icons.settings_outlined,
+                  icon: LucideIcons.settings2,
                   tooltip: s.settings,
                   onTap: () => context.push('/settings'),
                 ),
@@ -73,7 +74,7 @@ class ProfileScreen extends ConsumerWidget {
               children: [
                 Expanded(
                   child: _StatTile(
-                    icon: Icons.directions_car_filled_rounded,
+                    icon: LucideIcons.carFront,
                     value: '${garage.length}',
                     label: s.t('المرآب', 'Garage'),
                     onTap: () => context.push('/garage'),
@@ -82,7 +83,7 @@ class ProfileScreen extends ConsumerWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _StatTile(
-                    icon: Icons.build_rounded,
+                    icon: LucideIcons.wrench,
                     value: '$activeCount',
                     label: s.t('نشط', 'Active'),
                     highlight: activeCount > 0,
@@ -92,7 +93,7 @@ class ProfileScreen extends ConsumerWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _StatTile(
-                    icon: Icons.lock_clock_outlined,
+                    icon: LucideIcons.shieldCheck,
                     value: '$heldCount',
                     label: s.t('محتجز', 'Held'),
                     warm: heldCount > 0,
@@ -107,7 +108,7 @@ class ProfileScreen extends ConsumerWidget {
             _MenuGroup(
               children: [
                 _MenuRow(
-                  icon: Icons.directions_car_filled_rounded,
+                  icon: LucideIcons.carFront,
                   label: s.t('سياراتي', 'My cars'),
                   trailing: garage.isEmpty
                       ? null
@@ -115,7 +116,7 @@ class ProfileScreen extends ConsumerWidget {
                   onTap: () => context.push('/garage'),
                 ),
                 _MenuRow(
-                  icon: Icons.build_rounded,
+                  icon: LucideIcons.wrench,
                   label: s.t('حجوزاتي', 'My bookings'),
                   trailing: activeCount > 0
                       ? StatusBadge.good(
@@ -128,7 +129,7 @@ class ProfileScreen extends ConsumerWidget {
                 // to while they are off.
                 if (AppFlags.partsStoreEnabled) ...[
                   _MenuRow(
-                    icon: Icons.inventory_2_outlined,
+                    icon: LucideIcons.package,
                     label: s.t('طلبات المتجر', 'Shop orders'),
                     // Was showing the CART count on the ORDERS row.
                     trailing: openOrders > 0
@@ -141,7 +142,7 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   if (cart.isNotEmpty)
                     _MenuRow(
-                      icon: Icons.shopping_bag_outlined,
+                      icon: LucideIcons.shoppingBag,
                       label: s.t('سلة المشتريات', 'Shopping cart'),
                       trailing: StatusBadge.warn(s.t(
                           '${cart.length} قطعة', '${cart.length} items')),
@@ -150,7 +151,7 @@ class ProfileScreen extends ConsumerWidget {
                 ],
                 if (AppFlags.carMarketplaceEnabled)
                   _MenuRow(
-                    icon: Icons.campaign_outlined,
+                    icon: LucideIcons.megaphone,
                     label: s.t('إعلاناتي', 'My car ads'),
                     trailing:
                         ads.isEmpty ? null : StatusBadge('${ads.length}'),
@@ -158,7 +159,7 @@ class ProfileScreen extends ConsumerWidget {
                     onTap: () => context.push('/my-ads'),
                   ),
                 _MenuRow(
-                  icon: Icons.credit_card_rounded,
+                  icon: LucideIcons.creditCard,
                   label: s.t('المدفوعات', 'Payments'),
                   warm: true,
                   trailing: heldCount > 0
@@ -176,7 +177,7 @@ class ProfileScreen extends ConsumerWidget {
             _MenuGroup(
               children: [
                 _MenuRow(
-                  icon: Icons.manage_accounts_outlined,
+                  icon: LucideIcons.userCog,
                   label: auth.isRegistered
                       ? s.t('بياناتي', 'My details')
                       : s.t('أكمل بياناتك', 'Complete your details'),
@@ -184,7 +185,7 @@ class ProfileScreen extends ConsumerWidget {
                   onTap: () => context.push('/register'),
                 ),
                 _MenuRow(
-                  icon: Icons.language_rounded,
+                  icon: LucideIcons.languages,
                   label: s.t('اللغة والمظهر', 'Language & appearance'),
                   gray: true,
                   // Reflects the live setting instead of a fixed label.
@@ -195,7 +196,7 @@ class ProfileScreen extends ConsumerWidget {
                   onTap: () => context.push('/settings'),
                 ),
                 _MenuRow(
-                  icon: Icons.support_agent_rounded,
+                  icon: LucideIcons.headset,
                   label: s.t('الدعم', 'Support'),
                   gray: true,
                   // Was a no-op onTap.
@@ -203,7 +204,7 @@ class ProfileScreen extends ConsumerWidget {
                 ),
                 if (auth.isRegistered)
                   _MenuRow(
-                    icon: Icons.logout_rounded,
+                    icon: LucideIcons.logOut,
                     label: s.t('تسجيل الخروج', 'Sign out'),
                     danger: true,
                     onTap: () => _confirmSignOut(context, ref, s, ak),
@@ -211,7 +212,7 @@ class ProfileScreen extends ConsumerWidget {
                   )
                 else
                   _MenuRow(
-                    icon: Icons.info_outline_rounded,
+                    icon: LucideIcons.info,
                     label: s.t('عن التطبيق', 'About AK Cars'),
                     gray: true,
                     trailing: Text('v1.0.0',
@@ -257,7 +258,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 14),
               _SupportOption(
-                icon: Icons.chat_rounded,
+                icon: LucideIcons.messageCircle,
                 color: const Color(0xFF25A55A),
                 label: s.t('واتساب', 'WhatsApp'),
                 subtitle: '+968 9200 0000',
@@ -270,7 +271,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 10),
               _SupportOption(
-                icon: Icons.phone_rounded,
+                icon: LucideIcons.phone,
                 color: ak.ink,
                 label: s.t('اتصال هاتفي', 'Call us'),
                 subtitle: '+968 2400 0000',
@@ -428,7 +429,7 @@ class _IdentityCard extends ConsumerWidget {
                   if (auth.isRegistered) ...[
                     Row(
                       children: [
-                        Icon(Icons.verified_rounded, size: 13, color: fgSub),
+                        Icon(LucideIcons.badgeCheck, size: 13, color: fgSub),
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
@@ -476,8 +477,8 @@ class _IdentityCard extends ConsumerWidget {
             // do not exist yet — a guest is starting registration.
             Icon(
               auth.isRegistered
-                  ? Icons.edit_outlined
-                  : Icons.chevron_right_rounded,
+                  ? LucideIcons.pencil
+                  : LucideIcons.chevronRight,
               size: auth.isRegistered ? 17 : 20,
               color: fgSub,
             ),
@@ -506,7 +507,7 @@ class _RegisterPrompt extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Icon(Icons.lock_outline_rounded, size: 19, color: ak.amberText),
+          Icon(LucideIcons.lock, size: 19, color: ak.amberText),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -674,7 +675,7 @@ class _MenuRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             trailing ??
-                Icon(Icons.chevron_right_rounded, size: 20, color: ak.inkFaint),
+                Icon(LucideIcons.chevronRight, size: 20, color: ak.inkFaint),
           ],
         ),
       ),
@@ -725,7 +726,7 @@ class _SupportOption extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right_rounded, size: 20, color: ak.inkFaint),
+          Icon(LucideIcons.chevronRight, size: 20, color: ak.inkFaint),
         ],
       ),
     );

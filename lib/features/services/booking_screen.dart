@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -224,7 +225,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.warning_amber_rounded,
+                          const Icon(LucideIcons.triangleAlert,
                               color: AppColors.bad, size: 20),
                           const SizedBox(width: 10),
                           Expanded(
@@ -295,7 +296,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.bolt_rounded,
+                                const Icon(LucideIcons.zap,
                                     color: AppColors.brand, size: 20),
                                 const SizedBox(width: 10),
                                 Expanded(
@@ -507,8 +508,8 @@ class _FulfillmentCard extends StatelessWidget {
             if (offered)
               Icon(
                 selected
-                    ? Icons.check_circle_rounded
-                    : Icons.circle_outlined,
+                    ? LucideIcons.circleCheckBig
+                    : LucideIcons.circle,
                 color: selected
                     ? AppColors.brand
                     : const Color(0xFFD8D1C4),

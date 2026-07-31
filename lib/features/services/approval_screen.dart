@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/media/local_image.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
@@ -33,6 +35,7 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final ak = AkColors.of(context);
     final request = ref
         .watch(requestsProvider)
         .where((r) => r.id == widget.requestId)
@@ -62,7 +65,7 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
               child: Row(
                 children: [
                   const IconTile(
-                    Icons.fact_check_outlined,
+                    LucideIcons.clipboardList,
                     background: AppColors.goodSoft,
                     foreground: AppColors.good,
                   ),
@@ -116,8 +119,8 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
                   children: [
                     Icon(
                       proof.includesPartBoxPhoto
-                          ? Icons.inventory_2_outlined
-                          : Icons.help_outline_rounded,
+                          ? LucideIcons.package
+                          : LucideIcons.circleHelp,
                       size: 17,
                       color: AppColors.ink3,
                     ),
@@ -220,27 +223,32 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
                 ),
               ),
             ],
-            const SizedBox(height: 18),
+            const SizedBox(height: AppSpacing.sectionGap),
+            // §8: this screen asks exactly one question, and approving is the
+            // answer it expects. Raising an issue used to be a full-width
+            // outlined button directly under it — the same size, the same
+            // shape, so the two read as a fork rather than as an action and
+            // its escape hatch. It is a text button now: still one tap away,
+            // no longer competing for the tap.
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: open ? AppColors.good : AppColors.ink3,
+                backgroundColor: open ? ak.success : ak.inkFaint,
               ),
               onPressed: open && !_busy ? () => _approve(request) : null,
-              icon: const Icon(Icons.lock_open_rounded, size: 18),
+              icon: const Icon(LucideIcons.lockOpen, size: 18),
               label: Text(
                 open
                     ? s.t('الموافقة وتحرير الدفعة', 'Approve & release payment')
                     : request.escrow.label(s),
               ),
             ),
-            const SizedBox(height: 10),
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.bad,
-                side: const BorderSide(color: Color(0xFFF3D2D2), width: 1.5),
+            const SizedBox(height: AppSpacing.xs),
+            Center(
+              child: TextButton(
+                style: TextButton.styleFrom(foregroundColor: ak.dangerText),
+                onPressed: open && !_busy ? () => _raiseIssue(request) : null,
+                child: Text(s.t('لديّ ملاحظة', 'I have an issue')),
               ),
-              onPressed: open && !_busy ? () => _raiseIssue(request) : null,
-              child: Text(s.t('لديّ ملاحظة', 'I have an issue')),
             ),
           ],
         ),
@@ -452,7 +460,7 @@ class _ProofTileFallback extends StatelessWidget {
     color: AppColors.field,
     alignment: Alignment.center,
     child: const Icon(
-      Icons.broken_image_outlined,
+      LucideIcons.imageOff,
       size: 22,
       color: AppColors.ink3,
     ),

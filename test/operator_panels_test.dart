@@ -81,7 +81,7 @@ void main() {
     expect(find.text('Confirm funds received'), findsOneWidget);
     // The workshop's buttons belong on the workshop's panel.
     expect(find.text('Accept job'), findsNothing);
-    expect(find.textContaining('Currently held in escrow'), findsOneWidget);
+    expect(find.textContaining('Held in escrow'), findsOneWidget);
     // Nothing is held until it is confirmed.
     expect(find.text('OMR 0.00'), findsOneWidget);
   });

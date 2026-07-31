@@ -238,7 +238,7 @@ class _ChallengeCard extends ConsumerWidget {
                             color: Color(0xFF6FBE95),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.check,
+                          child: const Icon(LucideIcons.check,
                               size: 12, color: Color(0xFF1D1B17)),
                         )
                       : Container(
@@ -379,7 +379,7 @@ class _ChallengeCard extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.star_rounded,
+                const Icon(LucideIcons.star,
                     size: 15, color: Color(0xFFF3D9A4)),
                 const SizedBox(width: 6),
                 Expanded(

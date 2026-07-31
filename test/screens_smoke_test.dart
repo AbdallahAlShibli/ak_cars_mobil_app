@@ -263,7 +263,7 @@ void main() {
     expect(find.text('سيارتي'), findsOneWidget);
     // Nothing to follow up with an empty garage, and nothing invented to
     // illustrate the page with.
-    expect(find.text('لا توجد سيارة بعد'), findsOneWidget);
+    expect(find.text('ابدأ دفتر صيانة سيارتك'), findsOneWidget);
     expect(find.text('زيت المحرك + الفلتر'), findsNothing);
   });
 

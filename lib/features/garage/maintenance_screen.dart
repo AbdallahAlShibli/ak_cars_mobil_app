@@ -8,9 +8,13 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/widgets/car_media.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/sand_widgets.dart';
+import '../../core/widgets/status_indicator.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
@@ -94,50 +98,34 @@ class _NoCarState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ak = AkColors.of(context);
     final s = S.of(context);
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin,
+              AppSpacing.md, AppSpacing.screenMargin, 0),
           child: header,
         ),
         Expanded(
           child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 36),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconTile(Icons.event_note_outlined,
-                      size: 64,
-                      radius: 22,
-                      background: ak.surfaceDim,
-                      foreground: ak.inkFaint),
-                  const SizedBox(height: 12),
-                  Text(
-                    s.t('لا توجد سيارة بعد', 'No car yet'),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    s.t(
-                      'أضف سيارتك لتفتح لها دفتر صيانة خاصاً بها — كل سيارة بسجلها ومواعيدها.',
-                      'Add your car to open its own maintenance book — each car keeps its own records and reminders.',
-                    ),
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(fontSize: 12.5, color: ak.inkSub, height: 1.6),
-                  ),
-                  const SizedBox(height: 16),
-                  InkPill(
-                    label: s.t('أضف سيارة', 'Add car'),
-                    icon: Icons.add_rounded,
-                    onTap: () => context.push('/add-car'),
-                  ),
-                ],
+            child: SingleChildScrollView(
+              child: EmptyState(
+                icon: LucideIcons.notebookPen,
+                title: s.t('ابدأ دفتر صيانة سيارتك',
+                    'Start your car\'s maintenance book'),
+                message: s.t(
+                  'أضف سيارتك الأولى لنبدأ نتابع صيانتها معك — كل سيارة بسجلها ومواعيدها.',
+                  'Add your first car and we will keep track of its servicing with you — each car keeps its own records and reminders.',
+                ),
+                action: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xl)),
+                  onPressed: () => context.push('/add-car'),
+                  icon: const Icon(LucideIcons.plus, size: 17),
+                  label: Text(s.t('أضف سيارة', 'Add car')),
+                ),
               ),
             ),
           ),
@@ -164,10 +152,11 @@ class _CarBook extends ConsumerWidget {
     final history = book.recordsNewestFirst;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, AppSpacing.md,
+          AppSpacing.screenMargin, AppSpacing.xl),
       children: [
         MaintenanceScreen._header(context, s, showMyCars: true),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppSpacing.lg),
         // ------------------------------------------------- car switcher
         if (cars.length > 1) ...[
           SizedBox(
@@ -175,7 +164,7 @@ class _CarBook extends ConsumerWidget {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: cars.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 7),
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
               itemBuilder: (context, i) => SelectChip(
                 label: cars[i].displayName,
                 selected: cars[i].id == car.id,
@@ -185,62 +174,58 @@ class _CarBook extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.md),
         ],
         // ------------------------------------------------ car + odometer
         _CarHeaderCard(car: car, book: book),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppSpacing.lg),
         // ------------------------------------------------ setup / source
         if (book.isFresh)
           _SetupBanner(car: car)
         else
           _SourceNotice(book: book),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppSpacing.sectionGap),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
             Expanded(
-              child: Text(
-                s.t('جدول الصيانة', 'Maintenance schedule'),
-                style: const TextStyle(
-                    fontSize: 14.5, fontWeight: FontWeight.w700),
-              ),
+              child: Text(s.t('جدول الصيانة', 'Maintenance schedule'),
+                  style: context.text.cardTitle),
             ),
             Text(
               s.t('لـ ${car.displayName}', 'for ${car.displayName}'),
-              style: TextStyle(fontSize: 10.5, color: ak.inkSub),
+              style: context.text.bodySecondary,
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppSpacing.headingGap),
         for (final d in due) ...[
           _ItemCard(car: car, item: d),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpacing.itemGap + 2),
         ],
         // ------------------------------------------------ custom items
         SandCard(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.cardPadding, vertical: AppSpacing.md + 2),
           onTap: () => showCustomItemSheet(context, ref, car),
           child: Row(
             children: [
               Icon(LucideIcons.plus, size: 16, color: ak.ink),
-              const SizedBox(width: 10),
+              const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      s.t('أضف بنداً خاصاً بك', 'Add your own item'),
-                      style: const TextStyle(
-                          fontSize: 12.5, fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 2),
+                    Text(s.t('أضف بنداً خاصاً بك', 'Add your own item'),
+                        style: context.text.cardTitle),
+                    const SizedBox(height: AppSpacing.xs / 2),
                     Text(
                       s.t(
                         'مساحات المطر، البواجي، زيت الجير، الفحمات — أي شيء تتابعه لهذه السيارة.',
                         'Wipers, spark plugs, gearbox oil, brake pads — anything you track on this car.',
                       ),
-                      style: TextStyle(
-                          fontSize: 10.5, color: ak.inkSub, height: 1.6),
+                      style: context.text.bodySecondary.copyWith(height: 1.6),
                     ),
                   ],
                 ),
@@ -248,7 +233,7 @@ class _CarBook extends ConsumerWidget {
             ],
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: AppSpacing.sectionGap),
         // ------------------------------------------------------ history
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -256,25 +241,25 @@ class _CarBook extends ConsumerWidget {
           children: [
             Expanded(
               child: Text(s.t('سجل الخدمات', 'Service history'),
-                  style: const TextStyle(
-                      fontSize: 14.5, fontWeight: FontWeight.w700)),
+                  style: context.text.cardTitle),
             ),
             Text(
               s.t('لهذه السيارة فقط', 'This car only'),
-              style: TextStyle(fontSize: 10.5, color: ak.inkSub),
+              style: context.text.bodySecondary,
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppSpacing.headingGap),
         if (history.isEmpty)
           SandCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Text(
-              s.t(
-                'لا توجد خدمات مسجّلة لهذه السيارة بعد. أضف آخر خدمة لأي بند أعلاه، أو احجز خدمة وستُسجَّل هنا عند اكتمالها.',
-                'No services recorded for this car yet. Add the last service for any item above, or book one and it will be logged here once it is completed.',
+            padding: const EdgeInsets.all(AppSpacing.cardPadding),
+            child: EmptyState(
+              compact: true,
+              icon: LucideIcons.history,
+              message: s.t(
+                'لا خدمات مسجّلة بعد لهذه السيارة — أضف آخر خدمة لأي بند أعلاه، أو احجز خدمة وستُسجَّل هنا فور اكتمالها.',
+                'Nothing logged for this car yet — add the last service for any item above, or book one and it will be recorded here the moment it is completed.',
               ),
-              style: TextStyle(fontSize: 11.5, color: ak.inkSub, height: 1.7),
             ),
           )
         else
@@ -590,14 +575,20 @@ class _ItemCard extends ConsumerWidget {
     final book = ref.watch(maintenanceBookProvider(car.id));
     final rule = MaintenanceRule.resolve(item.item, book);
 
-    final (pillLabel, pillBg, pillFg) = switch (item.status) {
-      DueStatus.due =>
-        (s.t('حان الآن', 'Due now'), ak.dangerSoft, ak.dangerText),
-      DueStatus.near => (s.t('قريب', 'Due soon'), ak.amberBgSoft, ak.amberText),
-      DueStatus.good =>
-        (s.t('بوضع جيد', 'In good shape'), ak.successSoft, ak.success),
-      DueStatus.noRecord =>
-        (s.t('لا يوجد سجل', 'No record yet'), ak.surfaceDim, ak.inkSub),
+    // §3: an overdue item has to be findable in a 200ms glance down the page,
+    // not read for. `UrgencyCard` gives it a red leading edge and a tinted
+    // body; "due soon" gets the amber pair; everything healthy stays a plain
+    // white card so the two that matter are the only two that stand out.
+    final level = switch (item.status) {
+      DueStatus.due => UrgencyLevel.overdue,
+      DueStatus.near => UrgencyLevel.upcoming,
+      _ => UrgencyLevel.normal,
+    };
+    final pillLabel = switch (item.status) {
+      DueStatus.due => s.t('حان الآن', 'Due now'),
+      DueStatus.near => s.t('قريب', 'Due soon'),
+      DueStatus.good => s.t('بوضع جيد', 'In good shape'),
+      DueStatus.noRecord => s.t('لا يوجد سجل', 'No record yet'),
     };
     final barColor = switch (item.status) {
       DueStatus.due => ak.danger,
@@ -605,17 +596,17 @@ class _ItemCard extends ConsumerWidget {
       _ => ak.success,
     };
 
-    return SandCard(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+    return UrgencyCard(
+      level: level,
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.cardPadding, vertical: AppSpacing.md + 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
-                child: Text(item.title.of(s),
-                    style: const TextStyle(
-                        fontSize: 12.5, fontWeight: FontWeight.w700)),
+                child: Text(item.title.of(s), style: context.text.cardTitle),
               ),
               if (item.isCustom) ...[
                 SandStatusPill(
@@ -623,40 +614,44 @@ class _ItemCard extends ConsumerWidget {
                   background: ak.surfaceDim,
                   foreground: ak.inkSub,
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: AppSpacing.sm - 2),
               ],
-              SandStatusPill(pillLabel,
-                  background: pillBg, foreground: pillFg),
+              // "In good shape" keeps the green it earned; the two urgent
+              // states take their color from the card's own level so the pill
+              // and the edge can never disagree.
+              if (item.status == DueStatus.good)
+                SandStatusPill(pillLabel,
+                    background: ak.successSoft, foreground: ak.success)
+              else
+                UrgencyLabel(pillLabel, level: level),
             ],
           ),
           if (item.progress != null) ...[
-            const SizedBox(height: 9),
+            const SizedBox(height: AppSpacing.md),
             SandProgressBar(value: item.progress!, color: barColor),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpacing.sm),
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    _lastLabel(s),
-                    style: TextStyle(fontSize: 10, color: ak.inkSub),
-                  ),
+                  child: Text(_lastLabel(s), style: context.text.bodySecondary),
                 ),
-                _remainingLabel(s, ak),
+                _remainingLabel(context, s, ak),
               ],
             ),
           ] else ...[
-            const SizedBox(height: 7),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               _setupCopy(s),
-              style: TextStyle(fontSize: 10.5, color: ak.inkSub, height: 1.7),
+              style: context.text.bodySecondary.copyWith(height: 1.7),
             ),
           ],
-          const SizedBox(height: 5),
+          const SizedBox(height: AppSpacing.xs + 1),
           Text(
             _intervalLabel(s, rule),
-            style: TextStyle(fontSize: 9.5, color: ak.inkFaint),
+            style: context.text.bodySecondary
+                .copyWith(fontSize: 11, color: ak.inkFaint),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpacing.md),
           // Spec §4: every reminder is a booking button. That closes the
           // loop — the reminder opens a booking, the completed booking writes
           // a service record on *this* car, and the record sharpens the next
@@ -767,7 +762,7 @@ class _ItemCard extends ConsumerWidget {
         'Interval: ${parts.join(' or ')}');
   }
 
-  Widget _remainingLabel(S s, AkColors ak) {
+  Widget _remainingLabel(BuildContext context, S s, AkColors ak) {
     if (item.remainingKm != null) {
       final overdue = item.remainingKm! <= 0;
       return Text.rich(
@@ -777,14 +772,14 @@ class _ItemCard extends ConsumerWidget {
           TextSpan(
             text: _fmt.format(item.remainingKm!.abs()),
             style: AppTheme.numeric(
-                size: 10, color: overdue ? ak.dangerText : ak.amberText),
+                size: 12.5, color: overdue ? ak.dangerText : ak.amberText),
           ),
           TextSpan(text: s.t(' كم', ' km left')),
           // The distance is measured against a projected odometer, so the
           // number is an estimate and has to read as one.
           if (item.estimated) TextSpan(text: s.t(' (تقديري)', ' (estimated)')),
         ]),
-        style: TextStyle(fontSize: 10, color: ak.inkSub),
+        style: context.text.bodySecondary,
       );
     }
     final months = item.remainingMonths;
@@ -793,7 +788,7 @@ class _ItemCard extends ConsumerWidget {
       months <= 0
           ? s.t('الموصى به: الآن', 'Recommended: now')
           : s.t('الموصى به: بعد $months أشهر', 'Recommended: in $months months'),
-      style: TextStyle(fontSize: 10, color: ak.inkSub),
+      style: context.text.bodySecondary,
     );
   }
 
@@ -935,7 +930,7 @@ class _HistoryRow extends ConsumerWidget {
           if (record.isManual && item != null)
             IconButton(
               tooltip: s.t('تعديل', 'Edit'),
-              icon: Icon(Icons.edit_outlined, size: 16, color: ak.inkSub),
+              icon: Icon(LucideIcons.pencil, size: 15, color: ak.inkSub),
               onPressed: () => showRecordSheet(
                 context,
                 ref,
@@ -1156,7 +1151,7 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.calendar_today_outlined,
+                    Icon(LucideIcons.calendar,
                         size: 17, color: ak.inkSub),
                     const SizedBox(width: 10),
                     Expanded(
@@ -1166,7 +1161,7 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
                             fontSize: 13.5, fontWeight: FontWeight.w700),
                       ),
                     ),
-                    Icon(Icons.expand_more_rounded, color: ak.inkFaint),
+                    Icon(LucideIcons.chevronDown, size: 18, color: ak.inkFaint),
                   ],
                 ),
               ),

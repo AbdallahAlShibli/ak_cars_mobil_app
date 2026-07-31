@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -122,9 +123,9 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
       (_askForPrice || _price.text.trim().isNotEmpty);
 
   IconData _iconForBody(String body) => switch (body) {
-        'SUV' => Icons.airport_shuttle_rounded,
-        'Pickup' => Icons.local_shipping_rounded,
-        _ => Icons.directions_car_filled_rounded,
+        'SUV' => LucideIcons.bus,
+        'Pickup' => LucideIcons.truck,
+        _ => LucideIcons.carFront,
       };
 
   Future<void> _publish() async {
@@ -329,7 +330,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     ),
                   ),
                 ),
-                const Icon(Icons.expand_more_rounded,
+                const Icon(LucideIcons.chevronDown,
                     color: Color(0xFFD8D1C4)),
               ],
             ),
@@ -407,7 +408,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.add_a_photo_outlined,
+                      const Icon(LucideIcons.camera,
                           size: 22, color: AppColors.brand),
                       const SizedBox(height: 5),
                       Text(s.t('أضف صورة', 'Add photo'),
@@ -451,7 +452,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
             borderRadius: BorderRadius.circular(14),
           ),
           child: Center(
-            child: Icon(Icons.directions_car_filled_rounded,
+            child: Icon(LucideIcons.carFront,
                 size: 26, color: Colors.white.withValues(alpha: 0.85)),
           ),
         ),
@@ -487,7 +488,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                 color: Colors.black.withValues(alpha: 0.55),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.close_rounded,
+              child: const Icon(LucideIcons.x,
                   size: 14, color: Colors.white),
             ),
           ),
@@ -515,7 +516,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   // ---------------------------------------------- vehicle
                   _sectionTitle(s.t('السيارة', 'VEHICLE')),
                   _field(
-                    Icons.factory_outlined,
+                    LucideIcons.factory,
                     s.t('الشركة المصنعة', 'Make'),
                     _make?.name,
                     () async {
@@ -533,7 +534,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     },
                   ),
                   _field(
-                    Icons.directions_car_outlined,
+                    LucideIcons.car,
                     s.t('الموديل', 'Model'),
                     _model,
                     () async {
@@ -554,7 +555,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                         : s.t('الموديل', 'Model'),
                   ),
                   _field(
-                    Icons.layers_outlined,
+                    LucideIcons.layers,
                     s.t('الفئة الفرعية', 'Sub-model'),
                     _trim,
                     () async {
@@ -575,7 +576,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                             : s.t('اختياري', 'Optional')),
                   ),
                   _field(
-                    Icons.calendar_today_outlined,
+                    LucideIcons.calendar,
                     s.t('سنة الصنع', 'Year'),
                     _year == null ? null : '$_year',
                     () async {
@@ -590,7 +591,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   // ----------------------------------------- specifications
                   _sectionTitle(s.t('المواصفات', 'SPECIFICATIONS')),
                   _field(
-                    Icons.auto_awesome_outlined,
+                    LucideIcons.sparkles,
                     s.t('الحالة', 'Condition'),
                     spec(_condition),
                     () async {
@@ -600,7 +601,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     },
                   ),
                   _field(
-                    Icons.directions_car_filled_outlined,
+                    LucideIcons.carFront,
                     s.t('نوع الهيكل', 'Body type'),
                     spec(_bodyType),
                     () async {
@@ -611,7 +612,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     },
                   ),
                   _field(
-                    Icons.public_outlined,
+                    LucideIcons.globe,
                     s.t('المواصفات الإقليمية', 'Regional spec'),
                     spec(_regionalSpec),
                     () async {
@@ -622,7 +623,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     },
                   ),
                   _field(
-                    Icons.settings_outlined,
+                    LucideIcons.settings2,
                     s.t('ناقل الحركة', 'Transmission'),
                     spec(_transmission),
                     () async {
@@ -633,7 +634,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     },
                   ),
                   _field(
-                    Icons.open_with_rounded,
+                    LucideIcons.move,
                     s.t('نظام الدفع', 'Drive line'),
                     spec(_drivetrain),
                     () async {
@@ -644,7 +645,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     },
                   ),
                   _field(
-                    Icons.local_gas_station_outlined,
+                    LucideIcons.fuel,
                     s.t('نوع الوقود', 'Fuel type'),
                     spec(_fuel),
                     () async {
@@ -676,12 +677,12 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                               'Engine size, e.g. 2.5'),
                           suffixText: s.t('لتر', 'L'),
                           prefixIcon:
-                              const Icon(Icons.settings_suggest_outlined),
+                              const Icon(LucideIcons.settings),
                         ),
                       ),
                     ),
                     _field(
-                      Icons.settings_input_component_outlined,
+                      LucideIcons.cable,
                       s.t('الإسطوانات', 'Cylinders'),
                       _cylinders == null
                           ? null
@@ -698,7 +699,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     ),
                   ],
                   _field(
-                    Icons.sensor_door_outlined,
+                    LucideIcons.doorOpen,
                     s.t('الأبواب', 'Doors'),
                     _doors == null
                         ? null
@@ -710,7 +711,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     },
                   ),
                   _field(
-                    Icons.event_seat_outlined,
+                    LucideIcons.armchair,
                     s.t('المقاعد', 'Seats'),
                     _seats == null
                         ? null
@@ -731,7 +732,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   // ------------------------------------------------ colors
                   _sectionTitle(s.t('الألوان', 'COLORS')),
                   _field(
-                    Icons.palette_outlined,
+                    LucideIcons.palette,
                     s.t('اللون الخارجي', 'Exterior color'),
                     spec(_exteriorColor),
                     () => _pickColor(
@@ -739,7 +740,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     swatch: _exteriorSwatch,
                   ),
                   _field(
-                    Icons.chair_outlined,
+                    LucideIcons.armchair,
                     s.t('اللون الداخلي', 'Interior color'),
                     spec(_interiorColor),
                     () => _pickColor(
@@ -750,7 +751,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                   // ---------------------------------------- location & deal
                   _sectionTitle(s.t('الموقع والصفقة', 'LOCATION & DEAL')),
                   _field(
-                    Icons.map_outlined,
+                    LucideIcons.map,
                     s.t('المحافظة', 'Governorate'),
                     _governorate == null
                         ? null
@@ -769,7 +770,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     },
                   ),
                   _field(
-                    Icons.location_on_outlined,
+                    LucideIcons.mapPin,
                     s.t('الولاية', 'Wilayat'),
                     _wilayat == null
                         ? null
@@ -789,7 +790,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                         : s.t('الولاية', 'Wilayat'),
                   ),
                   _field(
-                    Icons.swap_horiz_rounded,
+                    LucideIcons.arrowLeftRight,
                     s.t('نوع الصفقة', 'Deal type'),
                     spec(_dealType),
                     () async {
@@ -800,7 +801,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     },
                   ),
                   _field(
-                    Icons.storefront_outlined,
+                    LucideIcons.store,
                     s.t('نوع البائع', 'Seller type'),
                     spec(_sellerType),
                     () async {
@@ -826,7 +827,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                                 ? s.t('سيسألك المشترون', 'Buyers will ask you')
                                 : s.t('السعر (ر.ع)', 'Price (OMR)'),
                             prefixIcon:
-                                const Icon(Icons.payments_outlined),
+                                const Icon(LucideIcons.wallet),
                           ),
                         ),
                       ),
@@ -870,7 +871,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
                       hintText: s.t('الممشى (كم)', 'Mileage (km)'),
-                      prefixIcon: const Icon(Icons.speed_rounded),
+                      prefixIcon: const Icon(LucideIcons.gauge),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -933,7 +934,7 @@ class _WarrantyToggle extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(Icons.verified_user_outlined,
+              Icon(LucideIcons.shieldCheck,
                   size: 18, color: value ? AppColors.brand : AppColors.ink3),
               const SizedBox(width: 10),
               Expanded(

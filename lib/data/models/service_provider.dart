@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/json/json_utils.dart';
@@ -15,9 +16,9 @@ extension FulfillmentX on Fulfillment {
       };
 
   IconData get icon => switch (this) {
-        Fulfillment.workshop => Icons.storefront_outlined,
-        Fulfillment.pickup => Icons.local_shipping_outlined,
-        Fulfillment.roadside => Icons.warning_amber_rounded,
+        Fulfillment.workshop => LucideIcons.store,
+        Fulfillment.pickup => LucideIcons.truckElectric,
+        Fulfillment.roadside => LucideIcons.triangleAlert,
       };
 
   /// Stable wire value — persisted on a service request.
@@ -52,8 +53,8 @@ extension ProviderCapabilityX on ProviderCapability {
       };
 
   IconData get icon => switch (this) {
-        ProviderCapability.evService => Icons.electric_bolt_rounded,
-        ProviderCapability.evChargerInstall => Icons.ev_station_outlined,
+        ProviderCapability.evService => LucideIcons.zap,
+        ProviderCapability.evChargerInstall => LucideIcons.plugZap,
       };
 
   static ProviderCapability? fromKey(String? key) {

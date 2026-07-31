@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -86,7 +87,7 @@ class _QuoteScreenState extends ConsumerState<QuoteScreen> {
                   AppCard(
                     child: Row(
                       children: [
-                        const IconTile(Icons.storefront_rounded, radius: 999),
+                        const IconTile(LucideIcons.store, radius: 999),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -218,7 +219,7 @@ class _QuoteScreenState extends ConsumerState<QuoteScreen> {
                     const SizedBox(height: 14),
                     FilledButton.icon(
                       onPressed: _busy ? null : () => _accept(request),
-                      icon: const Icon(Icons.check_rounded, size: 18),
+                      icon: const Icon(LucideIcons.check, size: 18),
                       label: Text(s.t('أقبل العرض', 'Accept the quote')),
                     ),
                     const SizedBox(height: 9),
@@ -363,7 +364,7 @@ class _PartWarrantyNote extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.shield_outlined, size: 17, color: ak.inkSub),
+          Icon(LucideIcons.shield, size: 17, color: ak.inkSub),
           const SizedBox(width: 9),
           Expanded(
             child: Text(

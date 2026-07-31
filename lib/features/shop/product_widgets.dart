@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../data/models/models.dart';
@@ -17,7 +18,7 @@ class ProductRating extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.star_rounded, size: size + 2, color: ak.amber),
+        Icon(LucideIcons.star, size: size + 2, color: ak.amber),
         const SizedBox(width: 3),
         Text(
           rating.toStringAsFixed(1),

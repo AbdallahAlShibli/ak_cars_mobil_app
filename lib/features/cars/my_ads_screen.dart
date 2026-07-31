@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -54,7 +55,7 @@ class MyAdsScreen extends ConsumerWidget {
                                 end: 2,
                                 child: IconButton(
                                   tooltip: s.t('حذف الإعلان', 'Delete ad'),
-                                  icon: Icon(Icons.delete_outline_rounded,
+                                  icon: Icon(LucideIcons.trash2,
                                       size: 19, color: ak.danger),
                                   onPressed: () =>
                                       _confirmDelete(context, ref, ad.id,
@@ -76,7 +77,7 @@ class MyAdsScreen extends ConsumerWidget {
           context.push('/post-ad');
         },
         backgroundColor: ak.primary,
-        icon: Icon(Icons.add_rounded, color: ak.onPrimary),
+        icon: Icon(LucideIcons.plus, color: ak.onPrimary),
         label: Text(
           s.t('أضف إعلاناً', 'Post an ad'),
           style: TextStyle(color: ak.onPrimary, fontWeight: FontWeight.w700),
@@ -138,7 +139,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconTile(Icons.campaign_outlined,
+            IconTile(LucideIcons.megaphone,
                 size: 64,
                 radius: 22,
                 background: ak.surfaceDim,

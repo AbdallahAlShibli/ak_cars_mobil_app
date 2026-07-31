@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -416,7 +417,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 children: [
                   _editing
                       ? _NoticeCard(
-                          icon: Icons.verified_rounded,
+                          icon: LucideIcons.badgeCheck,
                           background: ak.successSoft,
                           foreground: ak.success,
                           message: s.t(
@@ -424,7 +425,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               'Your account is verified. Change anything you like — a new code is only needed if you change your phone or email.'),
                         )
                       : _NoticeCard(
-                          icon: Icons.lock_outline_rounded,
+                          icon: LucideIcons.lock,
                           background: ak.amberBgSoft,
                           foreground: ak.amberText,
                           message: s.t(
@@ -434,7 +435,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   const SizedBox(height: 18),
                   _SectionLabel(s.t('بياناتك', 'Your details')),
                   _FieldRow(
-                    icon: Icons.person_outline_rounded,
+                    icon: LucideIcons.user,
                     label: s.t('الاسم الكامل', 'Full name'),
                     hint: s.t('مثال: سالم الهنائي', 'e.g. Salim Al Hinai'),
                     controller: _name,
@@ -443,7 +444,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     onChanged: (_) => _clear('name'),
                   ),
                   _FieldRow(
-                    icon: Icons.phone_outlined,
+                    icon: LucideIcons.phone,
                     label: s.t('رقم الهاتف', 'Phone number'),
                     hint: '9200 1234',
                     prefix: '+968 ',
@@ -458,7 +459,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     onChanged: (_) => _clear('phone'),
                   ),
                   _FieldRow(
-                    icon: Icons.mail_outline_rounded,
+                    icon: LucideIcons.mail,
                     label: s.t('البريد الإلكتروني', 'Email'),
                     hint: 'name@example.om',
                     controller: _email,
@@ -468,7 +469,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     onChanged: (_) => _clear('email'),
                   ),
                   _PickerRow(
-                    icon: Icons.map_outlined,
+                    icon: LucideIcons.map,
                     label: s.t('المحافظة', 'Governorate'),
                     value: _region == null
                         ? null
@@ -478,7 +479,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     onTap: _pickRegion,
                   ),
                   _PickerRow(
-                    icon: Icons.location_on_outlined,
+                    icon: LucideIcons.mapPin,
                     label: s.t('الولاية', 'Wilayat'),
                     value: _wilayat == null
                         ? null
@@ -491,7 +492,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     onTap: _pickWilayat,
                   ),
                   _FieldRow(
-                    icon: Icons.home_outlined,
+                    icon: LucideIcons.house,
                     label: s.t('العنوان', 'Address'),
                     hint: s.t('المنطقة، الشارع', 'Area, street'),
                     controller: _address,
@@ -515,7 +516,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 10),
                                   child: _NoticeCard(
-                                    icon: Icons.shield_outlined,
+                                    icon: LucideIcons.shield,
                                     background: ak.amberBgSoft,
                                     foreground: ak.amberText,
                                     message: pending == OtpChannel.phone
@@ -532,7 +533,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                   children: [
                                     _ChannelCard(
                                       selected: _channel == OtpChannel.phone,
-                                      icon: Icons.sms_outlined,
+                                      icon: LucideIcons.messageSquare,
                                       title:
                                           s.t('رمز عبر الهاتف', 'Phone OTP'),
                                       subtitle: s.t('رمز SMS', 'SMS code'),
@@ -542,7 +543,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                     const SizedBox(width: 10),
                                     _ChannelCard(
                                       selected: _channel == OtpChannel.email,
-                                      icon: Icons.mark_email_read_outlined,
+                                      icon: LucideIcons.mailCheck,
                                       title:
                                           s.t('رمز عبر البريد', 'Email OTP'),
                                       subtitle:
@@ -569,7 +570,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.info_outline_rounded,
+                      Icon(LucideIcons.info,
                           size: 14, color: ak.inkFaint),
                       const SizedBox(width: 6),
                       Expanded(
@@ -1063,7 +1064,7 @@ class _PickerRow extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.expand_more_rounded, color: ak.inkFaint),
+            Icon(LucideIcons.chevronDown, color: ak.inkFaint),
           ],
         ),
       ),
@@ -1104,7 +1105,7 @@ class _RegionOption extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(Icons.location_on_outlined,
+              Icon(LucideIcons.mapPin,
                   size: 17, color: selected ? ak.primary : ak.inkFaint),
               const SizedBox(width: 10),
               Expanded(
@@ -1113,7 +1114,7 @@ class _RegionOption extends StatelessWidget {
                         fontSize: 13.5, fontWeight: FontWeight.w600)),
               ),
               if (selected)
-                Icon(Icons.check_rounded, size: 18, color: ak.primary),
+                Icon(LucideIcons.check, size: 18, color: ak.primary),
             ],
           ),
         ),
@@ -1214,7 +1215,7 @@ class _OtpBlock extends StatelessWidget {
         alignment: AlignmentDirectional.centerStart,
         child: OutlinedButton.icon(
           onPressed: onSend,
-          icon: const Icon(Icons.send_rounded, size: 16),
+          icon: const Icon(LucideIcons.sendHorizontal, size: 16),
           label: Text(s.t('إرسال الرمز', 'Send the code')),
         ),
       );

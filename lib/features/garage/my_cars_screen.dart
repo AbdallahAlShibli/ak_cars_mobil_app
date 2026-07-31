@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,7 +37,7 @@ class MyCarsScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/add-car'),
         backgroundColor: ak.primary,
-        icon: Icon(Icons.add_rounded, color: ak.onPrimary),
+        icon: Icon(LucideIcons.plus, color: ak.onPrimary),
         label: Text(
           cars.isEmpty
               ? s.t('أضف سيارة', 'Add car')
@@ -152,7 +153,7 @@ class _PrimaryCarCard extends ConsumerWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.star_rounded,
+                          Icon(LucideIcons.star,
                               size: 12, color: ak.onPrimary),
                           const SizedBox(width: 4),
                           Text(
@@ -228,7 +229,7 @@ class _PrimaryCarCard extends ConsumerWidget {
                   runSpacing: 7,
                   children: [
                     _SpecChip(
-                        icon: Icons.calendar_today_outlined,
+                        icon: LucideIcons.calendar,
                         label: '${car.year}'),
                     if (car.powertrain case final powertrain?)
                       _SpecChip(
@@ -242,12 +243,12 @@ class _PrimaryCarCard extends ConsumerWidget {
                       ),
                     if (car.wilayat != null)
                       _SpecChip(
-                        icon: Icons.location_on_outlined,
+                        icon: LucideIcons.mapPin,
                         label: locations.localized(car.wilayat!, s.isAr),
                       )
                     else if (car.governorate != null)
                       _SpecChip(
-                        icon: Icons.map_outlined,
+                        icon: LucideIcons.map,
                         label: locations.localized(car.governorate!, s.isAr),
                       ),
                   ],
@@ -266,7 +267,7 @@ class _PrimaryCarCard extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: _Action(
-                        icon: Icons.build_rounded,
+                        icon: LucideIcons.wrench,
                         label: s.t('احجز خدمة', 'Book service'),
                         primary: true,
                         onTap: () => context.go('/services'),
@@ -275,7 +276,7 @@ class _PrimaryCarCard extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _Action(
-                        icon: Icons.event_note_rounded,
+                        icon: LucideIcons.notebookPen,
                         label: s.t('الصيانة', 'Maintenance'),
                         onTap: () {
                           ref
@@ -288,7 +289,7 @@ class _PrimaryCarCard extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _Action(
-                        icon: Icons.edit_outlined,
+                        icon: LucideIcons.pencil,
                         label: s.t('تعديل', 'Edit'),
                         onTap: () => context.push('/garage/edit/${car.id}'),
                       ),
@@ -327,7 +328,7 @@ class _SecondaryCarCard extends ConsumerWidget {
           color: ak.dangerSoft,
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Icon(Icons.delete_outline_rounded, color: ak.danger),
+        child: Icon(LucideIcons.trash2, color: ak.danger),
       ),
       onDismissed: (_) => removeCarWithUndo(context, ref, car, index),
       child: SandCard(
@@ -578,7 +579,7 @@ class _MileageRow extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.speed_rounded, size: 17, color: ak.inkSub),
+          Icon(LucideIcons.gauge, size: 17, color: ak.inkSub),
           const SizedBox(width: 9),
           Expanded(
             child: Column(
@@ -653,7 +654,7 @@ class _DueStrip extends ConsumerWidget {
         onTap: openBook,
         child: Row(
           children: [
-            Icon(Icons.event_note_outlined, size: 14, color: ak.inkFaint),
+            Icon(LucideIcons.notebookPen, size: 14, color: ak.inkFaint),
             const SizedBox(width: 7),
             Expanded(
               child: Text(
@@ -744,7 +745,7 @@ class _CompleteDetailsNudge extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.info_outline_rounded, size: 15, color: ak.amberText),
+            Icon(LucideIcons.info, size: 15, color: ak.amberText),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -757,7 +758,7 @@ class _CompleteDetailsNudge extends StatelessWidget {
                     color: ak.amberText),
               ),
             ),
-            Icon(Icons.chevron_right_rounded, size: 17, color: ak.amberText),
+            Icon(LucideIcons.chevronRight, size: 17, color: ak.amberText),
           ],
         ),
       ),
@@ -828,7 +829,7 @@ class _CarMenuButton extends ConsumerWidget {
 
     return PopupMenuButton<String>(
       tooltip: s.t('خيارات', 'Options'),
-      icon: Icon(Icons.more_vert_rounded, size: 20, color: ak.inkSub),
+      icon: Icon(LucideIcons.ellipsisVertical, size: 20, color: ak.inkSub),
       shape:
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       onSelected: (value) async {
@@ -852,19 +853,19 @@ class _CarMenuButton extends ConsumerWidget {
           PopupMenuItem(
             value: 'primary',
             child: _MenuItem(
-                icon: Icons.star_outline_rounded,
+                icon: LucideIcons.star,
                 label: s.t('اجعلها الافتراضية', 'Make default')),
           ),
         PopupMenuItem(
           value: 'edit',
           child: _MenuItem(
-              icon: Icons.edit_outlined,
+              icon: LucideIcons.pencil,
               label: s.t('تعديل التفاصيل', 'Edit details')),
         ),
         PopupMenuItem(
           value: 'mileage',
           child: _MenuItem(
-              icon: Icons.speed_rounded,
+              icon: LucideIcons.gauge,
               label: s.t('تحديث الممشى', 'Update mileage')),
         ),
         // Every car has its own book, so every car's menu opens it — the
@@ -872,13 +873,13 @@ class _CarMenuButton extends ConsumerWidget {
         PopupMenuItem(
           value: 'maintenance',
           child: _MenuItem(
-              icon: Icons.event_note_rounded,
+              icon: LucideIcons.notebookPen,
               label: s.t('دفتر الصيانة', 'Maintenance book')),
         ),
         PopupMenuItem(
           value: 'remove',
           child: _MenuItem(
-            icon: Icons.delete_outline_rounded,
+            icon: LucideIcons.trash2,
             label: s.t('حذف السيارة', 'Remove car'),
             color: ak.danger,
           ),
@@ -927,7 +928,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconTile(Icons.directions_car_outlined,
+            IconTile(LucideIcons.car,
                 size: 64,
                 radius: 22,
                 background: ak.surfaceDim,

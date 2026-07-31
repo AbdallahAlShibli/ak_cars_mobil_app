@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -68,7 +69,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
               for (final r in reasons)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.flag_outlined,
+                  leading: const Icon(LucideIcons.flag,
                       size: 19, color: AppColors.bad),
                   title: Text(r, style: const TextStyle(fontSize: 13.5)),
                   onTap: () => Navigator.pop(context, r),
@@ -201,15 +202,15 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                 ),
                 actions: [
                   _RoundButton(
-                    icon: Icons.share_rounded,
+                    icon: LucideIcons.share2,
                     onTap: () => _demo(s.t('تم نسخ رابط الإعلان للمشاركة',
                         'Listing link copied to share')),
                   ),
                   const SizedBox(width: 8),
                   _RoundButton(
                     icon: fav
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_outline_rounded,
+                        ? LucideIcons.heart
+                        : LucideIcons.heart,
                     color: fav ? AppColors.bad : AppColors.ink,
                     onTap: () {
                       HapticFeedback.selectionClick();
@@ -460,7 +461,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.flag_outlined,
+                            const Icon(LucideIcons.flag,
                                 size: 17, color: AppColors.bad),
                             const SizedBox(width: 8),
                             Text(
@@ -530,7 +531,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                                 ],
                               ),
                             ),
-                            const Icon(Icons.chevron_right_rounded,
+                            const Icon(LucideIcons.chevronRight,
                                 color: Color(0xFFD8D1C4)),
                           ],
                         ),
@@ -649,7 +650,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                       ),
                       onPressed: () =>
                           Contact.call(context, '+96892000000'),
-                      icon: const Icon(Icons.phone_rounded, size: 17),
+                      icon: const Icon(LucideIcons.phone, size: 17),
                       label: Text(s.t('اتصال', 'Call')),
                     ),
                   ),
@@ -666,7 +667,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                             'مرحباً، أنا مهتم بإعلانك على AK Cars.',
                             'Hi, I am interested in your ad on AK Cars.'),
                       ),
-                      icon: const Icon(Icons.chat_rounded, size: 17),
+                      icon: const Icon(LucideIcons.messageCircle, size: 17),
                       label: const Text('WhatsApp'),
                     ),
                   ),

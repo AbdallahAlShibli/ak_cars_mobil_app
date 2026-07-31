@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -49,8 +50,8 @@ class ListingCard extends ConsumerWidget {
                         curve: Curves.easeOutBack,
                         child: Icon(
                           fav
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_outline_rounded,
+                              ? LucideIcons.heart
+                              : LucideIcons.heart,
                           size: 20,
                           color: fav ? AppColors.bad : AppColors.ink3,
                         ),
@@ -82,7 +83,7 @@ class ListingCard extends ConsumerWidget {
                 const SizedBox(height: 3),
                 Row(
                   children: [
-                    const Icon(Icons.schedule_rounded,
+                    const Icon(LucideIcons.clock,
                         size: 12, color: AppColors.ink3),
                     const SizedBox(width: 4),
                     Text(listing.postedLabel(s),
@@ -94,7 +95,7 @@ class ListingCard extends ConsumerWidget {
                 Row(
                   children: [
                     _ContactAction(
-                      icon: Icons.chat_rounded,
+                      icon: LucideIcons.messageCircle,
                       label: 'WhatsApp',
                       color: const Color(0xFF25A55A),
                       onTap: () => Contact.whatsapp(
@@ -112,7 +113,7 @@ class ListingCard extends ConsumerWidget {
                       color: AppColors.border,
                     ),
                     _ContactAction(
-                      icon: Icons.phone_rounded,
+                      icon: LucideIcons.phone,
                       label: s.t('اتصال', 'Call'),
                       color: AppColors.brand,
                       onTap: () => Contact.call(context, '+96892000000'),

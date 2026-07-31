@@ -1,88 +1,112 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 /// Translates between [IconData] and the stable string keys an API stores.
 ///
 /// Why a registry rather than serialising `codePoint`/`fontFamily`: building
 /// `IconData` from a runtime integer defeats Flutter's `--tree-shake-icons`
-/// optimisation, which would ship the entire Material font in every release
+/// optimisation, which would ship the entire icon font in every release
 /// build. Every icon the backend can name is therefore referenced statically
 /// here, and unknown keys degrade to [fallback] instead of throwing.
+///
+/// **The values are Lucide; the keys are not.** The keys are the wire format
+/// and several of them still read as Material names (`tire_repair`,
+/// `rv_hookup`) because renaming them would break every stored record for a
+/// cosmetic gain. What matters is that this table is the one place the app
+/// decides what a key *looks* like — moving the whole product onto one icon
+/// set (§7) was a change to this file plus the two mock-data files, and no
+/// change at all to the API.
+///
+/// Every value must be **distinct**: [encode] reverses the map by code point,
+/// so two keys sharing an icon would make one of them un-encodable. There is a
+/// test that asserts this.
 abstract final class IconCodec {
   /// Rendered when the API sends an icon key this build does not know.
-  static const fallback = Icons.circle_outlined;
+  static const fallback = LucideIcons.circleDashed;
 
   static const Map<String, IconData> _byKey = <String, IconData>{
     // --------------------------------------------------- service categories
-    'settings_suggest': Icons.settings_suggest_rounded,
-    'build': Icons.build_rounded,
-    'bolt': Icons.bolt_rounded,
-    'car_repair': Icons.car_repair,
-    'rv_hookup': Icons.rv_hookup,
-    'tire_repair': Icons.tire_repair,
-    'local_car_wash': Icons.local_car_wash,
-    'battery_charging': Icons.battery_charging_full_rounded,
-    'ac_unit': Icons.ac_unit_rounded,
-    'monitor_heart': Icons.monitor_heart_outlined,
-    'assignment_turned_in': Icons.assignment_turned_in_outlined,
+    'settings_suggest': LucideIcons.settings,
+    'build': LucideIcons.wrench,
+    'bolt': LucideIcons.zap,
+    'car_repair': LucideIcons.carFront,
+    'rv_hookup': LucideIcons.siren,
+    'tire_repair': LucideIcons.lifeBuoy,
+    'local_car_wash': LucideIcons.sparkles,
+    'battery_charging': LucideIcons.batteryCharging,
+    'ac_unit': LucideIcons.snowflake,
+    'monitor_heart': LucideIcons.activity,
+    'assignment_turned_in': LucideIcons.clipboardCheck,
 
     // ------------------------------------------- electric-car service & parts
-    'electric_car': Icons.electric_car_rounded,
-    'battery_saver': Icons.battery_saver_rounded,
-    'cable': Icons.cable_rounded,
-    'ev_station': Icons.ev_station_outlined,
-    'electrical_services': Icons.electrical_services_rounded,
-    'power': Icons.power_rounded,
+    'electric_car': LucideIcons.batteryFull,
+    'battery_saver': LucideIcons.batteryWarning,
+    'cable': LucideIcons.cable,
+    'ev_station': LucideIcons.plugZap,
+    'electrical_services': LucideIcons.plug,
+    'power': LucideIcons.power,
 
     // -------------------------------------------------------- shop products
-    'filter_alt': Icons.filter_alt_outlined,
-    'battery_full': Icons.battery_full_rounded,
-    'album': Icons.album_outlined,
-    'lightbulb': Icons.lightbulb_outline_rounded,
-    'trip_origin': Icons.trip_origin_rounded,
-    'air': Icons.air_rounded,
-    'shopping_bag': Icons.shopping_bag_outlined,
+    'filter_alt': LucideIcons.funnel,
+    'battery_full': LucideIcons.batteryMedium,
+    'album': LucideIcons.disc,
+    'lightbulb': LucideIcons.lightbulb,
+    'trip_origin': LucideIcons.circleDot,
+    'air': LucideIcons.wind,
+    'shopping_bag': LucideIcons.shoppingBag,
 
     // ------------------------------------------------------------- vehicles
-    'car': Icons.directions_car_rounded,
-    'car_filled': Icons.directions_car_filled_rounded,
-    'car_outlined': Icons.directions_car_outlined,
-    'suv': Icons.airport_shuttle_rounded,
-    'truck': Icons.local_shipping_rounded,
-    'bike': Icons.two_wheeler_rounded,
-    'all_vehicles': Icons.apps_rounded,
+    'car': LucideIcons.car,
+    'car_filled': LucideIcons.carTaxiFront,
+    'car_outlined': LucideIcons.caravan,
+    'suv': LucideIcons.bus,
+    'truck': LucideIcons.truck,
+    'bike': LucideIcons.bike,
+    'all_vehicles': LucideIcons.layoutGrid,
 
     // -------------------------------------------------------- notifications
-    'notification': Icons.notifications_outlined,
-    'thumb_up': Icons.thumb_up_alt_outlined,
-    'fact_check': Icons.fact_check_outlined,
-    'inventory': Icons.inventory_2_outlined,
-    'shipping': Icons.local_shipping_outlined,
-    'lock_open': Icons.lock_open_rounded,
-    'lock_clock': Icons.lock_clock_outlined,
-    'campaign': Icons.campaign_outlined,
-    'schedule_send': Icons.schedule_send_outlined,
+    'notification': LucideIcons.bell,
+    'thumb_up': LucideIcons.thumbsUp,
+    'fact_check': LucideIcons.clipboardList,
+    'inventory': LucideIcons.package,
+    'shipping': LucideIcons.truckElectric,
+    'lock_open': LucideIcons.lockOpen,
+    'lock_clock': LucideIcons.shieldCheck,
+    'campaign': LucideIcons.megaphone,
+    'schedule_send': LucideIcons.sendHorizontal,
+    // The escrow machine's own notifications. These were rendering from the
+    // repository but had no key here, so any that went through JSON came back
+    // as the fallback circle — registering them keeps a stored notification
+    // looking like the one that was sent.
+    'request_quote': LucideIcons.receiptText,
+    'star': LucideIcons.star,
+    'build_circle': LucideIcons.hammer,
+    'lock': LucideIcons.lock,
+    'gavel': LucideIcons.scale,
+    'undo': LucideIcons.undo2,
+    'hourglass': LucideIcons.hourglass,
 
     // ------------------------------------------------------- fulfillment
-    'storefront': Icons.storefront_outlined,
-    'warning': Icons.warning_amber_rounded,
+    'storefront': LucideIcons.store,
+    'warning': LucideIcons.triangleAlert,
 
     // ------------------------------------------------------------- generic
-    'calendar': Icons.calendar_today_outlined,
-    'event': Icons.event_outlined,
-    'chat': Icons.chat_rounded,
-    'credit_card': Icons.credit_card_rounded,
-    'factory': Icons.factory_outlined,
-    'info': Icons.info_outline_rounded,
-    'language': Icons.language_rounded,
-    'location': Icons.location_on_outlined,
-    'logout': Icons.logout_rounded,
-    'manage_accounts': Icons.manage_accounts_outlined,
-    'map': Icons.map_outlined,
-    'phone': Icons.phone_rounded,
-    'settings': Icons.settings_outlined,
-    'share': Icons.share_rounded,
-    'support_agent': Icons.support_agent_rounded,
-    'back': Icons.arrow_back_rounded,
+    'calendar': LucideIcons.calendar,
+    'event': LucideIcons.calendarDays,
+    'chat': LucideIcons.messageCircle,
+    'credit_card': LucideIcons.creditCard,
+    'factory': LucideIcons.factory,
+    'info': LucideIcons.info,
+    'language': LucideIcons.languages,
+    'location': LucideIcons.mapPin,
+    'logout': LucideIcons.logOut,
+    'manage_accounts': LucideIcons.userCog,
+    'map': LucideIcons.map,
+    'phone': LucideIcons.phone,
+    'settings': LucideIcons.settings2,
+    'share': LucideIcons.share2,
+    'support_agent': LucideIcons.headset,
+    'back': LucideIcons.arrowLeft,
   };
 
   static final Map<int, String> _keyByCodePoint = {

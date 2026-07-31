@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -138,7 +139,7 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
             .toList(),
         itemBuilder: (context, model, onPick) => _OptionRow(
           label: model,
-          icon: Icons.directions_car_outlined,
+          icon: LucideIcons.car,
           selected: _model == model,
           onTap: onPick,
         ),
@@ -164,7 +165,7 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
         optionsOf: (_) => options,
         itemBuilder: (context, year, onPick) => _OptionRow(
           label: '$year',
-          icon: Icons.calendar_today_outlined,
+          icon: LucideIcons.calendar,
           selected: (isFrom ? _fromYear : _toYear) == year,
           onTap: onPick,
         ),
@@ -251,13 +252,13 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
             ),
             const SizedBox(height: 10),
             _PickerField(
-              icon: Icons.factory_outlined,
+              icon: LucideIcons.factory,
               label: s.t('الشركة المصنعة', 'Make'),
               value: _make?.name,
               onTap: _pickMake,
             ),
             _PickerField(
-              icon: Icons.directions_car_outlined,
+              icon: LucideIcons.car,
               label: s.t('الموديل', 'Model'),
               value: _model,
               hint: _make == null
@@ -270,7 +271,7 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
               children: [
                 Expanded(
                   child: _PickerField(
-                    icon: Icons.calendar_today_outlined,
+                    icon: LucideIcons.calendar,
                     label: s.t('السنة من', 'Year from'),
                     value: _fromYear == null ? null : '$_fromYear',
                     hint: s.t('اختياري', 'Optional'),
@@ -280,7 +281,7 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _PickerField(
-                    icon: Icons.event_outlined,
+                    icon: LucideIcons.calendarDays,
                     label: s.t('السنة إلى', 'Year to'),
                     value: _toYear == null ? null : '$_toYear',
                     hint: s.t('اختياري', 'Optional'),
@@ -324,14 +325,14 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
               children: [
                 SelectChip(
                   label: s.t('المتوفر الآن', 'In stock'),
-                  icon: Icons.inventory_2_outlined,
+                  icon: LucideIcons.package,
                   selected: _draft.inStockOnly,
                   onTap: () => setState(() => _draft =
                       _draft.copyWith(inStockOnly: !_draft.inStockOnly)),
                 ),
                 SelectChip(
                   label: s.t('عليها عرض', 'On offer'),
-                  icon: Icons.local_offer_outlined,
+                  icon: LucideIcons.tag,
                   selected: _draft.onOfferOnly,
                   onTap: () => setState(() => _draft =
                       _draft.copyWith(onOfferOnly: !_draft.onOfferOnly)),
@@ -501,7 +502,7 @@ class _PickerField extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.expand_more_rounded, color: ak.inkFaint),
+                Icon(LucideIcons.chevronDown, color: ak.inkFaint),
               ],
             ),
           ),
@@ -555,7 +556,7 @@ class _OptionRow extends StatelessWidget {
                       fontSize: 13.5, fontWeight: FontWeight.w600)),
             ),
             if (selected)
-              Icon(Icons.check_rounded, size: 18, color: ak.ink),
+              Icon(LucideIcons.check, size: 18, color: ak.ink),
           ],
         ),
       ),
@@ -616,7 +617,7 @@ class _PickerSheetState<T> extends State<_PickerSheet<T>> {
                       setState(() => _query = v.trim().toLowerCase()),
                   decoration: InputDecoration(
                     hintText: S.of(context).t('ابحث…', 'Search…'),
-                    prefixIcon: const Icon(Icons.search_rounded),
+                    prefixIcon: const Icon(LucideIcons.search),
                   ),
                 ),
                 const SizedBox(height: 12),

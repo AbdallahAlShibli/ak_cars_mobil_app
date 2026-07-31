@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -104,7 +105,7 @@ class OmanPlateInput extends StatelessWidget {
                         letterSpacing: 2,
                       ),
                     ),
-                    const Icon(Icons.arrow_drop_down_rounded,
+                    const Icon(LucideIcons.chevronDown,
                         color: plateInk),
                   ],
                 ),
@@ -215,7 +216,7 @@ class _PlateLettersPickerState extends ConsumerState<PlateLettersPicker> {
                   width: 44,
                   child: IconButton(
                     onPressed: _picked.isEmpty ? null : _undo,
-                    icon: const Icon(Icons.backspace_outlined, size: 20),
+                    icon: const Icon(LucideIcons.delete, size: 20),
                     color: ak.inkSub,
                     tooltip: s.t('حذف آخر حرف', 'Delete last letter'),
                   ),

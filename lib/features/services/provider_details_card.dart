@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -59,7 +60,7 @@ class ProviderDetailsCard extends ConsumerWidget {
         children: [
           Row(
             children: [
-              IconTile(Icons.storefront_rounded,
+              IconTile(LucideIcons.store,
                   size: 46, radius: 16, foreground: ak.ink),
               const SizedBox(width: 11),
               Expanded(
@@ -78,7 +79,7 @@ class ProviderDetailsCard extends ConsumerWidget {
                         ),
                         if (provider.verified) ...[
                           const SizedBox(width: 5),
-                          Icon(Icons.verified_rounded,
+                          Icon(LucideIcons.badgeCheck,
                               size: 15, color: ak.success),
                         ],
                       ],
@@ -138,13 +139,13 @@ class ProviderDetailsCard extends ConsumerWidget {
           _row(
             context,
             ak,
-            Icons.schedule_rounded,
+            LucideIcons.clock,
             s.t('ساعات العمل', 'Opening hours'),
             provider.hours?.of(s) ?? s.t('غير محددة', 'Not published'),
           ),
           if (provider.phone case final phone?) ...[
             const SizedBox(height: 9),
-            _row(context, ak, Icons.phone_outlined, s.t('الهاتف', 'Phone'),
+            _row(context, ak, LucideIcons.phone, s.t('الهاتف', 'Phone'),
                 phone,
                 onCopy: () => _copy(
                     context, phone, s.t('تم نسخ الرقم', 'Number copied'))),
@@ -157,7 +158,7 @@ class ProviderDetailsCard extends ConsumerWidget {
             _row(
               context,
               ak,
-              Icons.receipt_long_outlined,
+              LucideIcons.receiptText,
               s.t('الرقم الضريبي (VAT)', 'VAT number'),
               provider.vatNumber!,
               onCopy: () => _copy(context, provider.vatNumber!,
@@ -167,20 +168,20 @@ class ProviderDetailsCard extends ConsumerWidget {
             _row(
               context,
               ak,
-              Icons.receipt_long_outlined,
+              LucideIcons.receiptText,
               s.t('الرقم الضريبي (VAT)', 'VAT number'),
               s.t('غير مسجّل في ضريبة القيمة المضافة', 'Not VAT registered'),
             ),
           if (provider.crNumber case final cr?) ...[
             const SizedBox(height: 9),
-            _row(context, ak, Icons.badge_outlined,
+            _row(context, ak, LucideIcons.idCard,
                 s.t('السجل التجاري', 'Commercial reg.'), cr),
           ],
           if (provider.vatRegistered) ...[
             const SizedBox(height: 10),
             Row(
               children: [
-                Icon(Icons.description_outlined, size: 13, color: ak.inkSub),
+                Icon(LucideIcons.fileText, size: 13, color: ak.inkSub),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -203,7 +204,7 @@ class ProviderDetailsCard extends ConsumerWidget {
                       backgroundColor: ak.surface,
                     ),
                     onPressed: () => Contact.call(context, phone),
-                    icon: const Icon(Icons.phone_outlined, size: 15),
+                    icon: const Icon(LucideIcons.phone, size: 15),
                     label: Text(s.t('اتصل', 'Call'),
                         style: const TextStyle(fontSize: 12.5)),
                   ),
@@ -219,7 +220,7 @@ class ProviderDetailsCard extends ConsumerWidget {
                     ),
                     onPressed: () => Contact.whatsapp(context, whatsapp,
                         message: whatsappMessage),
-                    icon: const Icon(Icons.chat_rounded, size: 15),
+                    icon: const Icon(LucideIcons.messageCircle, size: 15),
                     label: Text(s.t('واتساب', 'WhatsApp'),
                         style: const TextStyle(fontSize: 12.5)),
                   ),
@@ -272,7 +273,7 @@ class ProviderDetailsCard extends ConsumerWidget {
                 ),
                 if (onCopy != null) ...[
                   const SizedBox(width: 5),
-                  Icon(Icons.copy_rounded, size: 12, color: ak.inkFaint),
+                  Icon(LucideIcons.copy, size: 12, color: ak.inkFaint),
                 ],
               ],
             ),

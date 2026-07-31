@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/utils/search_match.dart';
@@ -18,10 +19,10 @@ extension VehicleTypeX on VehicleType {
       };
 
   IconData get icon => switch (this) {
-        VehicleType.all => Icons.apps_rounded,
-        VehicleType.cars => Icons.directions_car_filled_rounded,
-        VehicleType.trucks => Icons.local_shipping_rounded,
-        VehicleType.bikes => Icons.two_wheeler_rounded,
+        VehicleType.all => LucideIcons.layoutGrid,
+        VehicleType.cars => LucideIcons.carTaxiFront,
+        VehicleType.trucks => LucideIcons.truck,
+        VehicleType.bikes => LucideIcons.bike,
       };
 
   String get key => name;
