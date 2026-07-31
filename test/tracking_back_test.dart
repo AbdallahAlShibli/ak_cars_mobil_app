@@ -1,12 +1,14 @@
 import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/config/app_environment.dart';
-import 'package:ak_cars_mobil_app/core/router/app_router.dart';
+import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
 import 'package:ak_cars_mobil_app/core/widgets/sand_widgets.dart';
 import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
+import 'package:ak_cars_mobil_app/features/services/tracking_screen.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -15,38 +17,62 @@ import 'helpers/test_harness.dart';
 
 /// The booking details page (`/track/:id`) must always offer a way out.
 ///
-/// It is reached two ways and only one leaves a stack behind: the bookings
-/// list `push`es it, but completing a booking `go`es to it so that "back"
-/// cannot return to a submitted form. `go` replaces the stack, and the route
-/// sits outside the tab shell — so without an explicit exit the second path
-/// left the user on a page with no back button and no bottom navigation.
+/// It is reached two ways and only one of them leaves a stack behind: the
+/// bookings list `push`es it, but finishing a booking, sending a part request,
+/// accepting a quote and approving a job all `go` to it — so that "back"
+/// cannot return the user to a form they have already submitted. `go` replaces
+/// the stack, and the route sits outside the tab shell, so before this fix the
+/// second path left the customer on a page with no back button, no bottom
+/// navigation, and no way out.
+///
+/// Pumped against a two-route router rather than the real one: the app's own
+/// router opens on an animated splash that `pumpAndSettle` can never settle,
+/// and the behaviour under test belongs to the screen, not to the route table.
 
 const _car = Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2019);
 
 Future<ProviderContainer> _container() => createTestContainer(
-      overrides: [
-        appConfigProvider.overrideWithValue(
-          AppConfig.forEnvironment(AppEnvironment.development)
-              .copyWith(simulateProviderLifecycle: false),
-        ),
-      ],
-    );
+  overrides: [
+    appConfigProvider.overrideWithValue(
+      AppConfig.forEnvironment(
+        AppEnvironment.development,
+      ).copyWith(simulateProviderLifecycle: false),
+    ),
+  ],
+);
 
 Future<ServiceRequest> _book(ProviderContainer container) =>
     container.read(requestsProvider.notifier).place(
-          CreateServiceRequestDraft(
-            offering: MockServiceData.offerings.first,
-            car: _car,
-            plate: '1234 AB',
-            fulfillment: Fulfillment.workshop,
-            slot: 'Mon 3 Aug · 10:30',
-            addOnIds: const {},
-          ),
-        );
+      CreateServiceRequestDraft(
+        offering: MockServiceData.offerings.first,
+        car: _car,
+        plate: '1234 AB',
+        fulfillment: Fulfillment.workshop,
+        slot: 'Mon 3 Aug · 10:30',
+        addOnIds: const {},
+      ),
+    );
 
-Future<void> _pumpApp(
+GoRouter _router(String initial) => GoRouter(
+  initialLocation: initial,
+  routes: [
+    GoRoute(
+      path: '/bookings',
+      builder: (_, _) =>
+          const Scaffold(body: Center(child: Text('bookings list'))),
+    ),
+    GoRoute(
+      path: '/track/:id',
+      builder: (_, state) =>
+          TrackingScreen(requestId: state.pathParameters['id']!),
+    ),
+  ],
+);
+
+Future<void> _pump(
   WidgetTester tester,
   ProviderContainer container,
+  GoRouter router,
 ) async {
   tester.view.physicalSize = const Size(402 * 3, 874 * 3);
   tester.view.devicePixelRatio = 3;
@@ -56,64 +82,76 @@ Future<void> _pumpApp(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp.router(
-        routerConfig: container.read(routerProvider),
+        theme: AppTheme.light(),
+        locale: const Locale('en'),
+        supportedLocales: const [Locale('ar'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        routerConfig: router,
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  await tester.pump(const Duration(milliseconds: 500));
 }
 
+String _path(GoRouter router) =>
+    router.routerDelegate.currentConfiguration.uri.path;
+
 void main() {
-  testWidgets('the details page has a back button even when it was not pushed',
-      (tester) async {
+  testWidgets('the details page has a back button even when it was not pushed', (
+    tester,
+  ) async {
     final container = await _container();
     final request = await _book(container);
-    await _pumpApp(tester, container);
 
-    final router = container.read(routerProvider);
-    // Exactly what booking_screen/quote_screen/part_request_screen do on
-    // submit: replace the stack rather than stacking on the finished form.
-    router.go('/track/${request.id}');
-    await tester.pumpAndSettle();
+    // Landing straight on the details page, exactly as a completed booking
+    // does: nothing underneath it to go back to.
+    final router = _router('/track/${request.id}');
+    await _pump(tester, container, router);
 
     expect(find.textContaining('Request #'), findsOneWidget);
-    // The regression: nothing to pop, and no bottom navigation on this route.
     expect(router.canPop(), isFalse);
+    // The regression: no leading widget was drawn here at all.
     expect(find.byType(SandBackButton), findsOneWidget);
 
     await tester.tap(find.byType(SandBackButton));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    // Lands on the bookings tab — where the booking now lives — rather than
-    // doing nothing and leaving the user stuck.
-    expect(
-      router.routerDelegate.currentConfiguration.uri.path,
-      '/bookings',
-    );
+    // Falls back to the bookings tab — where this booking now lives — rather
+    // than doing nothing and leaving the customer stuck.
+    expect(_path(router), '/bookings');
 
     container.dispose();
   });
 
-  testWidgets('and still pops normally when it was pushed', (tester) async {
+  testWidgets('and still pops back to where it was opened from', (
+    tester,
+  ) async {
     final container = await _container();
     final request = await _book(container);
-    await _pumpApp(tester, container);
 
-    final router = container.read(routerProvider);
-    router.go('/bookings');
-    await tester.pumpAndSettle();
+    final router = _router('/bookings');
+    await _pump(tester, container, router);
     router.push('/track/${request.id}');
-    await tester.pumpAndSettle();
+    // Two pumps: one to process the push, one to run the transition out.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
 
+    expect(find.textContaining('Request #'), findsOneWidget);
     expect(router.canPop(), isTrue);
-    await tester.tap(find.byType(SandBackButton));
-    await tester.pumpAndSettle();
 
-    // Back to the list it was opened from, not a hard jump to the tab root.
-    expect(
-      router.routerDelegate.currentConfiguration.uri.path,
-      '/bookings',
-    );
+    await tester.tap(find.byType(SandBackButton));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    // Popped back onto the list it was opened from. Asserted on what is
+    // rendered rather than on `currentConfiguration`, which still reports the
+    // base location while an imperatively pushed route is on top.
+    expect(find.text('bookings list'), findsOneWidget);
+    expect(find.textContaining('Request #'), findsNothing);
 
     container.dispose();
   });

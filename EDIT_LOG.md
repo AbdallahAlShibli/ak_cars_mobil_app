@@ -17,6 +17,66 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-07-31 · The booking details page had no way out
+
+**Baseline:** `819d58c` (working tree)
+**Request:** "when enter to the order details page, there no back button."
+
+### The bug
+
+`/track/:id` is reached two ways, and only one of them leaves a stack behind:
+
+- the bookings list and the founder's panel `push` it — back button appears,
+  everything fine;
+- finishing a booking, sending a part request, accepting a quote and approving
+  a job all `go` to it.
+
+`go` **replaces** the stack, which is deliberate and correct — "back" must not
+return the user to a form they have already submitted. But `AppBar` only draws
+a back button when `canPop()` is true, and `/track/:id` sits *outside* the tab
+shell, so it has no bottom navigation either. The result: a customer who had
+just paid for something landed on a page with no back button, no tabs, and no
+way out of it at all. Android's system back gesture was the only escape, and
+iOS had none.
+
+It reproduced on the most important path in the app — the one right after
+payment — which is why it was worth fixing before anything else.
+
+### The fix
+
+`_TrackingExit` on both of the screen's `AppBar`s (the loaded one and the
+"request not found" one). It pops when there is something to pop, and
+otherwise `go`es to `/bookings` — where the booking now lives, and the same
+place the user would have opened it from. So the exit is explicit rather than
+inherited from whether a stack happens to exist.
+
+Deliberately fixed on the screen rather than by changing the four callers to
+`push`: they use `go` for a reason, and a fix that depends on every future
+caller remembering to do the same thing is not a fix.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/features/services/tracking_screen.dart` | `_TrackingExit` as `leading` on both app bars; imports `sand_widgets.dart` |
+| `test/tracking_back_test.dart` | **new** — both entry paths |
+
+### Verified
+- `flutter test` — **395 passed** (393 before, 2 new).
+- `flutter analyze lib test` — clean; the one remaining info
+  (`use_null_aware_elements` in `lib/core/utils/contact.dart:23`) is pre-existing.
+- The new test pumps against a two-route router, not the app's own: the real
+  router opens on an animated splash that `pumpAndSettle` can never settle.
+- **Not** run on a device.
+
+### Known-adjacent, left alone
+- `/approve/:id`, `/quote/:id` and `/review/:id` are all reached by `push`
+  today (from the bookings list, the tracking screen, and notifications), so
+  none of them can strand the user the same way. They would if a future caller
+  used `go` — the same `_TrackingExit` pattern is what they'd need, and it is
+  worth promoting to a shared widget at that point rather than now.
+
+---
+
 ## 2026-07-29 · Completion proof now needs actual evidence
 
 **Baseline:** `819d58c` (working tree)
