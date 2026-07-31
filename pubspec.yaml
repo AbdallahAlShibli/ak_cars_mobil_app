@@ -21,12 +21,14 @@ dependencies:
   google_fonts: ^6.3.0
   intl: ^0.20.2
   url_launcher: ^6.3.1
+  image_picker: ^1.2.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
+  image_picker_platform_interface: ^2.11.1
 
 # App launcher icon — "Sand & Ink" mark. Sources live in icon/ (SVG masters
 # plus the rendered 1024px PNGs this tool consumes).

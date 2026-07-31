@@ -17,6 +17,192 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-07-29 · Completion proof now needs actual evidence
+
+**Baseline:** `819d58c` (working tree)
+**Request:** apply `MobileApp-Design/AK_Cars_تعليمات_إصلاح_الكود.md` — the
+code-review handoff — and check everything still works.
+
+### What the review actually found
+
+The document was written against `main` and lists ten sections. Eight of them
+were already implemented by the two commits since (`a854c2a`, `819d58c`), in
+several places more strictly than asked: the transition table is keyed by
+*event and actor* rather than a bare `from → to` set, so "only the founder may
+move money" falls out of the table instead of needing the separate
+`founderOnly` set the document sketches; and the 72-hour release has a
+cold-start sweep the document does not ask for, because a `Timer` does not
+survive the process.
+
+Two things were genuinely outstanding, and one of them was load-bearing.
+
+### The gap: proof without evidence
+
+Spec §3 gives `proofSubmitted` two entry rules. Only one was enforced:
+
+```dart
+bool proofSatisfiesRules(ProofOfWork? candidate) {
+  if (type != BookingType.customQuote) return true;      // ← catalogue: anything
+  return (candidate ?? proof)?.includesPartBoxPhoto ?? false;
+}
+```
+
+The `media.isEmpty` rule was missing entirely, so a catalogue booking could
+reach "awaiting your approval" — and then auto-release 72 hours later — on the
+strength of a text box reading *"All done, trust me."* That is the one thing an
+escrow exists to prevent.
+
+It was missing for a reason rather than by oversight: **nothing in the app
+could create a `ProofMedia`.** `image_picker` was not a dependency, and the
+workshop's proof sheet collected notes and a checkbox. Enforcing the rule
+without building capture first would not have tightened the escrow, it would
+have made proof submission impossible and wedged every booking at `inProgress`.
+So the two halves had to land together, and the user chose to build capture
+rather than record the deviation.
+
+### The fix
+
+`ProofUploadSheet` (`features/services/`, where §3 asks for it) composes a
+proof: camera or gallery, a horizontal strip of removable thumbnails, notes,
+and the part-box declaration on `customQuote` jobs only. Submit stays disabled
+until the rules pass and says *which* rule is unmet — a form that lets you fill
+everything in and then fails silently at the state machine is worse than one
+that tells you up front. `proofSatisfiesRules` now enforces both rules for both
+booking types.
+
+Two consequences worth recording:
+
+- **The staging simulator stops at the proof for every booking type**, not just
+  `customQuote` as before. It used to submit an empty proof to keep the demo
+  moving; under rule 1 the only way for it to keep moving would be to
+  manufacture photographs of a car it has never seen. It stops instead, and the
+  workshop panel finishes the job by hand.
+- **Photos are device-local.** `image_picker` returns a file path (a `blob:`
+  URL on web) and there is no upload step yet, so proof media does not survive
+  a reinstall and cannot be seen from another device. Rendering it needed
+  `core/media/local_image.dart` — a conditional import, because `Image.file`
+  needs `dart:io` and the web build has none. This is the next real gap;
+  `ARCHITECTURE.md` §7 now says so instead of claiming there is no capture.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/features/services/proof_upload_sheet.dart` | **new** — the compose sheet, rules enforced in the UI |
+| `lib/core/media/local_image.dart` + `_io` + `_web` | **new** — conditional-import shim for device-local media |
+| `lib/data/models/service_request.dart` | `proofSatisfiesRules` enforces the media rule for every type |
+| `lib/state/requests_state.dart` | simulator refuses `submitProof` outright; `_placeholderlessProof` deleted |
+| `lib/features/operations/workshop_screen.dart` | opens the new sheet; the notes-only `_ProofSheet` deleted |
+| `lib/features/services/approval_screen.dart` | proof tiles render local files, not just https |
+| `android/.../AndroidManifest.xml`, `ios/Runner/Info.plist` | `CAMERA`; bilingual iOS usage strings |
+| `pubspec.yaml` | `image_picker`; `image_picker_platform_interface` (dev, for the stub) |
+| `test/helpers/test_harness.dart` | **`testProof`** — one shared rule-satisfying fixture |
+| `test/proof_upload_test.dart` | **new** — the sheet's four rule cases |
+| `test/escrow_test.dart` | media-less proof is a no-op; the simulator stops |
+| `test/{operator_panels,part_install,maintenance_book,reviews}_test.dart` | fixtures now carry media |
+| `ARCHITECTURE.md` | §7 and "the two rules the transition table cannot express" |
+
+### Verified
+- `flutter test` — **393 passed** (387 before, 6 new).
+- `flutter analyze lib test` — clean; the one remaining info
+  (`use_null_aware_elements` in `lib/core/utils/contact.dart:23`) is pre-existing.
+- `flutter build web` — succeeds, which is what proves the conditional import
+  keeps `dart:io` out of the web bundle.
+- `flutter build apk --debug` — succeeds with the plugin and the new permission.
+- **Not** run on a device or emulator: the camera path is covered by a stubbed
+  `ImagePickerPlatform`, so no real permission dialog, no real capture, and no
+  check of how a large photo behaves. That needs a physical device.
+
+### Deviations from the document, deliberate
+- **§5 asks for four tabs; the app has five.** The extra one is *طلباتي*,
+  added by `819d58c`, and it tracks the escrow bookings that are the whole
+  point of phase 1. Cutting it would move the core flow's primary entry point.
+  Kept on the user's decision.
+- **§2 asks for `autoReleaseHours` in `app_constants.dart`.** It already exists
+  as `AppConfig.approvalWindow` (72h), which is per-environment and overridable
+  where a `const` would not be. Left where it is.
+
+### Known-adjacent, left alone
+- **§9's vehicle-model duplication is real.** `GalleryListing` re-declares
+  `make`/`model`/`trim`/`year`/`exteriorColor` as its own fields rather than
+  holding a `Car`, so a listing and a garage record can disagree about the same
+  vehicle. `CarListing` is a separate flat projection for the home rail with
+  its own `title`/`year`/`km`. §9 itself says to document and defer this while
+  the cars marketplace is behind `AppFlags.carMarketplaceEnabled = false` —
+  restructuring a hidden pillar is time spent on unreachable code. Recorded
+  here so it is not rediscovered from scratch when phase 2 turns it on.
+- No upload/object storage for proof media (above). Until that exists, proof
+  is only as durable as the device that captured it.
+
+---
+
+## 2026-07-29 · Registering a car did not survive a cold start
+
+**Baseline:** `819d58c`
+**Request:** "check the car register section which now not save any car details
+when register cars."
+
+### The bug
+The car form was fine. `MockGarageService` was not: it kept the saved cars in a
+plain `List<Car>` field, so the garage existed for exactly as long as the
+process that created it. Register a Camry, close the app, come back — empty
+garage, no error, nothing to explain it.
+
+What made it read as "Save does nothing" rather than "the app forgot":
+`prefsStartChoiceMade` and the registered profile *do* persist (`MockAuthService`
+writes them to SharedPreferences), so the next launch skipped the "add your
+car?" question and dropped the user on a home page with no car on it.
+
+`MockMaintenanceService` had the same shape, and it matters for the same flow:
+registering a car opens its maintenance book and files the mileage typed on the
+form into it. Persisting cars alone would have restored a car whose service
+history and odometer reading had silently reset.
+
+Bootstrap already warmed `garageRepositoryProvider`, and `GarageNotifier.build()`
+already hydrated from it — the read path was correct all along. There was simply
+never anything on the device to read.
+
+### The fix
+`PrefsCollection<T>` — one small JSON-list store on SharedPreferences, the same
+mechanism `MockAuthService` already used for the profile, generalised. Both mock
+services seed from it on construction and write through a single `_persist` /
+`_store` funnel, so no mutation can reach memory without reaching the device.
+A record an older build wrote in an unreadable shape is dropped, not thrown:
+stale storage must not wedge the launch.
+
+Reference data (makes, parts, providers) deliberately stays un-persisted — it
+comes from the server every launch and would only go stale locally.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/data/services/prefs_collection.dart` | **new** — JSON-list store on SharedPreferences, tolerant of stale rows |
+| `lib/data/services/garage_service.dart` | `MockGarageService` seeds from and writes to the store |
+| `lib/data/services/maintenance_service.dart` | same for the maintenance books |
+| `lib/core/constants/app_constants.dart` | `prefsGarage`, `prefsMaintenance` keys |
+| `lib/di/providers.dart` | both services now take `prefs`, as auth already did |
+| `test/helpers/test_harness.dart` | `createDataContainer` overrides prefs too (services below it now read storage) |
+| `test/garage_persistence_test.dart` | **new** — cold-start coverage |
+| `ARCHITECTURE.md` | §"Session-scoped stores" corrected — it still claimed auth was in-memory |
+
+### Verified
+- `flutter test` — 393 passed (387 before, 6 new).
+- `flutter analyze lib test` — clean; the one remaining info
+  (`use_null_aware_elements` in `lib/core/utils/contact.dart:23`) is pre-existing.
+- New tests cover: every field entered on the form coming back after a restart,
+  the registration mileage reaching both the car and its maintenance book, an
+  edit and a deletion surviving, a fresh install starting empty, and corrupt
+  storage not wedging the launch.
+- **Not** run on a device or emulator — no confirmation against real
+  SharedPreferences, only the in-memory mock the plugin provides to tests.
+
+### Known-adjacent, left alone
+- `MockOrderService` and `MockServiceMarketplaceService` are still in-memory, so
+  order history and open service requests still vanish on restart. Same fix
+  applies (`PrefsCollection`) but it is a separate report — escrow state in
+  particular needs a decision about what a restored in-flight booking means.
+
+---
+
 ## 2026-07-29 · Home page rebuilt around booking, and offers put under governance
 
 **Baseline:** `a854c2a` (working tree)

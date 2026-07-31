@@ -30,28 +30,28 @@ class EscrowEntry {
   final EscrowEvent? event;
 
   factory EscrowEntry.fromJson(JsonMap json) => EscrowEntry(
-        state: json.enumOr(
-          'state',
-          EscrowState.values,
-          EscrowState.createdPendingPayment,
-        ),
-        actor: json.enumOr('actor', EscrowActor.values, EscrowActor.system),
-        at: json.dateTimeOr('at', DateTime.now()),
-        event: json['event'] == null
-            ? null
-            : json.enumOr(
-                'event',
-                EscrowEvent.values,
-                EscrowEvent.handOffForApproval,
-              ),
-      );
+    state: json.enumOr(
+      'state',
+      EscrowState.values,
+      EscrowState.createdPendingPayment,
+    ),
+    actor: json.enumOr('actor', EscrowActor.values, EscrowActor.system),
+    at: json.dateTimeOr('at', DateTime.now()),
+    event: json['event'] == null
+        ? null
+        : json.enumOr(
+            'event',
+            EscrowEvent.values,
+            EscrowEvent.handOffForApproval,
+          ),
+  );
 
   JsonMap toJson() => {
-        'state': state.key,
-        'actor': actor.key,
-        'at': at.toIso8601String(),
-        'event': event?.key,
-      };
+    'state': state.key,
+    'actor': actor.key,
+    'at': at.toIso8601String(),
+    'event': event?.key,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -105,33 +105,32 @@ class ServiceRequest {
     required PartRequest part,
     required Fulfillment fulfillment,
     required DateTime createdAt,
-  }) =>
-      ServiceRequest(
-        id: id,
-        offering: ServiceOffering.partInstall(
-          provider: provider,
-          partDescription: part.description,
-        ),
-        car: car,
-        plate: plate,
-        fulfillment: fulfillment,
-        // Scheduling happens once there is a job to schedule; until the price
-        // is agreed there is nothing to book a bay for.
-        slot: '',
-        addOns: const [],
-        total: 0,
-        escrow: EscrowState.requested,
-        createdAt: createdAt,
-        type: BookingType.customQuote,
-        partRequest: part,
-        history: [
-          EscrowEntry(
-            state: EscrowState.requested,
-            actor: EscrowActor.customer,
-            at: createdAt,
-          ),
-        ],
-      );
+  }) => ServiceRequest(
+    id: id,
+    offering: ServiceOffering.partInstall(
+      provider: provider,
+      partDescription: part.description,
+    ),
+    car: car,
+    plate: plate,
+    fulfillment: fulfillment,
+    // Scheduling happens once there is a job to schedule; until the price
+    // is agreed there is nothing to book a bay for.
+    slot: '',
+    addOns: const [],
+    total: 0,
+    escrow: EscrowState.requested,
+    createdAt: createdAt,
+    type: BookingType.customQuote,
+    partRequest: part,
+    history: [
+      EscrowEntry(
+        state: EscrowState.requested,
+        actor: EscrowActor.customer,
+        at: createdAt,
+      ),
+    ],
+  );
 
   final String id;
   final ServiceOffering offering;
@@ -188,17 +187,25 @@ class ServiceRequest {
   /// when none was offered, which is not the same as zero days.
   int? get partWarrantyDays => quote?.warrantyDays;
 
-  /// Whether this booking's completion proof satisfies the rules for its type.
+  /// Whether this booking's completion proof satisfies the rules for its type
+  /// (spec §3). Both rules gate the move to `proofSubmitted`.
   ///
-  /// A part-and-fit job must show the part's box or label (spec §6): the
-  /// customer bought a specific part, and only the packaging speaks to which
-  /// one arrived. A catalogue service has no such requirement.
-  /// A catalogue service is unrestricted — including with no proof attached at
-  /// all, which is a workshop that submitted nothing rather than a rule
-  /// breach, and is the customer's to judge on the approval screen.
+  /// 1. **Every job needs at least one photo or video.** The customer releases
+  ///    real money on the strength of this, and notes alone are a claim rather
+  ///    than evidence — an escrow that settles on an unevidenced assertion is
+  ///    not an escrow. This is why there is no "notes only" proof any more.
+  /// 2. **A part-and-fitting job must additionally show the part's box or
+  ///    label** (spec §6): the customer bought a specific part from a specific
+  ///    brand, and only the packaging speaks to which one actually arrived.
+  ///
+  /// Rule 2 is a declaration, not a verification — the app cannot inspect a
+  /// photograph — which is exactly why the customer is shown that the workshop
+  /// made it.
   bool proofSatisfiesRules(ProofOfWork? candidate) {
+    final evidence = candidate ?? proof;
+    if (evidence == null || !evidence.hasMedia) return false;
     if (type != BookingType.customQuote) return true;
-    return (candidate ?? proof)?.includesPartBoxPhoto ?? false;
+    return evidence.includesPartBoxPhoto;
   }
 
   /// When the escrow releases itself if the customer neither approves nor
@@ -267,8 +274,9 @@ class ServiceRequest {
       total: event == EscrowEvent.acceptQuote && agreed != null
           ? agreed.total
           : total,
-      awaitingApprovalSince:
-          next == EscrowState.awaitingApproval ? when : awaitingApprovalSince,
+      awaitingApprovalSince: next == EscrowState.awaitingApproval
+          ? when
+          : awaitingApprovalSince,
       history: [
         ...history,
         EscrowEntry(state: next, actor: actor, at: when, event: event),
@@ -277,56 +285,56 @@ class ServiceRequest {
   }
 
   factory ServiceRequest.fromJson(JsonMap json) => ServiceRequest(
-        id: json.requireString('id'),
-        offering: ServiceOffering.fromJson(json.requireObject('offering')),
-        car: Car.fromJson(json.requireObject('car')),
-        plate: json.stringOr('plate', ''),
-        fulfillment: FulfillmentX.fromKey(json.stringOrNull('fulfillment')),
-        slot: json.stringOr('slot', ''),
-        addOns: json.objectList('addOns').map(AddOn.fromJson).toList(),
-        total: json.doubleOr('total', 0),
-        escrow: json.enumOr(
-          'escrow',
-          EscrowState.values,
-          EscrowState.createdPendingPayment,
-        ),
-        createdAt: json.dateTimeOr('createdAt', DateTime.now()),
-        history: json.objectList('history').map(EscrowEntry.fromJson).toList(),
-        proof: json.objectOrNull('proof') == null
-            ? null
-            : ProofOfWork.fromJson(json.requireObject('proof')),
-        awaitingApprovalSince: json.dateTimeOrNull('awaitingApprovalSince'),
-        disputeNote: json.stringOr('disputeNote', ''),
-        maintenanceItemKey: json.stringOrNull('maintenanceItemKey'),
-        type: BookingType.fromKey(json.stringOrNull('type')),
-        partRequest: json.objectOrNull('partRequest') == null
-            ? null
-            : PartRequest.fromJson(json.requireObject('partRequest')),
-        quote: json.objectOrNull('quote') == null
-            ? null
-            : Quote.fromJson(json.requireObject('quote')),
-      );
+    id: json.requireString('id'),
+    offering: ServiceOffering.fromJson(json.requireObject('offering')),
+    car: Car.fromJson(json.requireObject('car')),
+    plate: json.stringOr('plate', ''),
+    fulfillment: FulfillmentX.fromKey(json.stringOrNull('fulfillment')),
+    slot: json.stringOr('slot', ''),
+    addOns: json.objectList('addOns').map(AddOn.fromJson).toList(),
+    total: json.doubleOr('total', 0),
+    escrow: json.enumOr(
+      'escrow',
+      EscrowState.values,
+      EscrowState.createdPendingPayment,
+    ),
+    createdAt: json.dateTimeOr('createdAt', DateTime.now()),
+    history: json.objectList('history').map(EscrowEntry.fromJson).toList(),
+    proof: json.objectOrNull('proof') == null
+        ? null
+        : ProofOfWork.fromJson(json.requireObject('proof')),
+    awaitingApprovalSince: json.dateTimeOrNull('awaitingApprovalSince'),
+    disputeNote: json.stringOr('disputeNote', ''),
+    maintenanceItemKey: json.stringOrNull('maintenanceItemKey'),
+    type: BookingType.fromKey(json.stringOrNull('type')),
+    partRequest: json.objectOrNull('partRequest') == null
+        ? null
+        : PartRequest.fromJson(json.requireObject('partRequest')),
+    quote: json.objectOrNull('quote') == null
+        ? null
+        : Quote.fromJson(json.requireObject('quote')),
+  );
 
   JsonMap toJson() => {
-        'id': id,
-        'offering': offering.toJson(),
-        'car': car.toJson(),
-        'plate': plate,
-        'fulfillment': fulfillment.key,
-        'slot': slot,
-        'addOns': [for (final a in addOns) a.toJson()],
-        'total': total,
-        'escrow': escrow.key,
-        'createdAt': createdAt.toIso8601String(),
-        'history': [for (final h in history) h.toJson()],
-        'proof': proof?.toJson(),
-        'awaitingApprovalSince': awaitingApprovalSince?.toIso8601String(),
-        'disputeNote': disputeNote,
-        'maintenanceItemKey': maintenanceItemKey,
-        'type': type.key,
-        'partRequest': partRequest?.toJson(),
-        'quote': quote?.toJson(),
-      };
+    'id': id,
+    'offering': offering.toJson(),
+    'car': car.toJson(),
+    'plate': plate,
+    'fulfillment': fulfillment.key,
+    'slot': slot,
+    'addOns': [for (final a in addOns) a.toJson()],
+    'total': total,
+    'escrow': escrow.key,
+    'createdAt': createdAt.toIso8601String(),
+    'history': [for (final h in history) h.toJson()],
+    'proof': proof?.toJson(),
+    'awaitingApprovalSince': awaitingApprovalSince?.toIso8601String(),
+    'disputeNote': disputeNote,
+    'maintenanceItemKey': maintenanceItemKey,
+    'type': type.key,
+    'partRequest': partRequest?.toJson(),
+    'quote': quote?.toJson(),
+  };
 
   ServiceRequest copyWith({
     String? id,
@@ -347,28 +355,26 @@ class ServiceRequest {
     BookingType? type,
     PartRequest? partRequest,
     Quote? quote,
-  }) =>
-      ServiceRequest(
-        id: id ?? this.id,
-        offering: offering ?? this.offering,
-        car: car ?? this.car,
-        plate: plate ?? this.plate,
-        fulfillment: fulfillment ?? this.fulfillment,
-        slot: slot ?? this.slot,
-        addOns: addOns ?? this.addOns,
-        total: total ?? this.total,
-        escrow: escrow ?? this.escrow,
-        createdAt: createdAt ?? this.createdAt,
-        history: history ?? this.history,
-        proof: proof ?? this.proof,
-        awaitingApprovalSince:
-            awaitingApprovalSince ?? this.awaitingApprovalSince,
-        disputeNote: disputeNote ?? this.disputeNote,
-        maintenanceItemKey: maintenanceItemKey ?? this.maintenanceItemKey,
-        type: type ?? this.type,
-        partRequest: partRequest ?? this.partRequest,
-        quote: quote ?? this.quote,
-      );
+  }) => ServiceRequest(
+    id: id ?? this.id,
+    offering: offering ?? this.offering,
+    car: car ?? this.car,
+    plate: plate ?? this.plate,
+    fulfillment: fulfillment ?? this.fulfillment,
+    slot: slot ?? this.slot,
+    addOns: addOns ?? this.addOns,
+    total: total ?? this.total,
+    escrow: escrow ?? this.escrow,
+    createdAt: createdAt ?? this.createdAt,
+    history: history ?? this.history,
+    proof: proof ?? this.proof,
+    awaitingApprovalSince: awaitingApprovalSince ?? this.awaitingApprovalSince,
+    disputeNote: disputeNote ?? this.disputeNote,
+    maintenanceItemKey: maintenanceItemKey ?? this.maintenanceItemKey,
+    type: type ?? this.type,
+    partRequest: partRequest ?? this.partRequest,
+    quote: quote ?? this.quote,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -401,24 +407,24 @@ class ServiceRequest {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        offering,
-        car,
-        plate,
-        fulfillment,
-        slot,
-        total,
-        escrow,
-        createdAt,
-        proof,
-        awaitingApprovalSince,
-        disputeNote,
-        maintenanceItemKey,
-        type,
-        partRequest,
-        quote,
-        Object.hashAll(addOns),
-      );
+    id,
+    offering,
+    car,
+    plate,
+    fulfillment,
+    slot,
+    total,
+    escrow,
+    createdAt,
+    proof,
+    awaitingApprovalSince,
+    disputeNote,
+    maintenanceItemKey,
+    type,
+    partRequest,
+    quote,
+    Object.hashAll(addOns),
+  );
 }
 
 /// Booking total: offering price (0 when quoted after inspection), plus every
@@ -434,8 +440,9 @@ double calculateRequestTotal({
   required Fulfillment fulfillment,
 }) {
   final addOnTotal = addOns.fold<double>(0, (sum, a) => sum + a.price);
-  final pickup =
-      fulfillment == Fulfillment.pickup ? offering.provider.pickupFee : 0.0;
+  final pickup = fulfillment == Fulfillment.pickup
+      ? offering.provider.pickupFee
+      : 0.0;
   return (offering.price ?? 0) + addOnTotal + pickup;
 }
 
@@ -475,12 +482,12 @@ class CreateServiceRequestDraft {
   final String? maintenanceItemKey;
 
   JsonMap toJson() => {
-        'offeringId': offering.id,
-        'carId': car.id,
-        'plate': plate,
-        'fulfillment': fulfillment.key,
-        'slot': slot,
-        'addOnIds': addOnIds.toList(),
-        'maintenanceItemKey': maintenanceItemKey,
-      };
+    'offeringId': offering.id,
+    'carId': car.id,
+    'plate': plate,
+    'fulfillment': fulfillment.key,
+    'slot': slot,
+    'addOnIds': addOnIds.toList(),
+    'maintenanceItemKey': maintenanceItemKey,
+  };
 }

@@ -266,10 +266,14 @@ properties of it are load-bearing and worth keeping:
    unproven.
 3. **No refresh-token flow.** Matches the backend, which does not have one
    either (see the project's `CLAUDE.md`).
-4. **Session-scoped stores.** `MockAuthService`, `MockGarageService`,
-   `MockOrderService` and `MockServiceMarketplaceService` keep state in memory,
-   so a restart clears the garage and order history. Real persistence arrives
-   with the API.
+4. **Session-scoped stores.** `MockOrderService` and
+   `MockServiceMarketplaceService` still keep state in memory, so a restart
+   clears the order history and any open service request. Real persistence
+   arrives with the API. The three stores holding what the user *typed in* —
+   `MockAuthService` (profile), `MockGarageService` (cars) and
+   `MockMaintenanceService` (books) — write to SharedPreferences via
+   `PrefsCollection`, because losing those on a restart is indistinguishable
+   from the Save button not working.
 5. **`ServiceOffering` embeds its full `ServiceProvider`.** Fine as an expanded
    relation, but confirm the API returns it that way or the mapper will need a
    join.
@@ -279,12 +283,15 @@ properties of it are load-bearing and worth keeping:
    has the same shape and the same caveat: it only fires while the app is
    running, which is why `RequestsNotifier.sweepExpiredApprovals` re-checks on
    every visit to the bookings tab. A real deployment needs this server-side.
-7. **No media upload.** `ProofOfWork.media` is modelled, serialised and
-   rendered end to end, but nothing can *create* a `ProofMedia` on-device —
-   that needs a camera/file-picker package the app does not depend on. The
-   workshop panel says so rather than showing a button that does nothing, and
-   the approval screen distinguishes "notes only" from "photos failed to
-   load". Adding `image_picker` is a new dependency and needs sign-off.
+7. **Media capture is local-only, with no upload step.** `image_picker` now
+   backs `ProofUploadSheet`, so a workshop can attach real photos and the
+   "every proof needs evidence" rule is enforceable. What is still missing is
+   the *upload*: a captured shot stays a device-local file path (a `blob:` URL
+   on web), so proof media does not survive a reinstall and cannot be seen by
+   anyone on another device. `core/media/local_image.dart` is the conditional
+   import that renders either kind of source, and both the compose sheet and
+   the approval screen go through it. A real deployment needs object storage
+   and a `uri` that comes back as https.
 8. **Escrow money movement is manual by design** (spec §3, note 2). The app
    records state; the founder moves the funds. `AdminScreen` says so on the
    screen, so its totals are not mistaken for a ledger of completed transfers.
@@ -701,25 +708,30 @@ requested → quoted → quoteAccepted ─┐
   ends. Every screen that shows one says so. The app records it and displays
   it; it does not enforce it, and post-release claims are out of scope.
 
-### The one rule the transition table cannot express
+### The two rules the transition table cannot express
 
-A `customQuote` job cannot reach `proofSubmitted` without
-`ProofOfWork.includesPartBoxPhoto` (spec §6): the customer paid for a specific
-part, and a photo of a closed bonnet speaks to neither which part went in nor
-whose it was. It is a rule about the *payload*, so it lives in
-`ServiceRequest.proofSatisfiesRules` and is enforced in three places —
-`apply` (no-op), `RequestsNotifier.fire` (returns null) and the mock service
+Both are rules about the *payload* rather than the ordering, so they live in
+`ServiceRequest.proofSatisfiesRules` and are enforced in four places —
+`ProofUploadSheet` (disables submit and names the unmet rule), `apply` (no-op),
+`RequestsNotifier.fire` (returns null) and the mock service
 (`BusinessRuleException`, where the real API will enforce it).
 
-It is a **declaration, not a verification**: the app cannot inspect a photo. So
-the workshop ticks it and the approval screen tells the customer that it was
-ticked — or that it was not. A catalogue service is held to none of this,
-including with no proof attached at all, which is the customer's judgement to
-make rather than a transition the machine blocks.
+**1. Every proof needs at least one photo or video** (spec §3). The customer
+releases real money on the strength of it, and notes alone are a claim rather
+than evidence. This applies to catalogue services and part jobs alike; there is
+no "notes only" proof.
 
-The staging lifecycle simulator stops at `submitProof` for a custom quote for
-the same reason: a demo timer is not entitled to make a claim about evidence on
-a workshop's behalf.
+**2. A `customQuote` job additionally needs `includesPartBoxPhoto`** (spec §6):
+the customer paid for a specific part, and a photo of a closed bonnet speaks to
+neither which part went in nor whose it was.
+
+Rule 2 is a **declaration, not a verification**: the app cannot inspect a photo.
+So the workshop ticks it and the approval screen tells the customer that it was
+ticked — or that it was not.
+
+The staging lifecycle simulator stops at `submitProof` for *every* booking type
+for the same reason: a demo timer is not entitled to manufacture a workshop's
+photographs, and rule 1 now means it would have to.
 
 ---
 

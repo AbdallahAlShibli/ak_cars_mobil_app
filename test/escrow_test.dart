@@ -12,25 +12,27 @@ import 'helpers/test_harness.dart';
 const _car = Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2019);
 
 CreateServiceRequestDraft _draft() => CreateServiceRequestDraft(
-      offering: MockServiceData.offerings.first,
-      car: _car,
-      plate: '1234 AB',
-      fulfillment: Fulfillment.workshop,
-      slot: 'Mon 3 Aug · 10:30',
-      addOnIds: const {},
-    );
+  offering: MockServiceData.offerings.first,
+  car: _car,
+  plate: '1234 AB',
+  fulfillment: Fulfillment.workshop,
+  slot: 'Mon 3 Aug · 10:30',
+  addOnIds: const {},
+);
 
 /// The simulator would walk the booking forward under the test's feet, and
 /// the 72-hour window is not something a unit test should wait out.
 Future<ProviderContainer> _container({Duration? approvalWindow}) =>
-    createDataContainer(overrides: [
-      appConfigProvider.overrideWithValue(
-        AppConfig.forEnvironment(AppEnvironment.development).copyWith(
-          simulateProviderLifecycle: false,
-          approvalWindow: approvalWindow,
+    createDataContainer(
+      overrides: [
+        appConfigProvider.overrideWithValue(
+          AppConfig.forEnvironment(AppEnvironment.development).copyWith(
+            simulateProviderLifecycle: false,
+            approvalWindow: approvalWindow,
+          ),
         ),
-      ),
-    ]);
+      ],
+    );
 
 Future<ServiceRequest> _place(ProviderContainer container) =>
     container.read(requestsProvider.notifier).place(_draft());
@@ -42,17 +44,24 @@ void main() {
   group('the transition table', () {
     test('every state except the terminal three can move somewhere', () {
       for (final state in EscrowState.values) {
-        expect(state.transitions.isEmpty, state.isTerminal,
-            reason: '${state.key} should ${state.isTerminal ? '' : 'not '}'
-                'be a dead end');
+        expect(
+          state.transitions.isEmpty,
+          state.isTerminal,
+          reason:
+              '${state.key} should ${state.isTerminal ? '' : 'not '}'
+              'be a dead end',
+        );
       }
     });
 
     test('no state offers two transitions on the same event', () {
       for (final state in EscrowState.values) {
         final events = state.transitions.map((t) => t.event).toList();
-        expect(events.toSet().length, events.length,
-            reason: '${state.key} has an ambiguous event');
+        expect(
+          events.toSet().length,
+          events.length,
+          reason: '${state.key} has an ambiguous event',
+        );
       }
     });
 
@@ -105,8 +114,7 @@ void main() {
 
       expect(request.escrow, EscrowState.createdPendingPayment);
       expect(request.escrow.holdsFunds, isFalse);
-      expect(request.history.single.state,
-          EscrowState.createdPendingPayment);
+      expect(request.history.single.state, EscrowState.createdPendingPayment);
     });
 
     test('the wrong actor cannot fire a transition', () async {
@@ -121,8 +129,10 @@ void main() {
         actor: EscrowActor.workshop,
       );
       expect(rejected, isNull);
-      expect(_read(container, request.id).escrow,
-          EscrowState.createdPendingPayment);
+      expect(
+        _read(container, request.id).escrow,
+        EscrowState.createdPendingPayment,
+      );
     });
 
     test('an event the current state does not offer is a no-op', () async {
@@ -132,45 +142,111 @@ void main() {
 
       // Approving before there is anything to approve.
       expect(
-        await notifier.fire(request.id, EscrowEvent.approve,
-            actor: EscrowActor.customer),
+        await notifier.fire(
+          request.id,
+          EscrowEvent.approve,
+          actor: EscrowActor.customer,
+        ),
         isNull,
       );
-      expect(_read(container, request.id).escrow,
-          EscrowState.createdPendingPayment);
+      expect(
+        _read(container, request.id).escrow,
+        EscrowState.createdPendingPayment,
+      );
     });
 
-    test('submitting proof hands off to awaiting approval automatically',
-        () async {
+    test(
+      'submitting proof hands off to awaiting approval automatically',
+      () async {
+        final container = await _container();
+        final request = await _place(container);
+        final notifier = container.read(requestsProvider.notifier);
+
+        await notifier.fire(
+          request.id,
+          EscrowEvent.confirmFundsHeld,
+          actor: EscrowActor.founder,
+        );
+        await notifier.fire(
+          request.id,
+          EscrowEvent.acceptJob,
+          actor: EscrowActor.workshop,
+        );
+        await notifier.fire(
+          request.id,
+          EscrowEvent.startWork,
+          actor: EscrowActor.workshop,
+        );
+        await notifier.fire(
+          request.id,
+          EscrowEvent.submitProof,
+          actor: EscrowActor.workshop,
+          proof: testProof(request.id, notes: 'Oil and filter replaced.'),
+        );
+
+        final updated = _read(container, request.id);
+        expect(updated.escrow, EscrowState.awaitingApproval);
+        expect(updated.proof?.notes, 'Oil and filter replaced.');
+        expect(updated.awaitingApprovalSince, isNotNull);
+        // proofSubmitted is still recorded — the customer just never waits in it.
+        expect(
+          updated.history.map((h) => h.state),
+          contains(EscrowState.proofSubmitted),
+        );
+      },
+    );
+
+    test('a proof with no photos does not move the booking', () async {
       final container = await _container();
       final request = await _place(container);
       final notifier = container.read(requestsProvider.notifier);
 
-      await notifier.fire(request.id, EscrowEvent.confirmFundsHeld,
-          actor: EscrowActor.founder);
-      await notifier.fire(request.id, EscrowEvent.acceptJob,
-          actor: EscrowActor.workshop);
-      await notifier.fire(request.id, EscrowEvent.startWork,
-          actor: EscrowActor.workshop);
+      for (final (event, actor) in const [
+        (EscrowEvent.confirmFundsHeld, EscrowActor.founder),
+        (EscrowEvent.acceptJob, EscrowActor.workshop),
+        (EscrowEvent.startWork, EscrowActor.workshop),
+      ]) {
+        await notifier.fire(request.id, event, actor: actor);
+      }
+
+      // Notes are a claim; photos are the evidence the customer releases real
+      // money against (spec §3). Submitting without any is refused for every
+      // booking type, not only part-and-fitting jobs.
       await notifier.fire(
         request.id,
         EscrowEvent.submitProof,
         actor: EscrowActor.workshop,
         proof: ProofOfWork(
-          id: 'p1',
+          id: 'p-empty',
           requestId: request.id,
-          notes: 'Oil and filter replaced.',
+          notes: 'All done, trust me.',
           submittedAt: DateTime.now(),
         ),
       );
 
-      final updated = _read(container, request.id);
-      expect(updated.escrow, EscrowState.awaitingApproval);
-      expect(updated.proof?.notes, 'Oil and filter replaced.');
-      expect(updated.awaitingApprovalSince, isNotNull);
-      // proofSubmitted is still recorded — the customer just never waits in it.
-      expect(updated.history.map((h) => h.state),
-          contains(EscrowState.proofSubmitted));
+      final stalled = _read(container, request.id);
+      expect(stalled.escrow, EscrowState.inProgress);
+      expect(stalled.proof, isNull);
+      // A refused transition leaves no trace in the history either.
+      expect(
+        stalled.history.map((h) => h.state),
+        isNot(contains(EscrowState.proofSubmitted)),
+      );
+    });
+
+    test('the staging simulator stops rather than inventing evidence', () async {
+      // `advance` walks the happy path for demo builds. It must not fabricate
+      // a workshop's photographs, so the one step it refuses to take is the
+      // proof — the panel finishes the job by hand.
+      final container = await _container();
+      final request = await _place(container);
+      final notifier = container.read(requestsProvider.notifier);
+
+      for (var i = 0; i < 6; i++) {
+        await notifier.advance(request.id);
+      }
+
+      expect(_read(container, request.id).escrow, EscrowState.inProgress);
     });
 
     test('a rejected job refunds rather than cancelling', () async {
@@ -178,10 +254,16 @@ void main() {
       final request = await _place(container);
       final notifier = container.read(requestsProvider.notifier);
 
-      await notifier.fire(request.id, EscrowEvent.confirmFundsHeld,
-          actor: EscrowActor.founder);
-      await notifier.fire(request.id, EscrowEvent.rejectJob,
-          actor: EscrowActor.workshop);
+      await notifier.fire(
+        request.id,
+        EscrowEvent.confirmFundsHeld,
+        actor: EscrowActor.founder,
+      );
+      await notifier.fire(
+        request.id,
+        EscrowEvent.rejectJob,
+        actor: EscrowActor.workshop,
+      );
 
       expect(_read(container, request.id).escrow, EscrowState.refunded);
     });
@@ -197,7 +279,14 @@ void main() {
         (EscrowEvent.startWork, EscrowActor.workshop),
         (EscrowEvent.submitProof, EscrowActor.workshop),
       ]) {
-        await notifier.fire(request.id, event, actor: actor);
+        await notifier.fire(
+          request.id,
+          event,
+          actor: actor,
+          proof: event == EscrowEvent.submitProof
+              ? testProof(request.id)
+              : null,
+        );
       }
       await notifier.fire(
         request.id,
@@ -217,14 +306,18 @@ void main() {
   group('the 72-hour approval window', () {
     test('defaults to three days and is measured from the hand-off', () async {
       final container = await _container();
-      expect(container.read(appConfigProvider).approvalWindow,
-          const Duration(hours: 72));
+      expect(
+        container.read(appConfigProvider).approvalWindow,
+        const Duration(hours: 72),
+      );
     });
 
     test('a lapsed window releases on the next sweep', () async {
       // A one-second window, so the test exercises the real deadline
       // arithmetic without waiting three days for it.
-      final container = await _container(approvalWindow: const Duration(seconds: 1));
+      final container = await _container(
+        approvalWindow: const Duration(seconds: 1),
+      );
       final request = await _place(container);
       final notifier = container.read(requestsProvider.notifier);
 
@@ -234,16 +327,24 @@ void main() {
         (EscrowEvent.startWork, EscrowActor.workshop),
         (EscrowEvent.submitProof, EscrowActor.workshop),
       ]) {
-        await notifier.fire(request.id, event, actor: actor);
+        await notifier.fire(
+          request.id,
+          event,
+          actor: actor,
+          proof: event == EscrowEvent.submitProof
+              ? testProof(request.id)
+              : null,
+        );
       }
-      expect(_read(container, request.id).escrow,
-          EscrowState.awaitingApproval);
+      expect(_read(container, request.id).escrow, EscrowState.awaitingApproval);
 
       await notifier.sweepExpiredApprovals(
         now: DateTime.now().add(const Duration(minutes: 1)),
       );
-      expect(_read(container, request.id).escrow,
-          EscrowState.releasedToWorkshop);
+      expect(
+        _read(container, request.id).escrow,
+        EscrowState.releasedToWorkshop,
+      );
     });
 
     test('an open window is left alone by the sweep', () async {
@@ -257,45 +358,59 @@ void main() {
         (EscrowEvent.startWork, EscrowActor.workshop),
         (EscrowEvent.submitProof, EscrowActor.workshop),
       ]) {
-        await notifier.fire(request.id, event, actor: actor);
+        await notifier.fire(
+          request.id,
+          event,
+          actor: actor,
+          proof: event == EscrowEvent.submitProof
+              ? testProof(request.id)
+              : null,
+        );
       }
 
       await notifier.sweepExpiredApprovals();
-      expect(_read(container, request.id).escrow,
-          EscrowState.awaitingApproval);
+      expect(_read(container, request.id).escrow, EscrowState.awaitingApproval);
     });
   });
 
   group('how far a booking actually got', () {
-    test('a cancelled booking ticks nothing past the step it reached',
-        () async {
-      final container = await _container();
-      final request = await _place(container);
-      final notifier = container.read(requestsProvider.notifier);
+    test(
+      'a cancelled booking ticks nothing past the step it reached',
+      () async {
+        final container = await _container();
+        final request = await _place(container);
+        final notifier = container.read(requestsProvider.notifier);
 
-      await notifier.fire(
-        request.id,
-        EscrowEvent.cancelBooking,
-        actor: EscrowActor.customer,
-      );
-      final cancelled = _read(container, request.id);
+        await notifier.fire(
+          request.id,
+          EscrowEvent.cancelBooking,
+          actor: EscrowActor.customer,
+        );
+        final cancelled = _read(container, request.id);
 
-      // It sits on the tracking screen's last row...
-      expect(cancelled.escrow.customerStepIndex, 5);
-      // ...but never reached "funds held", so nothing above step 0 may show
-      // as done. The money was never confirmed.
-      expect(cancelled.reachedStepIndex, 0);
-    });
+        // It sits on the tracking screen's last row...
+        expect(cancelled.escrow.customerStepIndex, 5);
+        // ...but never reached "funds held", so nothing above step 0 may show
+        // as done. The money was never confirmed.
+        expect(cancelled.reachedStepIndex, 0);
+      },
+    );
 
     test('a rejected job reached the funds-held step and no further', () async {
       final container = await _container();
       final request = await _place(container);
       final notifier = container.read(requestsProvider.notifier);
 
-      await notifier.fire(request.id, EscrowEvent.confirmFundsHeld,
-          actor: EscrowActor.founder);
-      await notifier.fire(request.id, EscrowEvent.rejectJob,
-          actor: EscrowActor.workshop);
+      await notifier.fire(
+        request.id,
+        EscrowEvent.confirmFundsHeld,
+        actor: EscrowActor.founder,
+      );
+      await notifier.fire(
+        request.id,
+        EscrowEvent.rejectJob,
+        actor: EscrowActor.workshop,
+      );
       final refunded = _read(container, request.id);
 
       expect(refunded.escrow, EscrowState.refunded);
@@ -316,7 +431,14 @@ void main() {
         (EscrowEvent.submitProof, EscrowActor.workshop),
         (EscrowEvent.approve, EscrowActor.customer),
       ]) {
-        await notifier.fire(request.id, event, actor: actor);
+        await notifier.fire(
+          request.id,
+          event,
+          actor: actor,
+          proof: event == EscrowEvent.submitProof
+              ? testProof(request.id)
+              : null,
+        );
       }
       final released = _read(container, request.id);
 
@@ -324,27 +446,40 @@ void main() {
       expect(released.reachedStepIndex, 5);
     });
 
-    test('a dispute keeps the steps the work actually passed through',
-        () async {
-      final container = await _container();
-      final request = await _place(container);
-      final notifier = container.read(requestsProvider.notifier);
+    test(
+      'a dispute keeps the steps the work actually passed through',
+      () async {
+        final container = await _container();
+        final request = await _place(container);
+        final notifier = container.read(requestsProvider.notifier);
 
-      for (final (event, actor) in const [
-        (EscrowEvent.confirmFundsHeld, EscrowActor.founder),
-        (EscrowEvent.acceptJob, EscrowActor.workshop),
-        (EscrowEvent.startWork, EscrowActor.workshop),
-        (EscrowEvent.submitProof, EscrowActor.workshop),
-      ]) {
-        await notifier.fire(request.id, event, actor: actor);
-      }
-      await notifier.fire(request.id, EscrowEvent.raiseIssue,
-          actor: EscrowActor.customer, disputeNote: 'The noise is still there');
-      final disputed = _read(container, request.id);
+        for (final (event, actor) in const [
+          (EscrowEvent.confirmFundsHeld, EscrowActor.founder),
+          (EscrowEvent.acceptJob, EscrowActor.workshop),
+          (EscrowEvent.startWork, EscrowActor.workshop),
+          (EscrowEvent.submitProof, EscrowActor.workshop),
+        ]) {
+          await notifier.fire(
+            request.id,
+            event,
+            actor: actor,
+            proof: event == EscrowEvent.submitProof
+                ? testProof(request.id)
+                : null,
+          );
+        }
+        await notifier.fire(
+          request.id,
+          EscrowEvent.raiseIssue,
+          actor: EscrowActor.customer,
+          disputeNote: 'The noise is still there',
+        );
+        final disputed = _read(container, request.id);
 
-      expect(disputed.escrow, EscrowState.disputed);
-      // The work really was done and submitted — only the ending is off-path.
-      expect(disputed.reachedStepIndex, 4);
-    });
+        expect(disputed.escrow, EscrowState.disputed);
+        // The work really was done and submitted — only the ending is off-path.
+        expect(disputed.reachedStepIndex, 4);
+      },
+    );
   });
 }

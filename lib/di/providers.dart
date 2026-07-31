@@ -65,8 +65,14 @@ final authServiceProvider = Provider<AuthService>(
   ),
 );
 
+// Takes prefs for the same reason auth does: the mock stands in for the
+// server's storage too, and a car the user registered has to survive a cold
+// start.
 final garageServiceProvider = Provider<GarageService>(
-  (ref) => MockGarageService(config: ref.watch(appConfigProvider)),
+  (ref) => MockGarageService(
+    config: ref.watch(appConfigProvider),
+    prefs: ref.watch(sharedPrefsProvider),
+  ),
 );
 
 final serviceMarketplaceServiceProvider = Provider<ServiceMarketplaceService>(
@@ -94,7 +100,10 @@ final chatServiceProvider = Provider<ChatService>(
 );
 
 final maintenanceServiceProvider = Provider<MaintenanceService>(
-  (ref) => MockMaintenanceService(config: ref.watch(appConfigProvider)),
+  (ref) => MockMaintenanceService(
+    config: ref.watch(appConfigProvider),
+    prefs: ref.watch(sharedPrefsProvider),
+  ),
 );
 
 final challengeServiceProvider = Provider<ChallengeService>(
@@ -121,10 +130,10 @@ final garageRepositoryProvider = Provider<GarageRepository>(
 
 final serviceMarketplaceRepositoryProvider =
     Provider<ServiceMarketplaceRepository>(
-  (ref) => ServiceMarketplaceRepositoryImpl(
-    ref.watch(serviceMarketplaceServiceProvider),
-  ),
-);
+      (ref) => ServiceMarketplaceRepositoryImpl(
+        ref.watch(serviceMarketplaceServiceProvider),
+      ),
+    );
 
 final shopRepositoryProvider = Provider<ShopRepository>(
   (ref) => ShopRepositoryImpl(ref.watch(shopServiceProvider)),

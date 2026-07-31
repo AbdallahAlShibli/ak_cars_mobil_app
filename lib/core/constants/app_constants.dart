@@ -39,4 +39,10 @@ abstract final class AppConstants {
   /// after a cold start. Stands in for the session the REST implementation
   /// will restore from [prefsAuthToken].
   static const prefsProfile = 'akcars_profile';
+
+  /// The user's own records, stored on the device until the backend owns them.
+  /// Registering a car is the app's first real piece of data entry — losing it
+  /// on the next launch reads as the Save button never having worked.
+  static const prefsGarage = 'akcars_garage';
+  static const prefsMaintenance = 'akcars_maintenance';
 }

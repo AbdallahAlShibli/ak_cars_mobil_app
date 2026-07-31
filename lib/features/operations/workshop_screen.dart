@@ -8,6 +8,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../state/app_state.dart';
+import '../services/proof_upload_sheet.dart';
 import 'escrow_action_bar.dart';
 
 /// The workshop's panel (spec §2 and §6): accept or reject a job, start work,
@@ -38,8 +39,7 @@ class WorkshopScreen extends ConsumerWidget {
                   child: Text(
                     s.t('لا توجد طلبات مفتوحة.', 'No open jobs.'),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 13, color: AppColors.ink3),
+                    style: const TextStyle(fontSize: 13, color: AppColors.ink3),
                   ),
                 ),
               )
@@ -73,11 +73,16 @@ class _JobCard extends ConsumerWidget {
             const SizedBox(height: 10),
             Text(
               proof.notes.isEmpty
-                  ? s.t('رُفع الإثبات بلا ملاحظات.',
-                      'Proof submitted with no notes.')
+                  ? s.t(
+                      'رُفع الإثبات بلا ملاحظات.',
+                      'Proof submitted with no notes.',
+                    )
                   : proof.notes,
               style: const TextStyle(
-                  fontSize: 11.5, color: AppColors.ink3, height: 1.6),
+                fontSize: 11.5,
+                color: AppColors.ink3,
+                height: 1.6,
+              ),
             ),
           ],
           if (request.partRequest != null) ...[
@@ -95,7 +100,8 @@ class _JobCard extends ConsumerWidget {
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: () => context.push(
-                  '/review/${request.id}?direction=${ReviewDirection.workshopToCustomer.key}'),
+                '/review/${request.id}?direction=${ReviewDirection.workshopToCustomer.key}',
+              ),
               icon: const Icon(Icons.star_outline_rounded, size: 17),
               label: Text(s.t('قيّم العميل', 'Rate the customer')),
             ),
@@ -109,9 +115,7 @@ class _JobCard extends ConsumerWidget {
   /// the same release, and only where it has not already been written.
   bool _reviewable(WidgetRef ref, ServiceRequest request) =>
       AppFlags.verifiedReviews &&
-      ref
-          .watch(pendingWorkshopReviewsProvider)
-          .any((r) => r.id == request.id);
+      ref.watch(pendingWorkshopReviewsProvider).any((r) => r.id == request.id);
 
   /// Prices a part request: two figures, entered separately, because that is
   /// what the customer is shown and what they are agreeing to.
@@ -132,8 +136,13 @@ class _JobCard extends ConsumerWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text(s.t('أُرسل العرض — القرار الآن عند العميل',
-              'Quote sent — the decision is with the customer'))),
+        content: Text(
+          s.t(
+            'أُرسل العرض — القرار الآن عند العميل',
+            'Quote sent — the decision is with the customer',
+          ),
+        ),
+      ),
     );
   }
 
@@ -143,14 +152,16 @@ class _JobCard extends ConsumerWidget {
     ServiceRequest request,
   ) async {
     final s = S.of(context);
-    final result = await showModalBottomSheet<_ProofDraft>(
+    final result = await showModalBottomSheet<ProofDraft>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => _ProofSheet(s: s, request: request),
+      builder: (sheetContext) => ProofUploadSheet(s: s, request: request),
     );
     if (result == null || !context.mounted) return;
 
-    await ref.read(requestsProvider.notifier).fire(
+    await ref
+        .read(requestsProvider.notifier)
+        .fire(
           request.id,
           EscrowEvent.submitProof,
           actor: EscrowActor.workshop,
@@ -159,14 +170,20 @@ class _JobCard extends ConsumerWidget {
             requestId: request.id,
             notes: result.notes.trim(),
             submittedAt: DateTime.now(),
+            media: result.media,
             includesPartBoxPhoto: result.includesPartBoxPhoto,
           ),
         );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text(s.t('أُرسل الإثبات — الطلب الآن بانتظار العميل',
-              'Proof sent — the job is now with the customer'))),
+        content: Text(
+          s.t(
+            'أُرسل الإثبات — الطلب الآن بانتظار العميل',
+            'Proof sent — the job is now with the customer',
+          ),
+        ),
+      ),
     );
   }
 }
@@ -190,19 +207,26 @@ class _PartRequestBrief extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(s.t('طلب قطعة + تركيب', 'Part + fitting request'),
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: ak.inkSub)),
+          Text(
+            s.t('طلب قطعة + تركيب', 'Part + fitting request'),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: ak.inkSub,
+            ),
+          ),
           const SizedBox(height: 5),
-          Text(part.description,
-              style: const TextStyle(fontSize: 12.5, height: 1.6)),
+          Text(
+            part.description,
+            style: const TextStyle(fontSize: 12.5, height: 1.6),
+          ),
           if ((part.preferredBrand ?? '').isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
-              s.t('يفضّل: ${part.preferredBrand}',
-                  'Prefers: ${part.preferredBrand}'),
+              s.t(
+                'يفضّل: ${part.preferredBrand}',
+                'Prefers: ${part.preferredBrand}',
+              ),
               style: TextStyle(fontSize: 11.5, color: ak.inkSub),
             ),
           ],
@@ -216,10 +240,14 @@ class _PartRequestBrief extends StatelessWidget {
           if (quote != null) ...[
             const SizedBox(height: 8),
             Text(
-              s.t('عرضك: قطعة ${quote.partPrice.toStringAsFixed(2)} + تركيب ${quote.laborPrice.toStringAsFixed(2)} = ${quote.total.toStringAsFixed(2)} ر.ع',
-                  'Your quote: part ${quote.partPrice.toStringAsFixed(2)} + fitting ${quote.laborPrice.toStringAsFixed(2)} = OMR ${quote.total.toStringAsFixed(2)}'),
+              s.t(
+                'عرضك: قطعة ${quote.partPrice.toStringAsFixed(2)} + تركيب ${quote.laborPrice.toStringAsFixed(2)} = ${quote.total.toStringAsFixed(2)} ر.ع',
+                'Your quote: part ${quote.partPrice.toStringAsFixed(2)} + fitting ${quote.laborPrice.toStringAsFixed(2)} = OMR ${quote.total.toStringAsFixed(2)}',
+              ),
               style: const TextStyle(
-                  fontSize: 11.5, fontWeight: FontWeight.w700),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ],
@@ -287,19 +315,26 @@ class _QuoteSheetState extends State<_QuoteSheet> {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
-          20, 8, 20, MediaQuery.viewInsetsOf(context).bottom + 20),
+        20,
+        8,
+        20,
+        MediaQuery.viewInsetsOf(context).bottom + 20,
+      ),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(s.t('عرض سعر', 'Quote'),
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(
+              s.t('عرض سعر', 'Quote'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 6),
             Text(
-              s.t('سعر القطعة وأجرة التركيب منفصلان — هكذا يراهما العميل، وهذا ما يوافق عليه.',
-                  'The part and the fitting are priced separately — that is how the customer sees them, and what they agree to.'),
+              s.t(
+                'سعر القطعة وأجرة التركيب منفصلان — هكذا يراهما العميل، وهذا ما يوافق عليه.',
+                'The part and the fitting are priced separately — that is how the customer sees them, and what they agree to.',
+              ),
               style: TextStyle(fontSize: 12, color: ak.inkSub),
             ),
             const SizedBox(height: 14),
@@ -314,8 +349,10 @@ class _QuoteSheetState extends State<_QuoteSheet> {
             TextField(
               controller: _brand,
               decoration: InputDecoration(
-                labelText: s.t('الماركة/الأصل (اختياري)',
-                    'Brand / origin (optional)'),
+                labelText: s.t(
+                  'الماركة/الأصل (اختياري)',
+                  'Brand / origin (optional)',
+                ),
               ),
             ),
             const SizedBox(height: 10),
@@ -324,8 +361,9 @@ class _QuoteSheetState extends State<_QuoteSheet> {
                 Expanded(
                   child: TextField(
                     controller: _partPrice,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
                       labelText: s.t('سعر القطعة', 'Part price'),
@@ -337,8 +375,9 @@ class _QuoteSheetState extends State<_QuoteSheet> {
                 Expanded(
                   child: TextField(
                     controller: _laborPrice,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
                       labelText: s.t('أجرة التركيب', 'Fitting'),
@@ -353,10 +392,14 @@ class _QuoteSheetState extends State<_QuoteSheet> {
               controller: _warranty,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                labelText: s.t('كفالة القطعة بالأيام (اختياري)',
-                    'Part warranty in days (optional)'),
-                helperText: s.t('كفالتك أنت على القطعة — غير ضمان الدفع.',
-                    "Your own warranty on the part — not the payment escrow."),
+                labelText: s.t(
+                  'كفالة القطعة بالأيام (اختياري)',
+                  'Part warranty in days (optional)',
+                ),
+                helperText: s.t(
+                  'كفالتك أنت على القطعة — غير ضمان الدفع.',
+                  "Your own warranty on the part — not the payment escrow.",
+                ),
                 helperMaxLines: 2,
               ),
             ),
@@ -367,16 +410,19 @@ class _QuoteSheetState extends State<_QuoteSheet> {
               maxLines: 4,
               textInputAction: TextInputAction.newline,
               decoration: InputDecoration(
-                labelText: s.t('ملاحظة للعميل (اختياري)',
-                    'Note to the customer (optional)'),
+                labelText: s.t(
+                  'ملاحظة للعميل (اختياري)',
+                  'Note to the customer (optional)',
+                ),
               ),
             ),
             const SizedBox(height: 14),
             Text(
-              s.t('الإجمالي: ${total.toStringAsFixed(2)} ر.ع',
-                  'Total: OMR ${total.toStringAsFixed(2)}'),
-              style:
-                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+              s.t(
+                'الإجمالي: ${total.toStringAsFixed(2)} ر.ع',
+                'Total: OMR ${total.toStringAsFixed(2)}',
+              ),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
             FilledButton(
@@ -390,132 +436,18 @@ class _QuoteSheetState extends State<_QuoteSheet> {
   }
 
   void _submit() => Navigator.of(context).pop(
-        Quote(
-          // Replaced by the service, which owns the identity sequence.
-          id: 'quote-${widget.request.id}',
-          requestId: widget.request.id,
-          workshopId: widget.request.offering.provider.id,
-          partDescription: _part.text.trim(),
-          partPrice: _partAmount!,
-          laborPrice: _laborAmount!,
-          partBrand: _brand.text.trim().isEmpty ? null : _brand.text.trim(),
-          warrantyDays: int.tryParse(_warranty.text.trim()),
-          note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-          createdAt: DateTime.now(),
-        ),
-      );
-}
-
-/// What the workshop submits as its completion proof.
-typedef _ProofDraft = ({String notes, bool includesPartBoxPhoto});
-
-class _ProofSheet extends StatefulWidget {
-  const _ProofSheet({required this.s, required this.request});
-
-  final S s;
-  final ServiceRequest request;
-
-  @override
-  State<_ProofSheet> createState() => _ProofSheetState();
-}
-
-class _ProofSheetState extends State<_ProofSheet> {
-  final _controller = TextEditingController();
-  bool _partBoxShown = false;
-
-  /// Only a part-and-fit job has a part whose box can be shown.
-  bool get _needsPartBox =>
-      widget.request.type == BookingType.customQuote;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = widget.s;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-          20, 8, 20, MediaQuery.viewInsetsOf(context).bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(s.t('إثبات الإنجاز', 'Proof of work'),
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text(
-            s.t('صف ما تم بالضبط. يقرأها العميل قبل أن يوافق على تحرير المبلغ.',
-                'Describe exactly what was done. The customer reads this before releasing the payment.'),
-            style: const TextStyle(fontSize: 12, color: AppColors.ink3),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            minLines: 3,
-            maxLines: 6,
-            textInputAction: TextInputAction.newline,
-          ),
-          const SizedBox(height: 12),
-          // Honest about the gap rather than shipping a button that does
-          // nothing: capturing photos needs a camera/file plugin the app does
-          // not depend on yet.
-          Row(
-            children: [
-              const Icon(Icons.info_outline_rounded,
-                  size: 14, color: AppColors.ink3),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  s.t('إرفاق الصور غير متاح في هذه النسخة — أرسل الملاحظات الآن، وأرسل الصور في المحادثة.',
-                      'Attaching photos is not available in this build — send notes now and the photos in the chat.'),
-                  style: const TextStyle(
-                      fontSize: 10.5, color: AppColors.ink3, height: 1.6),
-                ),
-              ),
-            ],
-          ),
-          if (_needsPartBox) ...[
-            const SizedBox(height: 12),
-            // Required before this job may claim completion (spec §6). The
-            // customer paid for a specific part; a photo of a closed bonnet
-            // says nothing about which part went in. The app cannot inspect a
-            // picture, so this is the workshop's declaration — and the
-            // customer is told that it was made.
-            CheckboxListTile(
-              value: _partBoxShown,
-              onChanged: (v) => setState(() => _partBoxShown = v ?? false),
-              controlAffinity: ListTileControlAffinity.leading,
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                s.t('أرفقت صورة علبة القطعة أو ملصقها',
-                    'I included a photo of the part’s box or label'),
-                style: const TextStyle(
-                    fontSize: 12.5, fontWeight: FontWeight.w600),
-              ),
-              subtitle: Text(
-                s.t('مطلوب لطلبات «قطعة + تركيب» قبل إرسال الإثبات.',
-                    'Required on part-and-fitting jobs before proof can be submitted.'),
-                style: const TextStyle(fontSize: 11, color: AppColors.ink3),
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          FilledButton(
-            onPressed: _needsPartBox && !_partBoxShown
-                ? null
-                : () => Navigator.of(context).pop((
-                    notes: _controller.text,
-                    includesPartBoxPhoto: _partBoxShown,
-                  )),
-            child: Text(s.t('إرسال الإثبات', 'Submit proof')),
-          ),
-        ],
-      ),
-    );
-  }
+    Quote(
+      // Replaced by the service, which owns the identity sequence.
+      id: 'quote-${widget.request.id}',
+      requestId: widget.request.id,
+      workshopId: widget.request.offering.provider.id,
+      partDescription: _part.text.trim(),
+      partPrice: _partAmount!,
+      laborPrice: _laborAmount!,
+      partBrand: _brand.text.trim().isEmpty ? null : _brand.text.trim(),
+      warrantyDays: int.tryParse(_warranty.text.trim()),
+      note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+      createdAt: DateTime.now(),
+    ),
+  );
 }

@@ -43,7 +43,9 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
     final request = await repository.createRequest(draft);
     state = [request, ...state];
 
-    ref.read(notificationsProvider.notifier).adopt(
+    ref
+        .read(notificationsProvider.notifier)
+        .adopt(
           await ref
               .read(notificationRepositoryProvider)
               .notifyRequestPlaced(request),
@@ -68,7 +70,9 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
         .createPartRequest(draft, car: car);
     state = [request, ...state];
 
-    ref.read(notificationsProvider.notifier).adopt(
+    ref
+        .read(notificationsProvider.notifier)
+        .adopt(
           await ref
               .read(notificationRepositoryProvider)
               .notifyPartRequestSent(request),
@@ -87,7 +91,9 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
         .submitQuote(id, quote);
     _replace(updated);
 
-    ref.read(notificationsProvider.notifier).adopt(
+    ref
+        .read(notificationsProvider.notifier)
+        .adopt(
           await ref
               .read(notificationRepositoryProvider)
               .notifyQuoteReceived(updated),
@@ -110,8 +116,9 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
   }) async {
     final current = state.firstWhereOrNull((r) => r.id == id);
     if (current == null) return null;
-    final allowed = current.escrow.transitions
-        .any((t) => t.event == event && t.actor == actor);
+    final allowed = current.escrow.transitions.any(
+      (t) => t.event == event && t.actor == actor,
+    );
     if (!allowed) return null;
     // Refused here as well as in the service so a mis-wired button is a no-op
     // rather than an exception surfacing from the data layer: a part-and-fit
@@ -133,7 +140,9 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
         );
     _replace(updated);
 
-    ref.read(notificationsProvider.notifier).adopt(
+    ref
+        .read(notificationsProvider.notifier)
+        .adopt(
           await ref
               .read(notificationRepositoryProvider)
               .notifyEscrowState(updated, updated.escrow),
@@ -145,15 +154,15 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
     // this line. `logCompletedBooking` is itself idempotent, because the
     // approval timer and `sweepExpiredApprovals` can both arrive here.
     if (updated.escrow == EscrowState.releasedToWorkshop) {
-      await ref
-          .read(maintenanceProvider.notifier)
-          .logCompletedBooking(updated);
+      await ref.read(maintenanceProvider.notifier).logCompletedBooking(updated);
       // Reviews are an *event*, not a state (spec §8): the release does not
       // wait for one, nothing is held back pending one, and no new escrow
       // state exists for one. All that happens is that both sides are now
       // allowed to write one, and the customer is told so.
       if (AppFlags.verifiedReviews) {
-        ref.read(notificationsProvider.notifier).adopt(
+        ref
+            .read(notificationsProvider.notifier)
+            .adopt(
               await ref
                   .read(notificationRepositoryProvider)
                   .notifyReviewUnlocked(updated),
@@ -168,18 +177,27 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
       // Accepting a price is agreeing to pay it — there is no second decision
       // to collect here.
       case EscrowState.quoteAccepted:
-        return fire(id, EscrowEvent.proceedToPayment,
-            actor: EscrowActor.system);
+        return fire(
+          id,
+          EscrowEvent.proceedToPayment,
+          actor: EscrowActor.system,
+        );
       // A workshop that quoted the job already committed to doing it, so it is
       // not asked to accept it a second time once the funds land.
       case EscrowState.fundsHeld when updated.type == BookingType.customQuote:
-        return fire(id, EscrowEvent.autoAcceptQuotedJob,
-            actor: EscrowActor.system);
+        return fire(
+          id,
+          EscrowEvent.autoAcceptQuotedJob,
+          actor: EscrowActor.system,
+        );
       // The customer should never see a booking sitting at "proof submitted"
       // waiting for something invisible to happen.
       case EscrowState.proofSubmitted:
-        return fire(id, EscrowEvent.handOffForApproval,
-            actor: EscrowActor.system);
+        return fire(
+          id,
+          EscrowEvent.handOffForApproval,
+          actor: EscrowActor.system,
+        );
       case EscrowState.awaitingApproval:
         _scheduleAutoRelease(updated);
         break;
@@ -195,36 +213,19 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
     final current = state.firstWhereOrNull((r) => r.id == id);
     final next = current?.escrow.happyPathNext;
     if (current == null || next == null) return;
-    final transition = current.escrow.transitions
-        .firstWhereOrNull((t) => t.to == next);
-    if (transition == null) return;
-    // A part-and-fit job's completion proof has to declare that it shows the
-    // part's own box (spec §6). That is a claim about evidence, and a demo
-    // timer is not entitled to make it on a workshop's behalf — so the
-    // simulator stops here and the workshop panel finishes the job by hand.
-    if (transition.event == EscrowEvent.submitProof &&
-        current.type == BookingType.customQuote) {
-      return;
-    }
-    await fire(
-      id,
-      transition.event,
-      actor: transition.actor,
-      proof: transition.event == EscrowEvent.submitProof
-          ? _placeholderlessProof(current)
-          : null,
+    final transition = current.escrow.transitions.firstWhereOrNull(
+      (t) => t.to == next,
     );
+    if (transition == null) return;
+    // The simulator stops at the proof (spec §3). Completion proof is photos
+    // of a real car taken by a real workshop, plus — on a part-and-fit job —
+    // a declaration that one of them shows the part's own box. A demo timer
+    // owns none of that and must not manufacture it: fabricated evidence is
+    // exactly the thing the escrow exists to prevent. From here the workshop
+    // panel finishes the job by hand, which is what a pilot does anyway.
+    if (transition.event == EscrowEvent.submitProof) return;
+    await fire(id, transition.event, actor: transition.actor);
   }
-
-  /// The simulator submits a proof with no media and no invented notes. A
-  /// staging build must not manufacture a workshop's words — an empty proof
-  /// renders as "notes only", which is exactly what it is.
-  ProofOfWork _placeholderlessProof(ServiceRequest request) => ProofOfWork(
-        id: 'proof-${request.id}',
-        requestId: request.id,
-        notes: '',
-        submittedAt: DateTime.now(),
-      );
 
   /// Releases any booking whose approval window has already lapsed — called
   /// when the list is rebuilt, because a timer set in a previous process does
@@ -242,31 +243,42 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
     if (deadline == null) return;
     final config = ref.read(appConfigProvider);
 
-    final untilReminder =
-        deadline.subtract(config.approvalReminderLead).difference(DateTime.now());
+    final untilReminder = deadline
+        .subtract(config.approvalReminderLead)
+        .difference(DateTime.now());
     if (!untilReminder.isNegative) {
-      _timers.add(Timer(untilReminder, () async {
-        final current = state.firstWhereOrNull((r) => r.id == request.id);
-        if (current?.escrow != EscrowState.awaitingApproval) return;
-        ref.read(notificationsProvider.notifier).adopt(
-              await ref
-                  .read(notificationRepositoryProvider)
-                  .notifyApprovalWindowClosing(current!, deadline),
-            );
-      }));
+      _timers.add(
+        Timer(untilReminder, () async {
+          final current = state.firstWhereOrNull((r) => r.id == request.id);
+          if (current?.escrow != EscrowState.awaitingApproval) return;
+          ref
+              .read(notificationsProvider.notifier)
+              .adopt(
+                await ref
+                    .read(notificationRepositoryProvider)
+                    .notifyApprovalWindowClosing(current!, deadline),
+              );
+        }),
+      );
     }
 
     final untilRelease = deadline.difference(DateTime.now());
-    _timers.add(Timer(
-      untilRelease.isNegative ? Duration.zero : untilRelease,
-      () => fire(request.id, EscrowEvent.autoRelease, actor: EscrowActor.system),
-    ));
+    _timers.add(
+      Timer(
+        untilRelease.isNegative ? Duration.zero : untilRelease,
+        () => fire(
+          request.id,
+          EscrowEvent.autoRelease,
+          actor: EscrowActor.system,
+        ),
+      ),
+    );
   }
 
   void _replace(ServiceRequest updated) => state = [
-        for (final r in state)
-          if (r.id == updated.id) updated else r,
-      ];
+    for (final r in state)
+      if (r.id == updated.id) updated else r,
+  ];
 
   /// Staging stand-in for the workshop portal and the founder's manual
   /// confirmations: walks the happy path so a demo booking reaches "awaiting
@@ -274,16 +286,15 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
   /// Gated behind [AppConfig.simulateProviderLifecycle].
   void _simulateLifecycle(String requestId) {
     for (final seconds in const [4, 10, 20, 34]) {
-      _timers.add(
-        Timer(Duration(seconds: seconds), () => advance(requestId)),
-      );
+      _timers.add(Timer(Duration(seconds: seconds), () => advance(requestId)));
     }
   }
 }
 
 final requestsProvider =
     NotifierProvider<RequestsNotifier, List<ServiceRequest>>(
-        RequestsNotifier.new);
+      RequestsNotifier.new,
+    );
 
 /// The request the tracking card follows: the first that has not finished.
 final activeRequestProvider = Provider<ServiceRequest?>((ref) {
@@ -294,10 +305,12 @@ final activeRequestProvider = Provider<ServiceRequest?>((ref) {
 });
 
 /// Bookings the customer has to act on — the approval queue.
-final awaitingApprovalProvider = Provider<List<ServiceRequest>>((ref) => [
-      for (final r in ref.watch(requestsProvider))
-        if (r.escrow == EscrowState.awaitingApproval) r,
-    ]);
+final awaitingApprovalProvider = Provider<List<ServiceRequest>>(
+  (ref) => [
+    for (final r in ref.watch(requestsProvider))
+      if (r.escrow == EscrowState.awaitingApproval) r,
+  ],
+);
 
 /// Bookings the current role can move right now. Drives both operator panels:
 /// each shows exactly the jobs where its own buttons would do something.

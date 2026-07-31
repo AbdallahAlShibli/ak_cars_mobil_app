@@ -17,25 +17,28 @@ import 'helpers/test_harness.dart';
 
 const _car = Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2019);
 
-Future<ProviderContainer> _container() =>
-    createTestContainer(overrides: [
-      appConfigProvider.overrideWithValue(
-        AppConfig.forEnvironment(AppEnvironment.development)
-            .copyWith(simulateProviderLifecycle: false),
-      ),
-    ]);
+Future<ProviderContainer> _container() => createTestContainer(
+  overrides: [
+    appConfigProvider.overrideWithValue(
+      AppConfig.forEnvironment(
+        AppEnvironment.development,
+      ).copyWith(simulateProviderLifecycle: false),
+    ),
+  ],
+);
 
-Future<ServiceRequest> _book(ProviderContainer container) =>
-    container.read(requestsProvider.notifier).place(
-          CreateServiceRequestDraft(
-            offering: MockServiceData.offerings.first,
-            car: _car,
-            plate: '1234 AB',
-            fulfillment: Fulfillment.workshop,
-            slot: 'Mon 3 Aug · 10:30',
-            addOnIds: const {},
-          ),
-        );
+Future<ServiceRequest> _book(ProviderContainer container) => container
+    .read(requestsProvider.notifier)
+    .place(
+      CreateServiceRequestDraft(
+        offering: MockServiceData.offerings.first,
+        car: _car,
+        plate: '1234 AB',
+        fulfillment: Fulfillment.workshop,
+        slot: 'Mon 3 Aug · 10:30',
+        addOnIds: const {},
+      ),
+    );
 
 Future<void> _pump(
   WidgetTester tester,
@@ -67,8 +70,9 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets('the founder panel offers only the founder’s transitions',
-      (tester) async {
+  testWidgets('the founder panel offers only the founder’s transitions', (
+    tester,
+  ) async {
     final container = await _container();
     await _book(container);
     await _pump(tester, container, const AdminScreen());
@@ -82,11 +86,14 @@ void main() {
     expect(find.text('OMR 0.00'), findsOneWidget);
   });
 
-  testWidgets('the workshop panel picks up a job once the funds are held',
-      (tester) async {
+  testWidgets('the workshop panel picks up a job once the funds are held', (
+    tester,
+  ) async {
     final container = await _container();
     final request = await _book(container);
-    await container.read(requestsProvider.notifier).fire(
+    await container
+        .read(requestsProvider.notifier)
+        .fire(
           request.id,
           EscrowEvent.confirmFundsHeld,
           actor: EscrowActor.founder,
@@ -99,8 +106,9 @@ void main() {
     expect(find.text('Start work'), findsNothing);
   });
 
-  testWidgets('the approval screen shows the real proof, never a placeholder',
-      (tester) async {
+  testWidgets('the approval screen shows the real proof, never a placeholder', (
+    tester,
+  ) async {
     final container = await _container();
     final request = await _book(container);
     final notifier = container.read(requestsProvider.notifier);
@@ -110,25 +118,30 @@ void main() {
       (EscrowEvent.acceptJob, EscrowActor.workshop),
       (EscrowEvent.startWork, EscrowActor.workshop),
     ]) {
-      await notifier.fire(request.id, event, actor: actor);
+      await notifier.fire(
+        request.id,
+        event,
+        actor: actor,
+        proof: event == EscrowEvent.submitProof ? testProof(request.id) : null,
+      );
     }
     await notifier.fire(
       request.id,
       EscrowEvent.submitProof,
       actor: EscrowActor.workshop,
-      proof: ProofOfWork(
-        id: 'p1',
-        requestId: request.id,
+      proof: testProof(
+        request.id,
         notes: 'New oil and genuine filter fitted.',
-        submittedAt: DateTime.now(),
       ),
     );
 
     await _pump(tester, container, ApprovalScreen(requestId: request.id));
 
     expect(find.text('New oil and genuine filter fitted.'), findsOneWidget);
-    // Notes but no photos says so in words rather than drawing empty tiles.
-    expect(find.textContaining('written notes only'), findsOneWidget);
+    // The photos are the proof (spec §3) — a notes-only submission can no
+    // longer reach this screen, so the gallery is always drawn.
+    expect(find.byType(Image), findsWidgets);
+    expect(find.textContaining('written notes only'), findsNothing);
     expect(find.text('Approve & release payment'), findsOneWidget);
     expect(find.textContaining('Auto-releases in 3 day'), findsOneWidget);
 
@@ -138,8 +151,9 @@ void main() {
     container.dispose();
   });
 
-  testWidgets('a disputed booking still counts toward the escrow total',
-      (tester) async {
+  testWidgets('a disputed booking still counts toward the escrow total', (
+    tester,
+  ) async {
     final container = await _container();
     final request = await _book(container);
     final notifier = container.read(requestsProvider.notifier);
@@ -150,7 +164,12 @@ void main() {
       (EscrowEvent.startWork, EscrowActor.workshop),
       (EscrowEvent.submitProof, EscrowActor.workshop),
     ]) {
-      await notifier.fire(request.id, event, actor: actor);
+      await notifier.fire(
+        request.id,
+        event,
+        actor: actor,
+        proof: event == EscrowEvent.submitProof ? testProof(request.id) : null,
+      );
     }
     await notifier.fire(
       request.id,
@@ -166,10 +185,7 @@ void main() {
     // A dispute moves the booking out of "in flight" and into its own
     // section, but not out of escrow — the customer was told the funds stay
     // held, so the founder's total has to say the same.
-    expect(
-      find.text('OMR ${disputed.total.toStringAsFixed(2)}'),
-      findsWidgets,
-    );
+    expect(find.text('OMR ${disputed.total.toStringAsFixed(2)}'), findsWidgets);
     expect(find.text('OMR 0.00'), findsNothing);
 
     container.dispose();

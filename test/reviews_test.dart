@@ -15,20 +15,23 @@ import 'helpers/test_harness.dart';
 const _car = Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2019);
 
 CreateServiceRequestDraft _draft() => CreateServiceRequestDraft(
-      offering: MockServiceData.offerings.first,
-      car: _car,
-      plate: '1234 AB',
-      fulfillment: Fulfillment.workshop,
-      slot: 'Mon 3 Aug · 10:30',
-      addOnIds: const {},
-    );
+  offering: MockServiceData.offerings.first,
+  car: _car,
+  plate: '1234 AB',
+  fulfillment: Fulfillment.workshop,
+  slot: 'Mon 3 Aug · 10:30',
+  addOnIds: const {},
+);
 
-Future<ProviderContainer> _container() => createTestContainer(overrides: [
-      appConfigProvider.overrideWithValue(
-        AppConfig.forEnvironment(AppEnvironment.development)
-            .copyWith(simulateProviderLifecycle: false),
-      ),
-    ]);
+Future<ProviderContainer> _container() => createTestContainer(
+  overrides: [
+    appConfigProvider.overrideWithValue(
+      AppConfig.forEnvironment(
+        AppEnvironment.development,
+      ).copyWith(simulateProviderLifecycle: false),
+    ),
+  ],
+);
 
 /// Walks a booking all the way to a released payment.
 Future<ServiceRequest> _completed(ProviderContainer container) async {
@@ -41,7 +44,12 @@ Future<ServiceRequest> _completed(ProviderContainer container) async {
     (EscrowEvent.submitProof, EscrowActor.workshop),
     (EscrowEvent.approve, EscrowActor.customer),
   ]) {
-    await notifier.fire(request.id, event, actor: actor);
+    await notifier.fire(
+      request.id,
+      event,
+      actor: actor,
+      proof: event == EscrowEvent.submitProof ? testProof(request.id) : null,
+    );
   }
   return container.read(requestsProvider).firstWhere((r) => r.id == request.id);
 }
@@ -57,12 +65,17 @@ void main() {
 
     test('a booking still in progress cannot be reviewed', () async {
       final container = await _container();
-      final request =
-          await container.read(requestsProvider.notifier).place(_draft());
+      final request = await container
+          .read(requestsProvider.notifier)
+          .place(_draft());
 
-      expect(container.read(reviewRepositoryProvider).reviewable(request),
-          isFalse);
-      final review = await container.read(reviewsProvider.notifier).submit(
+      expect(
+        container.read(reviewRepositoryProvider).reviewable(request),
+        isFalse,
+      );
+      final review = await container
+          .read(reviewsProvider.notifier)
+          .submit(
             request,
             direction: ReviewDirection.customerToWorkshop,
             rating: 5,
@@ -76,10 +89,13 @@ void main() {
       final request = await _completed(container);
 
       expect(request.escrow, EscrowState.releasedToWorkshop);
-      expect(container.read(pendingCustomerReviewsProvider).map((r) => r.id),
-          [request.id]);
+      expect(container.read(pendingCustomerReviewsProvider).map((r) => r.id), [
+        request.id,
+      ]);
 
-      final review = await container.read(reviewsProvider.notifier).submit(
+      final review = await container
+          .read(reviewsProvider.notifier)
+          .submit(
             request,
             direction: ReviewDirection.customerToWorkshop,
             rating: 5,
@@ -95,10 +111,16 @@ void main() {
       final request = await _completed(container);
       final reviews = container.read(reviewsProvider.notifier);
 
-      await reviews.submit(request,
-          direction: ReviewDirection.customerToWorkshop, rating: 5);
-      final second = await reviews.submit(request,
-          direction: ReviewDirection.customerToWorkshop, rating: 1);
+      await reviews.submit(
+        request,
+        direction: ReviewDirection.customerToWorkshop,
+        rating: 5,
+      );
+      final second = await reviews.submit(
+        request,
+        direction: ReviewDirection.customerToWorkshop,
+        rating: 1,
+      );
 
       expect(second, isNull);
       expect(container.read(reviewsProvider).length, 1);
@@ -109,27 +131,36 @@ void main() {
       final request = await _completed(container);
       final reviews = container.read(reviewsProvider.notifier);
 
-      expect(container.read(pendingWorkshopReviewsProvider).map((r) => r.id),
-          [request.id]);
+      expect(container.read(pendingWorkshopReviewsProvider).map((r) => r.id), [
+        request.id,
+      ]);
 
-      await reviews.submit(request,
-          direction: ReviewDirection.customerToWorkshop, rating: 4);
-      await reviews.submit(request,
-          direction: ReviewDirection.workshopToCustomer, rating: 5);
+      await reviews.submit(
+        request,
+        direction: ReviewDirection.customerToWorkshop,
+        rating: 4,
+      );
+      await reviews.submit(
+        request,
+        direction: ReviewDirection.workshopToCustomer,
+        rating: 5,
+      );
 
       expect(container.read(reviewsProvider).length, 2);
       expect(container.read(pendingWorkshopReviewsProvider), isEmpty);
     });
 
     test('an automatic release is reviewable too', () async {
-      final container = await createTestContainer(overrides: [
-        appConfigProvider.overrideWithValue(
-          AppConfig.forEnvironment(AppEnvironment.development).copyWith(
-            simulateProviderLifecycle: false,
-            approvalWindow: Duration.zero,
+      final container = await createTestContainer(
+        overrides: [
+          appConfigProvider.overrideWithValue(
+            AppConfig.forEnvironment(AppEnvironment.development).copyWith(
+              simulateProviderLifecycle: false,
+              approvalWindow: Duration.zero,
+            ),
           ),
-        ),
-      ]);
+        ],
+      );
       final notifier = container.read(requestsProvider.notifier);
       final request = await notifier.place(_draft());
       for (final (event, actor) in const [
@@ -138,28 +169,44 @@ void main() {
         (EscrowEvent.startWork, EscrowActor.workshop),
         (EscrowEvent.submitProof, EscrowActor.workshop),
       ]) {
-        await notifier.fire(request.id, event, actor: actor);
+        await notifier.fire(
+          request.id,
+          event,
+          actor: actor,
+          proof: event == EscrowEvent.submitProof
+              ? testProof(request.id)
+              : null,
+        );
       }
       await notifier.sweepExpiredApprovals();
 
-      final released =
-          container.read(requestsProvider).firstWhere((r) => r.id == request.id);
+      final released = container
+          .read(requestsProvider)
+          .firstWhere((r) => r.id == request.id);
       expect(released.escrow, EscrowState.releasedToWorkshop);
-      expect(container.read(reviewRepositoryProvider).reviewable(released),
-          isTrue);
+      expect(
+        container.read(reviewRepositoryProvider).reviewable(released),
+        isTrue,
+      );
     });
 
     test('a cancelled booking is never reviewable', () async {
       final container = await _container();
       final notifier = container.read(requestsProvider.notifier);
       final request = await notifier.place(_draft());
-      await notifier.fire(request.id, EscrowEvent.cancelBooking,
-          actor: EscrowActor.customer);
+      await notifier.fire(
+        request.id,
+        EscrowEvent.cancelBooking,
+        actor: EscrowActor.customer,
+      );
 
-      final cancelled =
-          container.read(requestsProvider).firstWhere((r) => r.id == request.id);
-      expect(container.read(reviewRepositoryProvider).reviewable(cancelled),
-          isFalse);
+      final cancelled = container
+          .read(requestsProvider)
+          .firstWhere((r) => r.id == request.id);
+      expect(
+        container.read(reviewRepositoryProvider).reviewable(cancelled),
+        isFalse,
+      );
     });
   });
 
@@ -176,7 +223,9 @@ void main() {
       final providerId = request.offering.provider.id;
       final before = container.read(providerRatingProvider(providerId));
 
-      await container.read(reviewsProvider.notifier).submit(
+      await container
+          .read(reviewsProvider.notifier)
+          .submit(
             request,
             direction: ReviewDirection.customerToWorkshop,
             rating: 1,
@@ -187,20 +236,24 @@ void main() {
       if (before != null) expect(after.rating, lessThan(before.rating));
     });
 
-    test('a review of the customer does not touch the workshop rating',
-        () async {
-      final container = await _container();
-      final request = await _completed(container);
-      final providerId = request.offering.provider.id;
-      final before = container.read(providerRatingProvider(providerId));
+    test(
+      'a review of the customer does not touch the workshop rating',
+      () async {
+        final container = await _container();
+        final request = await _completed(container);
+        final providerId = request.offering.provider.id;
+        final before = container.read(providerRatingProvider(providerId));
 
-      await container.read(reviewsProvider.notifier).submit(
-            request,
-            direction: ReviewDirection.workshopToCustomer,
-            rating: 1,
-          );
-      expect(container.read(providerRatingProvider(providerId)), before);
-    });
+        await container
+            .read(reviewsProvider.notifier)
+            .submit(
+              request,
+              direction: ReviewDirection.workshopToCustomer,
+              rating: 1,
+            );
+        expect(container.read(providerRatingProvider(providerId)), before);
+      },
+    );
   });
 
   group('editing', () {
@@ -209,8 +262,11 @@ void main() {
       final request = await _completed(container);
       final reviews = container.read(reviewsProvider.notifier);
 
-      final original = await reviews.submit(request,
-          direction: ReviewDirection.customerToWorkshop, rating: 2);
+      final original = await reviews.submit(
+        request,
+        direction: ReviewDirection.customerToWorkshop,
+        rating: 2,
+      );
       final edited = await reviews.edit(original!.id, rating: 4);
 
       expect(edited!.rating, 4);

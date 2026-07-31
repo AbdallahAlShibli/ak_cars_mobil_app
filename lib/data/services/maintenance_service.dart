@@ -1,6 +1,10 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../config/app_config.dart';
+import '../../core/constants/app_constants.dart';
 import '../models/maintenance.dart';
 import 'mock_service_base.dart';
+import 'prefs_collection.dart';
 
 /// One maintenance book per registered car.
 ///
@@ -45,12 +49,17 @@ abstract interface class MaintenanceService {
   Future<MaintenanceBook> setKmInterval(String carId, String itemKey, int? km);
 
   Future<MaintenanceBook> setMonthInterval(
-      String carId, String itemKey, int? months);
+    String carId,
+    String itemKey,
+    int? months,
+  );
 
   /// `POST /user/vehicles/{carId}/maintenance/items` — the owner's own extra
   /// line. Upserts by item id.
   Future<MaintenanceBook> saveCustomItem(
-      String carId, CustomMaintenanceItem item);
+    String carId,
+    CustomMaintenanceItem item,
+  );
 
   /// `DELETE /user/vehicles/{carId}/maintenance/items/{itemId}` — removes the
   /// item and the records filed under it, since they no longer have a line to
@@ -58,17 +67,38 @@ abstract interface class MaintenanceService {
   Future<MaintenanceBook> removeCustomItem(String carId, String itemId);
 }
 
+/// Stands in for the server *and* the table it would keep the books in.
+///
+/// Persisted for the same reason the garage is: the mileage entered when a car
+/// is registered, and every record logged against it since, is the user's own
+/// data. Kept only in memory it vanished on the next launch, so a car
+/// restored from the device would come back with an empty history it had not
+/// actually lost.
 class MockMaintenanceService
     with MockServiceBase
     implements MaintenanceService {
-  MockMaintenanceService({required this.config});
+  MockMaintenanceService({
+    required this.config,
+    required SharedPreferences prefs,
+  }) : _storage = PrefsCollection<MaintenanceBook>(
+         prefs: prefs,
+         key: AppConstants.prefsMaintenance,
+         fromJson: MaintenanceBook.fromJson,
+         toJson: (book) => book.toJson(),
+       ) {
+    for (final book in _storage.load()) {
+      _books[book.carId] = book;
+    }
+  }
 
   @override
   final AppConfig config;
 
-  /// Starts empty. A fresh install has no cars, so it has no maintenance
-  /// history either — the demo book that used to live here made every first
-  /// run show services a car had never had.
+  final PrefsCollection<MaintenanceBook> _storage;
+
+  /// Seeded from the device on construction. Empty on a fresh install: no
+  /// cars means no maintenance history either — the demo book that used to
+  /// live here made every first run show services a car had never had.
   final Map<String, MaintenanceBook> _books = {};
 
   @override
@@ -77,11 +107,12 @@ class MockMaintenanceService
 
   @override
   Future<MaintenanceBook> createBook(String carId) =>
-      respond(_books[carId] ??= MaintenanceBook.empty(carId));
+      _store(_books[carId] ??= MaintenanceBook.empty(carId));
 
   @override
   Future<void> removeBook(String carId) {
     _books.remove(carId);
+    _save();
     return respond(null);
   }
 
@@ -97,17 +128,19 @@ class MockMaintenanceService
     // Built rather than copied: clearing the previous reading has to be
     // distinguishable from leaving it alone, and `copyWith`'s null means
     // "unchanged" (see ARCHITECTURE.md §4).
-    return _store(MaintenanceBook(
-      carId: carId,
-      currentOdometerKm: km,
-      odometerUpdatedAt: DateTime.now(),
-      previousOdometerKm: forward ? book.currentOdometerKm : null,
-      previousOdometerAt: forward ? book.odometerUpdatedAt : null,
-      records: book.records,
-      customItems: book.customItems,
-      kmIntervals: book.kmIntervals,
-      monthIntervals: book.monthIntervals,
-    ));
+    return _store(
+      MaintenanceBook(
+        carId: carId,
+        currentOdometerKm: km,
+        odometerUpdatedAt: DateTime.now(),
+        previousOdometerKm: forward ? book.currentOdometerKm : null,
+        previousOdometerAt: forward ? book.odometerUpdatedAt : null,
+        records: book.records,
+        customItems: book.customItems,
+        kmIntervals: book.kmIntervals,
+        monthIntervals: book.monthIntervals,
+      ),
+    );
   }
 
   @override
@@ -115,83 +148,108 @@ class MockMaintenanceService
     final book = _book(carId);
     // Upsert, not append: the completion of one booking writes one record no
     // matter how many times the event reaches us.
-    return _store(book.copyWith(records: [
-      record,
-      for (final r in book.records)
-        if (r.id != record.id) r,
-    ]));
+    return _store(
+      book.copyWith(
+        records: [
+          record,
+          for (final r in book.records)
+            if (r.id != record.id) r,
+        ],
+      ),
+    );
   }
 
   @override
   Future<MaintenanceBook> updateRecord(String carId, ServiceRecord record) {
     final book = _book(carId);
-    return _store(book.copyWith(records: [
-      for (final r in book.records)
-        if (r.id == record.id) record else r,
-    ]));
+    return _store(
+      book.copyWith(
+        records: [
+          for (final r in book.records)
+            if (r.id == record.id) record else r,
+        ],
+      ),
+    );
   }
 
   @override
   Future<MaintenanceBook> removeRecord(String carId, String recordId) {
     final book = _book(carId);
-    return _store(book.copyWith(records: [
-      for (final r in book.records)
-        if (r.id != recordId) r,
-    ]));
+    return _store(
+      book.copyWith(
+        records: [
+          for (final r in book.records)
+            if (r.id != recordId) r,
+        ],
+      ),
+    );
   }
 
   @override
   Future<MaintenanceBook> setKmInterval(String carId, String itemKey, int? km) {
     final book = _book(carId);
-    return _store(book.copyWith(
-      kmIntervals: _withInterval(book.kmIntervals, itemKey, km),
-    ));
+    return _store(
+      book.copyWith(kmIntervals: _withInterval(book.kmIntervals, itemKey, km)),
+    );
   }
 
   @override
   Future<MaintenanceBook> setMonthInterval(
-      String carId, String itemKey, int? months) {
+    String carId,
+    String itemKey,
+    int? months,
+  ) {
     final book = _book(carId);
-    return _store(book.copyWith(
-      monthIntervals: _withInterval(book.monthIntervals, itemKey, months),
-    ));
+    return _store(
+      book.copyWith(
+        monthIntervals: _withInterval(book.monthIntervals, itemKey, months),
+      ),
+    );
   }
 
   @override
   Future<MaintenanceBook> saveCustomItem(
-      String carId, CustomMaintenanceItem item) {
+    String carId,
+    CustomMaintenanceItem item,
+  ) {
     final book = _book(carId);
     final replaced = book.customItemById(item.id) != null;
-    return _store(book.copyWith(customItems: [
-      for (final c in book.customItems)
-        if (c.id == item.id) item else c,
-      if (!replaced) item,
-    ]));
+    return _store(
+      book.copyWith(
+        customItems: [
+          for (final c in book.customItems)
+            if (c.id == item.id) item else c,
+          if (!replaced) item,
+        ],
+      ),
+    );
   }
 
   @override
   Future<MaintenanceBook> removeCustomItem(String carId, String itemId) {
     final book = _book(carId);
-    return _store(book.copyWith(
-      customItems: [
-        for (final c in book.customItems)
-          if (c.id != itemId) c,
-      ],
-      // The records filed under it go too: a record whose item no longer
-      // exists would sit in the history with nothing to reset.
-      records: [
-        for (final r in book.records)
-          if (r.itemKey != itemId) r,
-      ],
-      kmIntervals: {
-        for (final e in book.kmIntervals.entries)
-          if (e.key != itemId) e.key: e.value,
-      },
-      monthIntervals: {
-        for (final e in book.monthIntervals.entries)
-          if (e.key != itemId) e.key: e.value,
-      },
-    ));
+    return _store(
+      book.copyWith(
+        customItems: [
+          for (final c in book.customItems)
+            if (c.id != itemId) c,
+        ],
+        // The records filed under it go too: a record whose item no longer
+        // exists would sit in the history with nothing to reset.
+        records: [
+          for (final r in book.records)
+            if (r.itemKey != itemId) r,
+        ],
+        kmIntervals: {
+          for (final e in book.kmIntervals.entries)
+            if (e.key != itemId) e.key: e.value,
+        },
+        monthIntervals: {
+          for (final e in book.monthIntervals.entries)
+            if (e.key != itemId) e.key: e.value,
+        },
+      ),
+    );
   }
 
   /// The car's book, created on demand — a write against a car registered
@@ -199,19 +257,23 @@ class MockMaintenanceService
   MaintenanceBook _book(String carId) =>
       _books[carId] ??= MaintenanceBook.empty(carId);
 
+  /// The single write path: every mutation above ends here, so no change can
+  /// reach memory without also reaching the device.
   Future<MaintenanceBook> _store(MaintenanceBook book) {
     _books[book.carId] = book;
+    _save();
     return respond(book);
   }
+
+  void _save() => _storage.save(_books.values);
 
   static Map<String, int> _withInterval(
     Map<String, int> intervals,
     String itemKey,
     int? value,
-  ) =>
-      {
-        for (final e in intervals.entries)
-          if (e.key != itemKey) e.key: e.value,
-        if (value != null && value > 0) itemKey: value,
-      };
+  ) => {
+    for (final e in intervals.entries)
+      if (e.key != itemKey) e.key: e.value,
+    if (value != null && value > 0) itemKey: value,
+  };
 }

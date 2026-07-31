@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
+import '../../core/media/local_image.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
@@ -40,8 +41,7 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
     if (request == null) {
       return Scaffold(
         appBar: AppBar(title: Text(s.t('مراجعة', 'Review'))),
-        body: Center(
-            child: Text(s.t('الطلب غير موجود', 'Request not found'))),
+        body: Center(child: Text(s.t('الطلب غير موجود', 'Request not found'))),
       );
     }
 
@@ -52,8 +52,8 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
 
     return Scaffold(
       appBar: AppBar(
-          title: Text(
-              s.t('اكتمل العمل — للمراجعة', 'Work completed — review'))),
+        title: Text(s.t('اكتمل العمل — للمراجعة', 'Work completed — review')),
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -71,18 +71,24 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(request.offering.provider.name.of(s),
-                            style: const TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700)),
+                        Text(
+                          request.offering.provider.name.of(s),
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         Text(
                           proof == null
                               ? s.t('لم يصل إثبات بعد', 'No proof yet')
                               : s.t(
                                   'رُفع الإثبات ${_when(s, proof.submittedAt)}',
-                                  'Proof submitted ${_when(s, proof.submittedAt)}'),
+                                  'Proof submitted ${_when(s, proof.submittedAt)}',
+                                ),
                           style: const TextStyle(
-                              fontSize: 11.5, color: AppColors.ink3),
+                            fontSize: 11.5,
+                            color: AppColors.ink3,
+                          ),
                         ),
                       ],
                     ),
@@ -95,7 +101,8 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
             ),
             const SizedBox(height: 16),
             SectionHeader(
-                s.t('إثبات الإنجاز من الورشة', 'Proof of work from the workshop')),
+              s.t('إثبات الإنجاز من الورشة', 'Proof of work from the workshop'),
+            ),
             const SizedBox(height: 9),
             _ProofBody(proof: proof),
             // The workshop's declaration, shown to the person it was made to.
@@ -118,14 +125,19 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
                     Expanded(
                       child: Text(
                         proof.includesPartBoxPhoto
-                            ? s.t('أقرّت الورشة بأن الإثبات يتضمن علبة القطعة أو ملصقها. راجعها قبل الموافقة.',
-                                'The workshop declared that the proof includes the part’s box or label. Check it before approving.')
-                            : s.t('لم تقرّ الورشة بإرفاق علبة القطعة. اسألها في المحادثة قبل الموافقة.',
-                                'The workshop did not declare a photo of the part’s box. Ask them in the chat before approving.'),
+                            ? s.t(
+                                'أقرّت الورشة بأن الإثبات يتضمن علبة القطعة أو ملصقها. راجعها قبل الموافقة.',
+                                'The workshop declared that the proof includes the part’s box or label. Check it before approving.',
+                              )
+                            : s.t(
+                                'لم تقرّ الورشة بإرفاق علبة القطعة. اسألها في المحادثة قبل الموافقة.',
+                                'The workshop did not declare a photo of the part’s box. Ask them in the chat before approving.',
+                              ),
                         style: const TextStyle(
-                            fontSize: 11.5,
-                            height: 1.6,
-                            color: AppColors.ink3),
+                          fontSize: 11.5,
+                          height: 1.6,
+                          color: AppColors.ink3,
+                        ),
                       ),
                     ),
                   ],
@@ -135,10 +147,15 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
                 const SizedBox(height: 10),
                 AppCard(
                   child: Text(
-                    s.t('كفالة الورشة على القطعة: ${s.days(request.partWarrantyDays!)}. تبدأ بعد التحرير، وهي منفصلة عن ضمان الدفع الذي ينتهي بموافقتك.',
-                        "Workshop's warranty on the part: ${s.days(request.partWarrantyDays!)}. It starts after release and is separate from the payment escrow, which ends with your approval."),
+                    s.t(
+                      'كفالة الورشة على القطعة: ${s.days(request.partWarrantyDays!)}. تبدأ بعد التحرير، وهي منفصلة عن ضمان الدفع الذي ينتهي بموافقتك.',
+                      "Workshop's warranty on the part: ${s.days(request.partWarrantyDays!)}. It starts after release and is separate from the payment escrow, which ends with your approval.",
+                    ),
                     style: const TextStyle(
-                        fontSize: 11.5, height: 1.6, color: AppColors.ink3),
+                      fontSize: 11.5,
+                      height: 1.6,
+                      color: AppColors.ink3,
+                    ),
                   ),
                 ),
               ],
@@ -149,9 +166,13 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: Text(s.t('المبلغ المُحرَّر', 'Total to release'),
-                        style: const TextStyle(
-                            fontSize: 12.5, color: AppColors.ink2)),
+                    child: Text(
+                      s.t('المبلغ المُحرَّر', 'Total to release'),
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.ink2,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Text(
@@ -171,8 +192,7 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
                 child: Text(
                   _deadlineLabel(s, deadline),
                   textAlign: TextAlign.center,
-                  style:
-                      const TextStyle(fontSize: 11.5, color: AppColors.ink3),
+                  style: const TextStyle(fontSize: 11.5, color: AppColors.ink3),
                 ),
               ),
             ],
@@ -183,15 +203,19 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(s.t('ملاحظتك', 'Your note'),
-                        style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ink3)),
+                    Text(
+                      s.t('ملاحظتك', 'Your note'),
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink3,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(request.disputeNote,
-                        style: const TextStyle(
-                            fontSize: 12.5, height: 1.6)),
+                    Text(
+                      request.disputeNote,
+                      style: const TextStyle(fontSize: 12.5, height: 1.6),
+                    ),
                   ],
                 ),
               ),
@@ -203,10 +227,11 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
               ),
               onPressed: open && !_busy ? () => _approve(request) : null,
               icon: const Icon(Icons.lock_open_rounded, size: 18),
-              label: Text(open
-                  ? s.t('الموافقة وتحرير الدفعة',
-                      'Approve & release payment')
-                  : request.escrow.label(s)),
+              label: Text(
+                open
+                    ? s.t('الموافقة وتحرير الدفعة', 'Approve & release payment')
+                    : request.escrow.label(s),
+              ),
             ),
             const SizedBox(height: 10),
             OutlinedButton(
@@ -226,18 +251,21 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
   Future<void> _approve(ServiceRequest request) async {
     final s = S.of(context);
     setState(() => _busy = true);
-    await ref.read(requestsProvider.notifier).fire(
-          request.id,
-          EscrowEvent.approve,
-          actor: EscrowActor.customer,
-        );
+    await ref
+        .read(requestsProvider.notifier)
+        .fire(request.id, EscrowEvent.approve, actor: EscrowActor.customer);
     if (!mounted) return;
     setState(() => _busy = false);
     HapticFeedback.heavyImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text(s.t('تم تحرير الدفعة للورشة — شكراً لك',
-              'Payment released to the workshop — thank you'))),
+        content: Text(
+          s.t(
+            'تم تحرير الدفعة للورشة — شكراً لك',
+            'Payment released to the workshop — thank you',
+          ),
+        ),
+      ),
     );
     context.go(AppFlags.startLocation);
   }
@@ -254,7 +282,9 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
     if (note == null || note.trim().isEmpty || !mounted) return;
 
     setState(() => _busy = true);
-    await ref.read(requestsProvider.notifier).fire(
+    await ref
+        .read(requestsProvider.notifier)
+        .fire(
           request.id,
           EscrowEvent.raiseIssue,
           actor: EscrowActor.customer,
@@ -264,9 +294,13 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text(s.t(
-              'سُجّلت ملاحظتك — المبلغ ما زال محجوزاً حتى نراجع الطرفين',
-              'Your note is logged — the funds stay held until we review both sides'))),
+        content: Text(
+          s.t(
+            'سُجّلت ملاحظتك — المبلغ ما زال محجوزاً حتى نراجع الطرفين',
+            'Your note is logged — the funds stay held until we review both sides',
+          ),
+        ),
+      ),
     );
     context.go('/track/${request.id}');
   }
@@ -274,18 +308,24 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
   String _deadlineLabel(S s, DateTime deadline) {
     final left = deadline.difference(DateTime.now());
     if (left.isNegative) {
-      return s.t('انتهت المهلة — التحرير التلقائي جارٍ.',
-          'The window has closed — the automatic release is running.');
+      return s.t(
+        'انتهت المهلة — التحرير التلقائي جارٍ.',
+        'The window has closed — the automatic release is running.',
+      );
     }
     final hours = left.inHours;
     // Rounded up: with 71 hours left, "in 2 days" understates the window the
     // customer actually has.
     final days = (hours / 24).ceil();
     return hours >= 24
-        ? s.t('يُحرَّر تلقائياً خلال $days أيام إن لم تتخذ إجراءً',
-            'Auto-releases in $days day(s) if you take no action')
-        : s.t('يُحرَّر تلقائياً بعد $hours ساعة إن لم تتخذ إجراءً',
-            'Auto-releases in $hours hours if you take no action');
+        ? s.t(
+            'يُحرَّر تلقائياً خلال $days أيام إن لم تتخذ إجراءً',
+            'Auto-releases in $days day(s) if you take no action',
+          )
+        : s.t(
+            'يُحرَّر تلقائياً بعد $hours ساعة إن لم تتخذ إجراءً',
+            'Auto-releases in $hours hours if you take no action',
+          );
   }
 
   String _when(S s, DateTime at) {
@@ -317,10 +357,15 @@ class _ProofBody extends StatelessWidget {
     if (proof == null) {
       return AppCard(
         child: Text(
-          s.t('لم ترفع الورشة إثباتاً بعد.',
-              'The workshop has not submitted any proof yet.'),
+          s.t(
+            'لم ترفع الورشة إثباتاً بعد.',
+            'The workshop has not submitted any proof yet.',
+          ),
           style: const TextStyle(
-              fontSize: 12.5, color: AppColors.ink3, height: 1.6),
+            fontSize: 12.5,
+            color: AppColors.ink3,
+            height: 1.6,
+          ),
         ),
       );
     }
@@ -341,10 +386,15 @@ class _ProofBody extends StatelessWidget {
         else
           AppCard(
             child: Text(
-              s.t('لا توجد صور مرفقة — أرسلت الورشة ملاحظات مكتوبة فقط.',
-                  'No photos attached — the workshop submitted written notes only.'),
+              s.t(
+                'لا توجد صور مرفقة — أرسلت الورشة ملاحظات مكتوبة فقط.',
+                'No photos attached — the workshop submitted written notes only.',
+              ),
               style: const TextStyle(
-                  fontSize: 12, color: AppColors.ink3, height: 1.6),
+                fontSize: 12,
+                color: AppColors.ink3,
+                height: 1.6,
+              ),
             ),
           ),
         if (proof!.notes.isNotEmpty) ...[
@@ -353,7 +403,10 @@ class _ProofBody extends StatelessWidget {
             child: Text(
               proof!.notes,
               style: const TextStyle(
-                  fontSize: 12.5, color: AppColors.ink2, height: 1.6),
+                fontSize: 12.5,
+                color: AppColors.ink2,
+                height: 1.6,
+              ),
             ),
           ),
         ],
@@ -369,10 +422,10 @@ class _ProofTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Served media only. On-device capture needs a file-picker plugin the app
-    // does not depend on yet, and `dart:io` cannot be imported here without
-    // breaking the web build — so a local path renders as unavailable rather
-    // than as nothing.
+    // Two sources, both normal. A backend-hosted proof arrives as an https
+    // URL; one the workshop shot on this device is still a local file, because
+    // the pilot has no upload step yet. `localImage` is the conditional-import
+    // shim that keeps `dart:io` out of the web build.
     final remote = media.uri.startsWith('http');
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -380,9 +433,12 @@ class _ProofTile extends StatelessWidget {
         width: 112,
         height: 86,
         child: remote
-            ? Image.network(media.uri, fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const _ProofTileFallback())
-            : const _ProofTileFallback(),
+            ? Image.network(
+                media.uri,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const _ProofTileFallback(),
+              )
+            : localImage(media.uri, onError: (_) => const _ProofTileFallback()),
       ),
     );
   }
@@ -393,11 +449,14 @@ class _ProofTileFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        color: AppColors.field,
-        alignment: Alignment.center,
-        child: const Icon(Icons.broken_image_outlined,
-            size: 22, color: AppColors.ink3),
-      );
+    color: AppColors.field,
+    alignment: Alignment.center,
+    child: const Icon(
+      Icons.broken_image_outlined,
+      size: 22,
+      color: AppColors.ink3,
+    ),
+  );
 }
 
 class _IssueSheet extends StatefulWidget {
@@ -423,18 +482,25 @@ class _IssueSheetState extends State<_IssueSheet> {
     final s = widget.s;
     return Padding(
       padding: EdgeInsets.fromLTRB(
-          20, 8, 20, MediaQuery.viewInsetsOf(context).bottom + 20),
+        20,
+        8,
+        20,
+        MediaQuery.viewInsetsOf(context).bottom + 20,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(s.t('ما المشكلة؟', "What's wrong?"),
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          Text(
+            s.t('ما المشكلة؟', "What's wrong?"),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 6),
           Text(
-            s.t('اكتبها بكلماتك — تصل كما هي إلى من سيراجع النزاع. يبقى المبلغ محجوزاً حتى ذلك الحين.',
-                'In your own words — it reaches whoever reviews the dispute exactly as written. The funds stay held until then.'),
+            s.t(
+              'اكتبها بكلماتك — تصل كما هي إلى من سيراجع النزاع. يبقى المبلغ محجوزاً حتى ذلك الحين.',
+              'In your own words — it reaches whoever reviews the dispute exactly as written. The funds stay held until then.',
+            ),
             style: const TextStyle(fontSize: 12, color: AppColors.ink3),
           ),
           const SizedBox(height: 14),

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/contact.dart';
+import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
@@ -32,7 +33,10 @@ class TrackingScreen extends ConsumerWidget {
 
     if (request == null) {
       return Scaffold(
-        appBar: AppBar(title: Text(s.t('الطلب', 'Request'))),
+        appBar: AppBar(
+          leading: const _TrackingExit(),
+          title: Text(s.t('الطلب', 'Request')),
+        ),
         body: Center(
             child: Text(s.t('الطلب غير موجود', 'Request not found'))),
       );
@@ -89,6 +93,7 @@ class TrackingScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const _TrackingExit(),
         title: Text(s.t('الطلب #${request.id}', 'Request #${request.id}')),
         actions: [
           Padding(
@@ -505,4 +510,36 @@ class _TimelineStep extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The way out of the booking details page.
+///
+/// This screen is entered two different ways and only one of them leaves a
+/// stack behind. The bookings list and the founder's panel `push` it, so
+/// popping is right. But finishing a booking, sending a part request,
+/// accepting a quote and approving a job all `go` here — and `go` *replaces*
+/// the stack, deliberately, so that "back" cannot return the user to a form
+/// they have already submitted.
+///
+/// The cost of that was a dead end: `AppBar` only draws a back button when
+/// `canPop()` is true, and `/track/:id` lives outside the tab shell, so a
+/// customer who had just paid for something landed on a page with no back
+/// button, no bottom navigation, and no way out of it at all.
+///
+/// So the exit is explicit rather than inherited: pop when there is something
+/// to pop, otherwise go to the bookings tab — which is where the booking now
+/// lives, and the same place the user would otherwise have opened it from.
+class _TrackingExit extends StatelessWidget {
+  const _TrackingExit();
+
+  @override
+  Widget build(BuildContext context) => SandBackButton(
+        onTap: () {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go('/bookings');
+          }
+        },
+      );
 }

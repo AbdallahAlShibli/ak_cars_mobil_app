@@ -18,6 +18,14 @@
 	<string>ak_cars_mobil_app</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Completion proof (escrow §3): the workshop photographs the finished
+	     job before the customer's payment may be released. Both strings are
+	     bilingual because the app ships Arabic-first and iOS shows these
+	     verbatim in the permission dialog. -->
+	<key>NSCameraUsageDescription</key>
+	<string>لتصوير إثبات إنجاز العمل قبل تحرير المبلغ. — To photograph proof that the work was completed, before the payment is released.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>لإرفاق صور إثبات إنجاز العمل من معرض الصور. — To attach photos of the completed work from your photo library.</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>

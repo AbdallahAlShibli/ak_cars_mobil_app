@@ -3,6 +3,12 @@
          declare it, so a release APK had no network at all — remote images and
          the REST API both failed silently. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Completion proof: a workshop photographs the finished job (and, on a
+         part-and-fitting job, the part's own box) before the escrow may be
+         released. Only the camera needs declaring — picking an existing photo
+         goes through the system photo picker, which hands back a single file
+         the user chose and needs no gallery-wide permission. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
     <application
         android:label="AK Cars"
         android:name="${applicationName}"
