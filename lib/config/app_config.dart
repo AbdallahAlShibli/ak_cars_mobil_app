@@ -21,6 +21,8 @@ class AppConfig {
     this.defaultPageSize = 20,
     this.approvalWindow = const Duration(hours: 72),
     this.approvalReminderLead = const Duration(hours: 24),
+    this.platformCommission = 0.10,
+    this.earningsWindow = const Duration(days: 30),
   });
 
   final AppEnvironment environment;
@@ -60,6 +62,18 @@ class AppConfig {
   /// coming. A silent automatic release is indistinguishable from the app
   /// taking the workshop's side.
   final Duration approvalReminderLead;
+
+  /// The platform's cut of a released booking, as a fraction (spec §3).
+  ///
+  /// A single number, read by the workshop's Earnings tab and the founder's
+  /// Money tab alike, so the two can never quote different commissions for the
+  /// same job. It lives in config rather than in either screen because it is a
+  /// commercial term, not a display choice — and because the pilot will
+  /// certainly change it before launch.
+  final double platformCommission;
+
+  /// How far back the Earnings tab's "recently released" figure looks.
+  final Duration earningsWindow;
 
   static const _envKey = String.fromEnvironment('AK_ENV', defaultValue: 'development');
 
@@ -113,6 +127,8 @@ class AppConfig {
     int? defaultPageSize,
     Duration? approvalWindow,
     Duration? approvalReminderLead,
+    double? platformCommission,
+    Duration? earningsWindow,
   }) =>
       AppConfig(
         environment: environment ?? this.environment,
@@ -127,5 +143,7 @@ class AppConfig {
         approvalWindow: approvalWindow ?? this.approvalWindow,
         approvalReminderLead:
             approvalReminderLead ?? this.approvalReminderLead,
+        platformCommission: platformCommission ?? this.platformCommission,
+        earningsWindow: earningsWindow ?? this.earningsWindow,
       );
 }

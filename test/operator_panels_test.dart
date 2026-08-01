@@ -2,6 +2,7 @@ import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/config/app_environment.dart';
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
 import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
+import 'package:ak_cars_mobil_app/data/services/service_marketplace_service.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/features/operations/admin_screen.dart';
@@ -17,12 +18,25 @@ import 'helpers/test_harness.dart';
 
 const _car = Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2019);
 
+/// A marketplace with no seeded bookings.
+///
+/// These tests are about what an operator panel does with *one* booking they
+/// placed themselves — which button appears, whether a dispute still counts
+/// toward the escrow total. `MockSeed`'s forty bookings would drown every one
+/// of those assertions in other people's jobs, so the seed is switched off
+/// here. The workshop roster stays: it is reference data, not a fixture.
 Future<ProviderContainer> _container() => createTestContainer(
   overrides: [
     appConfigProvider.overrideWithValue(
       AppConfig.forEnvironment(
         AppEnvironment.development,
       ).copyWith(simulateProviderLifecycle: false),
+    ),
+    serviceMarketplaceServiceProvider.overrideWith(
+      (ref) => MockServiceMarketplaceService(
+        config: ref.watch(appConfigProvider),
+        seeded: false,
+      ),
     ),
   ],
 );
@@ -77,13 +91,22 @@ void main() {
     await _book(container);
     await _pump(tester, container, const AdminScreen());
 
-    // A new booking is waiting on the founder to confirm the transfer landed.
-    expect(find.text('Confirm funds received'), findsOneWidget);
-    // The workshop's buttons belong on the workshop's panel.
-    expect(find.text('Accept job'), findsNothing);
+    // The panel's headline figure.
     expect(find.textContaining('Held in escrow'), findsOneWidget);
     // Nothing is held until it is confirmed.
     expect(find.text('OMR 0.00'), findsOneWidget);
+
+    // A new booking is waiting on the founder to confirm the transfer landed.
+    // It sits below the (empty) disputes queue, so scroll to it.
+    await tester.scrollUntilVisible(
+      find.text('Confirm funds received'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Confirm funds received'), findsOneWidget);
+    // The workshop's buttons belong on the workshop's panel.
+    expect(find.text('Accept job'), findsNothing);
+    expect(find.text('Start work'), findsNothing);
   });
 
   testWidgets('the workshop panel picks up a job once the funds are held', (

@@ -366,9 +366,10 @@ void main() {
         expect(entry.provider.region, 'Muscat');
       }
 
-      // North Al Batinah has one approved workshop with completed jobs, so a
-      // board of one would be a leaderboard of nobody.
-      container.read(regionProvider.notifier).state = 'North Al Batinah';
+      // Ad Dakhiliyah has two approved workshops but only one of them has
+      // completed anything, so a local board would be a leaderboard of one —
+      // which is a ranking of nobody.
+      container.read(regionProvider.notifier).state = 'Ad Dakhiliyah';
       expect(container.read(mostRequestedWorkshopsProvider).nationwide, isTrue);
     });
 

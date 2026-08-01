@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../config/app_flags.dart';
+import '../../data/models/app_role.dart';
 import '../../data/models/review.dart';
+import '../../data/models/service_provider.dart';
+import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../features/auth/register_screen.dart';
 import '../../features/cars/listing_detail_screen.dart';
@@ -46,6 +49,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     initialLocation: start,
+    redirect: (context, state) => _guardOperatorPanels(ref, state),
     routes: [
       GoRoute(
         path: '/splash',
@@ -236,6 +240,58 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Role guard for the two operator panels (spec §7).
+///
+/// Until phase 2.5 the panels were gated by [AppFlags.operatorPanelsEnabled]
+/// alone, which is a *build* switch: with the flag on, any deep link reached
+/// either panel regardless of who was holding the phone. This is the check
+/// that was missing.
+///
+/// Two rules, and the second is the one that matters:
+///
+/// 1. The active role has to match the panel. A workshop operator has no
+///    business in the founder's dispute queue and vice versa.
+/// 2. `/workshop` additionally requires the operator's own workshop to be
+///    [ProviderOnboardingStage.approved] — **re-checked on every entry, not
+///    once at sign-in** (§7, §11 step 6). A workshop suspended an hour ago
+///    must not still be inside its panel because its session predates the
+///    suspension.
+///
+/// Runs as a top-level `redirect`, so it fires on every navigation to these
+/// paths rather than only on the first build of the route.
+///
+/// **Deliberately not a check that the user owns an approved workshop.** The
+/// pilot's role switcher (`activeRoleProvider`, Settings) is a device-local
+/// tool for demonstrating the panels on an account that never applied to be a
+/// workshop, and §7 says to build on that mechanism rather than replace it. So
+/// the stage check applies to accounts that *did* apply — where a real
+/// onboarding decision exists to honour — and an account with no application
+/// falls through to rule 1 alone.
+String? _guardOperatorPanels(Ref ref, GoRouterState state) {
+  final location = state.matchedLocation;
+  if (location != '/workshop' && location != '/admin') return null;
+
+  final role = ref.read(activeRoleProvider);
+
+  if (location == '/admin') {
+    return role == AppRole.founder ? null : '/settings';
+  }
+
+  if (role != AppRole.workshop) return '/settings';
+
+  final userId = ref.read(authProvider).profile?.id;
+  if (userId == null) return null;
+  final workshop =
+      ref.read(serviceMarketplaceRepositoryProvider).providerOwnedBy(userId);
+  // No application on file — the pilot's role switch, not a suspended
+  // workshop. See the note above.
+  if (workshop == null) return null;
+  // An application in flight, or one that was rejected, grants nothing. The
+  // profile screen is where its status and any rejection reason are shown, so
+  // that is where this lands rather than on a dead end.
+  return workshop.isApproved ? null : '/settings';
+}
 
 /// Registration gate — rule 4/5/6: no service requests, parts orders, or
 /// car ads until the user has completed their details. Browsing stays free.

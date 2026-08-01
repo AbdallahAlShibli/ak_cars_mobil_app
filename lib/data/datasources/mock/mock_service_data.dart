@@ -9,6 +9,7 @@ import '../../models/service_category.dart';
 import '../../models/service_offering.dart';
 import '../../models/service_provider.dart';
 import '../../models/service_stats.dart';
+import 'mock_seed.dart';
 
 /// What one workshop sells within one category.
 ///
@@ -48,230 +49,22 @@ typedef _Copy = ({
 /// Muscat workshop sold tyres at all. [_catalogue] is the matrix that
 /// guarantees coverage; `services_region_test.dart` asserts it.
 abstract final class MockServiceData {
-  /// Grouped by governorate — `providerRegions`, and therefore the order of
-  /// the region picker, is derived from this list.
+  /// The workshop roster, owned by [MockSeed].
+  ///
+  /// Declared there rather than here because a workshop is not a catalogue
+  /// entry: its onboarding stage, its rejection reason and the account that
+  /// owns it are all facts the founder panel and the registration flow read,
+  /// and none of them belong in a file about what services cost. This class
+  /// keeps what it is actually about — the category copy, the price matrix
+  /// built from it, the add-ons, the promotions and the offers.
+  ///
   /// **VAT rule.** `vatNumber` carries an Oman VATIN — `OM` + 10 digits,
   /// issued by the Oman Tax Authority — and is set only on the workshops that
   /// are actually VAT-registered. Registration in Oman is turnover-based, so
-  /// the smaller garages here deliberately carry `null`: the shop and product
-  /// pages must be able to render a seller that cannot issue a VAT invoice,
-  /// rather than assuming every seller has a number to print.
-  static const providers = <ServiceProvider>[
-    // ------------------------------------------------------------ Muscat
-    ServiceProvider(
-      id: 'p1',
-      name: L('ورشة النور', 'Al Noor Workshop'),
-      area: 'Al Khuwair',
-      region: 'Muscat',
-      distanceKm: 2.4,
-      verified: true,
-      isApproved: true,
-      fulfillments: {Fulfillment.workshop, Fulfillment.pickup},
-      capabilities: {ProviderCapability.evService},
-      phone: '+96824478120',
-      whatsapp: '96892140088',
-      vatNumber: 'OM1100047382',
-      crNumber: '1198432',
-      hours: L('السبت–الخميس ٨:٠٠–٢٠:٠٠ · الجمعة مغلق',
-          'Sat–Thu 8:00–20:00 · Fri closed'),
-    ),
-    ServiceProvider(
-      id: 'p2',
-      name: L('الخليج للعناية بالسيارات', 'Gulf Auto Care'),
-      area: 'Seeb',
-      region: 'Muscat',
-      distanceKm: 6.1,
-      verified: true,
-      isApproved: true,
-      fulfillments: {
-        Fulfillment.workshop,
-        Fulfillment.pickup,
-        Fulfillment.roadside,
-      },
-      capabilities: {
-        ProviderCapability.evService,
-        ProviderCapability.evChargerInstall,
-      },
-      phone: '+96824551907',
-      whatsapp: '96895330214',
-      vatNumber: 'OM1100062915',
-      crNumber: '1243907',
-      hours: L('السبت–الخميس ٧:٣٠–٢١:٠٠ · الجمعة ١٦:٠٠–٢١:٠٠',
-          'Sat–Thu 7:30–21:00 · Fri 16:00–21:00'),
-    ),
-    ServiceProvider(
-      id: 'p4',
-      name: L('خبراء القرم للسيارات', 'Qurum Auto Experts'),
-      area: 'Qurum',
-      region: 'Muscat',
-      distanceKm: 4.2,
-      verified: true,
-      isApproved: true,
-      fulfillments: {Fulfillment.workshop, Fulfillment.pickup},
-      pickupFee: 2,
-      phone: '+96824663415',
-      whatsapp: '96899210546',
-      vatNumber: 'OM1100051764',
-      crNumber: '1215880',
-      hours: L('السبت–الخميس ٨:٠٠–١٩:٠٠ · الجمعة مغلق',
-          'Sat–Thu 8:00–19:00 · Fri closed'),
-    ),
-    // -------------------------------------------------- North Al Batinah
-    ServiceProvider(
-      id: 'p3',
-      name: L('كراج صحار سبيد', 'Sohar Speed Garage'),
-      area: 'Sohar',
-      region: 'North Al Batinah',
-      distanceKm: 18.0,
-      verified: false,
-      isApproved: false,
-      fulfillments: {Fulfillment.workshop},
-      phone: '+96826841203',
-      whatsapp: '96897440319',
-      crNumber: '1307654',
-      hours: L('السبت–الخميس ٨:٠٠–١٨:٠٠', 'Sat–Thu 8:00–18:00'),
-    ),
-    ServiceProvider(
-      id: 'p8',
-      name: L('مركز صحم للسيارات', 'Saham Auto Centre'),
-      area: 'Saham',
-      region: 'North Al Batinah',
-      distanceKm: 26.0,
-      verified: true,
-      isApproved: true,
-      fulfillments: {
-        Fulfillment.workshop,
-        Fulfillment.pickup,
-        Fulfillment.roadside,
-      },
-      capabilities: {
-        ProviderCapability.evService,
-        ProviderCapability.evChargerInstall,
-      },
-      phone: '+96826855740',
-      whatsapp: '96893120877',
-      vatNumber: 'OM1100073508',
-      crNumber: '1288201',
-      hours: L('السبت–الخميس ٧:٠٠–٢٠:٠٠ · الجمعة ١٦:٠٠–٢٠:٠٠',
-          'Sat–Thu 7:00–20:00 · Fri 16:00–20:00'),
-    ),
-    // -------------------------------------------------- South Al Batinah
-    ServiceProvider(
-      id: 'p7',
-      name: L('بركاء كويك فكس', 'Barka Quick Fix'),
-      area: 'Barka',
-      region: 'South Al Batinah',
-      distanceKm: 22.0,
-      verified: false,
-      isApproved: true,
-      fulfillments: {Fulfillment.workshop, Fulfillment.roadside},
-      capabilities: {ProviderCapability.evService},
-      phone: '+96826882456',
-      whatsapp: '96896015523',
-      crNumber: '1341120',
-      hours: L('السبت–الخميس ٨:٠٠–٢٢:٠٠', 'Sat–Thu 8:00–22:00'),
-    ),
-    ServiceProvider(
-      id: 'p9',
-      name: L('الرستاق لميكانيكا السيارات', 'Rustaq Motor Works'),
-      area: 'Rustaq',
-      region: 'South Al Batinah',
-      distanceKm: 38.0,
-      verified: true,
-      isApproved: true,
-      fulfillments: {Fulfillment.workshop, Fulfillment.pickup},
-      capabilities: {
-        ProviderCapability.evService,
-        ProviderCapability.evChargerInstall,
-      },
-      pickupFee: 4,
-      phone: '+96826875031',
-      whatsapp: '96894870162',
-      vatNumber: 'OM1100068247',
-      crNumber: '1276418',
-      hours: L('السبت–الخميس ٨:٠٠–١٩:٣٠ · الجمعة مغلق',
-          'Sat–Thu 8:00–19:30 · Fri closed'),
-    ),
-    // ----------------------------------------------------- Ad Dakhiliyah
-    ServiceProvider(
-      id: 'p5',
-      name: L('نزوى للعناية بالسيارات', 'Nizwa Car Care'),
-      area: 'Nizwa',
-      region: 'Ad Dakhiliyah',
-      distanceKm: 32.0,
-      verified: true,
-      isApproved: true,
-      fulfillments: {Fulfillment.workshop, Fulfillment.roadside},
-      capabilities: {
-        ProviderCapability.evService,
-        ProviderCapability.evChargerInstall,
-      },
-      phone: '+96825412876',
-      whatsapp: '96891650430',
-      vatNumber: 'OM1100059183',
-      crNumber: '1260973',
-      hours: L('السبت–الخميس ٧:٣٠–١٩:٠٠ · الجمعة مغلق',
-          'Sat–Thu 7:30–19:00 · Fri closed'),
-    ),
-    ServiceProvider(
-      id: 'p10',
-      name: L('نقطة خدمة سمائل', 'Samail Service Point'),
-      area: 'Samail',
-      region: 'Ad Dakhiliyah',
-      distanceKm: 24.0,
-      verified: false,
-      isApproved: false,
-      fulfillments: {
-        Fulfillment.workshop,
-        Fulfillment.pickup,
-        Fulfillment.roadside,
-      },
-      phone: '+96825350962',
-      whatsapp: '96892770118',
-      crNumber: '1352209',
-      hours: L('يومياً ٦:٠٠–٢٣:٠٠', 'Daily 6:00–23:00'),
-    ),
-    // ------------------------------------------------------------ Dhofar
-    ServiceProvider(
-      id: 'p6',
-      name: L('مركز صلالة للمحركات', 'Salalah Motors Hub'),
-      area: 'Salalah',
-      region: 'Dhofar',
-      distanceKm: 45.0,
-      verified: true,
-      isApproved: true,
-      fulfillments: {
-        Fulfillment.workshop,
-        Fulfillment.pickup,
-        Fulfillment.roadside,
-      },
-      capabilities: {
-        ProviderCapability.evService,
-        ProviderCapability.evChargerInstall,
-      },
-      pickupFee: 4,
-      phone: '+96823298450',
-      whatsapp: '96899640277',
-      vatNumber: 'OM1100081642',
-      crNumber: '1229561',
-      hours: L('السبت–الخميس ٨:٠٠–٢٠:٣٠ · الجمعة ١٦:٠٠–٢٠:٣٠',
-          'Sat–Thu 8:00–20:30 · Fri 16:00–20:30'),
-    ),
-    ServiceProvider(
-      id: 'p11',
-      name: L('كراج طاقة للسيارات', 'Taqah Auto Garage'),
-      area: 'Taqah',
-      region: 'Dhofar',
-      distanceKm: 52.0,
-      verified: false,
-      isApproved: false,
-      fulfillments: {Fulfillment.workshop, Fulfillment.roadside},
-      phone: '+96823271908',
-      whatsapp: '96897330654',
-      crNumber: '1366742',
-      hours: L('السبت–الخميس ٨:٠٠–١٨:٣٠', 'Sat–Thu 8:00–18:30'),
-    ),
-  ];
+  /// the smaller garages deliberately carry `null`: the shop and product pages
+  /// must be able to render a seller that cannot issue a VAT invoice, rather
+  /// than assuming every seller has a number to print.
+  static List<ServiceProvider> get providers => MockSeed.providers;
 
   /// "Car service" packages render as big cards ([ServiceCategory.primary]);
   /// the rest are "Other services" tiles.
@@ -448,6 +241,17 @@ abstract final class MockServiceData {
       'ev-charging': (price: 5, minutes: 20),
       'ev-charger': (price: 13, minutes: 45),
       'ev-sos': (price: 12, minutes: 45),
+    },
+    // Carries what `p8` does not, so North Al Batinah still covers every
+    // category now that `p3` is an unapproved application and its listings are
+    // hidden from customers.
+    'p12': {
+      'major': (price: 41, minutes: 175),
+      'full': (price: 27, minutes: 115),
+      'repair': (price: null, minutes: null),
+      'tyres': (price: 6, minutes: 30),
+      'diag': (price: 9, minutes: 35),
+      'contracts': (price: 105, minutes: null),
     },
     // -------------------------------------------------- South Al Batinah
     'p7': {
@@ -886,6 +690,7 @@ abstract final class MockServiceData {
     'p9': [..._routineAddOns, ..._detailingAddOns],
     'p10': _routineAddOns,
     'p11': _routineAddOns,
+    'p12': [..._routineAddOns, ..._detailingAddOns],
   };
 
   static const slots = ['9:00', '10:30', '13:00', '16:00'];
@@ -1168,6 +973,7 @@ abstract final class MockServiceData {
     WorkshopDemand(providerId: 'p8', completedBookings: 33),
     WorkshopDemand(providerId: 'p9', completedBookings: 24),
     WorkshopDemand(providerId: 'p7', completedBookings: 19),
+    WorkshopDemand(providerId: 'p12', completedBookings: 11),
     WorkshopDemand(providerId: 'p3', completedBookings: 6),
     WorkshopDemand(providerId: 'p10', completedBookings: 0),
   ];
@@ -1223,5 +1029,9 @@ abstract final class MockServiceData {
         providerId: 'p8', rating: 4.7, reviews: 143, completedJobs: 764),
     WorkshopRating(
         providerId: 'p9', rating: 4.5, reviews: 121, completedJobs: 688),
+    // Newly onboarded — one review, which is below the ranking threshold for
+    // the same reason `p3`'s four are.
+    WorkshopRating(
+        providerId: 'p12', rating: 5.0, reviews: 1, completedJobs: 11),
   ];
 }

@@ -53,5 +53,9 @@ abstract final class AppBootstrap {
         container.read(garageRepositoryProvider).warmUp(),
         container.read(maintenanceRepositoryProvider).warmUp(),
         container.read(challengeRepositoryProvider).warmUp(),
+        // The operator panels read their queue synchronously while building,
+        // exactly as the catalogue screens do, so it is warmed here with the
+        // rest rather than behind a loading state the design does not have.
+        container.read(operatorQueueProvider.notifier).refresh(),
       ]);
 }

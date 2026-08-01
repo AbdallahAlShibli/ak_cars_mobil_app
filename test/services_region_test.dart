@@ -144,7 +144,10 @@ void main() {
     // "Full Service": sold in every governorate, but the card above a Muscat
     // list must quote the cheapest *Muscat* price, not the national one.
     expect(marketplace.providerCountFor('full', region: 'Muscat'), 2);
-    expect(marketplace.fromPriceFor('full'), 26); // Sohar
+    // Liwa, at 27. Sohar publishes 26 and is cheaper, but it is an unapproved
+    // application — so it is not bookable, and a "from" price has to quote
+    // something the tap can actually reach.
+    expect(marketplace.fromPriceFor('full'), 27);
     expect(marketplace.fromPriceFor('full', region: 'Muscat'), 30);
     expect(find.textContaining('from OMR 30 · 2 workshops'), findsOneWidget);
 

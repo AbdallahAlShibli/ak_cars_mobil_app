@@ -2,11 +2,15 @@ import 'package:collection/collection.dart';
 
 import '../../config/app_config.dart';
 import '../../core/error/app_exception.dart';
+import '../../core/i18n/strings.dart';
+import '../datasources/mock/mock_seed.dart';
 import '../datasources/mock/mock_service_data.dart';
 import '../models/add_on.dart';
+import '../models/audit_entry.dart';
 import '../models/car.dart';
 import '../models/escrow.dart';
 import '../models/offer.dart';
+import '../models/payout_record.dart';
 import '../models/promotion.dart';
 import '../models/proof_of_work.dart';
 import '../models/quote.dart';
@@ -15,6 +19,7 @@ import '../models/service_offering.dart';
 import '../models/service_provider.dart';
 import '../models/service_request.dart';
 import '../models/service_stats.dart';
+import '../models/workshop_application.dart';
 import 'mock_service_base.dart';
 
 /// Slots a provider can be booked into, plus the ones already taken.
@@ -105,6 +110,16 @@ abstract interface class ServiceMarketplaceService {
   /// Bookings belonging to the signed-in user.
   Future<List<ServiceRequest>> fetchRequests();
 
+  /// Every booking on the marketplace — the operator panels' queue.
+  ///
+  /// A **different endpoint** from [fetchRequests], not a wider filter on it,
+  /// because they answer different questions and are authorised differently:
+  /// one is "my bookings" and the other is "the platform's", and only an
+  /// operator may ask the second. Merging them would put forty strangers'
+  /// bookings in a customer's own list, which is the mistake seeding this data
+  /// makes easy.
+  Future<List<ServiceRequest>> fetchOperatorQueue();
+
   /// Fires one escrow transition.
   ///
   /// The only way a booking's state moves. [actor] is the party the caller is
@@ -120,21 +135,94 @@ abstract interface class ServiceMarketplaceService {
     String? disputeNote,
     String? slot,
   });
+
+  // ------------------------------------------------- onboarding (§5, §11)
+
+  /// Moves one workshop along the onboarding path.
+  ///
+  /// [reason] is **required** for [ProviderOnboardingStage.suspended] and
+  /// rejected otherwise — a rejection with no sentence after it is not
+  /// something the workshop's owner can act on (§11 step 3), and the rule is
+  /// enforced here rather than in the panel so no second caller can skip it.
+  Future<ServiceProvider> setProviderStage(
+    String providerId,
+    ProviderOnboardingStage stage, {
+    String? reason,
+  });
+
+  /// Files a workshop registration (§11 step 1).
+  ///
+  /// Creates the provider at [ProviderOnboardingStage.documentsSubmitted] —
+  /// not `applied`, because the CR document is attached in the same step — and
+  /// returns it. From this moment the account is suspended in practice: an
+  /// unapproved workshop is invisible to customers, takes no bookings and
+  /// cannot open its panel.
+  Future<ServiceProvider> submitWorkshopApplication({
+    required String ownerUserId,
+    required WorkshopApplication application,
+    required String region,
+  });
+
+  /// The founder's payout ledger.
+  Future<List<PayoutRecord>> fetchPayouts();
+
+  /// Records a transfer the founder made by hand. Nothing here moves money.
+  Future<PayoutRecord> recordPayout(PayoutRecord payout);
+
+  /// The platform-wide audit trail (§6).
+  Future<List<AuditEntry>> fetchAuditLog();
+
+  /// Appends one audit line. Called only from the repository's single write
+  /// point — see `ServiceMarketplaceRepositoryImpl._audit`.
+  Future<AuditEntry> appendAudit(AuditEntry entry);
 }
 
 class MockServiceMarketplaceService
     with MockServiceBase
     implements ServiceMarketplaceService {
-  MockServiceMarketplaceService({required this.config});
+  MockServiceMarketplaceService({required this.config, this.seeded = true});
 
   @override
   final AppConfig config;
 
-  /// Bookings placed during this session, newest first.
-  final List<ServiceRequest> _requests = [];
+  /// Whether to start from [MockSeed]'s demo world.
+  ///
+  /// On by default — the app, and any test about how the panels look with real
+  /// data, wants the seeded marketplace. A test about one specific booking
+  /// turns it off so its assertions are about the booking it placed rather
+  /// than about forty it did not.
+  ///
+  /// Only the *bookings* are seeded conditionally. The workshop roster is not:
+  /// it is reference data every screen reads, and an empty marketplace is not
+  /// a state the app supports.
+  final bool seeded;
 
-  /// Mirrors a server-side identity sequence.
-  int _nextRequestNumber = 1042;
+  /// The marketplace's bookings, newest first — the seeded world plus
+  /// everything placed this session.
+  ///
+  /// The seed is what makes the operator panels reviewable at all: before it,
+  /// both panels opened empty and no SLA colour was reachable without first
+  /// placing a booking by hand and waiting a day.
+  late final List<ServiceRequest> _requests =
+      seeded ? [...MockSeed.requests] : <ServiceRequest>[];
+
+  /// Ids of the bookings *this device's user* placed. The seeded ones belong
+  /// to other people, and a customer's own list must not claim them.
+  final Set<String> _mine = {};
+
+  /// The workshop roster. A mutable copy, because onboarding decisions move
+  /// workshops along it during a session.
+  final List<ServiceProvider> _providers = [...MockSeed.providers];
+
+  final List<PayoutRecord> _payouts = [...MockSeed.payouts];
+  final List<AuditEntry> _audit = [...MockSeed.audit];
+
+  /// Mirrors a server-side identity sequence. Starts above the seeded ids so a
+  /// booking placed in this session can never collide with a seeded one.
+  int _nextRequestNumber = 3001;
+  int _nextPayoutNumber = 100;
+  int _nextAuditNumber = 100;
+  int _nextProviderNumber = 100;
 
   @override
   Future<List<ServiceCategory>> fetchCategories() =>
@@ -142,7 +230,7 @@ class MockServiceMarketplaceService
 
   @override
   Future<List<ServiceProvider>> fetchProviders() =>
-      respond(MockServiceData.providers);
+      respond(List<ServiceProvider>.unmodifiable(_providers));
 
   @override
   Future<List<ServiceOffering>> fetchOfferings({String? categoryId}) => respond(
@@ -241,6 +329,7 @@ class MockServiceMarketplaceService
       ],
     );
     _requests.insert(0, request);
+    _mine.add(request.id);
     return respond(request);
   }
 
@@ -260,6 +349,7 @@ class MockServiceMarketplaceService
       createdAt: DateTime.now(),
     );
     _requests.insert(0, request);
+    _mine.add(request.id);
     return respond(request);
   }
 
@@ -286,7 +376,14 @@ class MockServiceMarketplaceService
   }
 
   @override
-  Future<List<ServiceRequest>> fetchRequests() =>
+  Future<List<ServiceRequest>> fetchRequests() => respond(
+        List<ServiceRequest>.unmodifiable(
+          [for (final r in _requests) if (_mine.contains(r.id)) r],
+        ),
+      );
+
+  @override
+  Future<List<ServiceRequest>> fetchOperatorQueue() =>
       respond(List<ServiceRequest>.unmodifiable(_requests));
 
   @override
@@ -332,5 +429,105 @@ class MockServiceMarketplaceService
     );
     _requests[index] = updated;
     return respond(updated);
+  }
+
+  // ------------------------------------------------- onboarding (§5, §11)
+
+  @override
+  Future<ServiceProvider> setProviderStage(
+    String providerId,
+    ProviderOnboardingStage stage, {
+    String? reason,
+  }) {
+    final index = _providers.indexWhere((p) => p.id == providerId);
+    if (index < 0) throw NotFoundException('Provider $providerId not found');
+
+    final trimmed = reason?.trim();
+    // §14: "لا تسمح برفض تسجيل ورشة بلا سبب مكتوب". Enforced at the data
+    // layer so it holds for every caller, not only for the panel that
+    // happens to render a text field today.
+    if (stage == ProviderOnboardingStage.suspended &&
+        (trimmed == null || trimmed.isEmpty)) {
+      throw BusinessRuleException(
+        'Suspending or rejecting a workshop requires a written reason',
+        code: 'provider_rejection_reason_required',
+      );
+    }
+
+    final updated = _providers[index].copyWith(
+      stage: stage,
+      stageSince: DateTime.now(),
+      rejectionReason: stage == ProviderOnboardingStage.suspended ? trimmed : null,
+      // Moving off `suspended` drops the old reason — a re-approved workshop
+      // that keeps showing its owner why it was once rejected is a bug.
+      clearRejectionReason: stage != ProviderOnboardingStage.suspended,
+    );
+    _providers[index] = updated;
+    return respond(updated);
+  }
+
+  @override
+  Future<ServiceProvider> submitWorkshopApplication({
+    required String ownerUserId,
+    required WorkshopApplication application,
+    required String region,
+  }) {
+    // Re-submitting after a rejection updates the existing application rather
+    // than opening a second one (§11 step 5) — otherwise the founder's queue
+    // fills with duplicates of the same workshop.
+    final existing = _providers.indexWhere((p) => p.ownerUserId == ownerUserId);
+    final now = DateTime.now();
+
+    final provider = ServiceProvider(
+      id: existing >= 0 ? _providers[existing].id : 'w-${_nextProviderNumber++}',
+      name: L(
+        application.businessNameAr,
+        application.businessNameEn?.trim().isNotEmpty ?? false
+            ? application.businessNameEn!.trim()
+            : application.businessNameAr,
+      ),
+      area: application.area,
+      region: region,
+      // Nothing has measured a distance to a workshop that is not live yet, and
+      // 0 would read as "next door" on every card that prints it.
+      distanceKm: 0,
+      verified: false,
+      stage: ProviderOnboardingStage.documentsSubmitted,
+      stageSince: now,
+      crDocumentUrl: application.crDocumentUrl,
+      ownerUserId: ownerUserId,
+      fulfillments: application.fulfillments,
+      crNumber: application.crNumber,
+      vatNumber: application.vatNumber,
+    );
+
+    if (existing >= 0) {
+      _providers[existing] = provider;
+    } else {
+      _providers.add(provider);
+    }
+    return respond(provider);
+  }
+
+  @override
+  Future<List<PayoutRecord>> fetchPayouts() =>
+      respond(List<PayoutRecord>.unmodifiable(_payouts));
+
+  @override
+  Future<PayoutRecord> recordPayout(PayoutRecord payout) {
+    final stored = payout.copyWith(id: 'po-${_nextPayoutNumber++}');
+    _payouts.insert(0, stored);
+    return respond(stored);
+  }
+
+  @override
+  Future<List<AuditEntry>> fetchAuditLog() =>
+      respond(List<AuditEntry>.unmodifiable(_audit));
+
+  @override
+  Future<AuditEntry> appendAudit(AuditEntry entry) {
+    final stored = entry.copyWith(id: 'au-${_nextAuditNumber++}');
+    _audit.insert(0, stored);
+    return respond(stored);
   }
 }

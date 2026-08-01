@@ -5,9 +5,11 @@
 /// client without a parallel DTO hierarchy.
 library;
 
+export 'account_kind.dart';
 export 'add_on.dart';
 export 'app_notification.dart';
 export 'app_role.dart';
+export 'audit_entry.dart';
 export 'car.dart';
 export 'car_listing.dart';
 export 'car_make.dart';
@@ -20,6 +22,7 @@ export 'location_catalog.dart';
 export 'maintenance.dart';
 export 'offer.dart';
 export 'order.dart';
+export 'payout_record.dart';
 export 'powertrain.dart';
 export 'product.dart';
 export 'promotion.dart';
@@ -37,3 +40,6 @@ export 'spec_catalog.dart';
 export 'spec_option.dart';
 export 'user_profile.dart';
 export 'vehicle_catalog.dart';
+export 'workshop_application.dart';
+export 'workshop_earnings.dart';
+export 'workshop_metrics.dart';

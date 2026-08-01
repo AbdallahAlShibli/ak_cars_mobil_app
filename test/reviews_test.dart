@@ -123,7 +123,16 @@ void main() {
       );
 
       expect(second, isNull);
-      expect(container.read(reviewsProvider).length, 1);
+      // Scoped to this booking: the demo world seeds reviews of its own
+      // completed jobs, and the rule under test is one review *per booking*,
+      // not one review on the whole marketplace.
+      expect(
+        container
+            .read(reviewsProvider)
+            .where((r) => r.bookingId == request.id)
+            .length,
+        1,
+      );
     });
 
     test('both directions unlock on the same release', () async {
@@ -146,7 +155,13 @@ void main() {
         rating: 5,
       );
 
-      expect(container.read(reviewsProvider).length, 2);
+      expect(
+        container
+            .read(reviewsProvider)
+            .where((r) => r.bookingId == request.id)
+            .length,
+        2,
+      );
       expect(container.read(pendingWorkshopReviewsProvider), isEmpty);
     });
 
@@ -271,7 +286,15 @@ void main() {
 
       expect(edited!.rating, 4);
       expect(edited.edited, isTrue);
-      expect(container.read(reviewsProvider).length, 1);
+      // Corrected in place, not appended: still exactly one review of this
+      // booking in this direction.
+      expect(
+        container
+            .read(reviewsProvider)
+            .where((r) => r.bookingId == request.id)
+            .length,
+        1,
+      );
     });
   });
 }

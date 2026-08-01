@@ -1,5 +1,6 @@
 import '../../config/app_config.dart';
 import '../../core/error/app_exception.dart';
+import '../datasources/mock/mock_seed.dart';
 import '../models/review.dart';
 import 'mock_service_base.dart';
 
@@ -11,12 +12,19 @@ import 'mock_service_base.dart';
 /// the whole anti-spam design, and a client-side check is a convenience, not a
 /// guarantee.
 abstract interface class ReviewService {
-  /// Every review this user can see. **Starts empty in the pilot**: a review
-  /// exists only because a booking completed, and seeding invented ones would
-  /// be manufacturing exactly the fake social proof this design exists to
-  /// prevent. The marketplace-wide aggregates on
+  /// Every review this user can see.
+  ///
+  /// Seeded, but only against bookings in [MockSeed.requests] that actually
+  /// reached `releasedToWorkshop`. That distinction is the whole point: this
+  /// used to start empty precisely so nothing here could be fake social proof,
+  /// and the rule has not been relaxed — every seeded review still has a
+  /// completed, paid-for job behind it, which is exactly what makes a review
+  /// verifiable (see `review.dart`). A review with no booking id that resolves
+  /// would be the thing that was banned, and there is none.
+  ///
+  /// The marketplace-wide aggregates on
   /// `ServiceMarketplaceService.fetchWorkshopRatings` are a different thing —
-  /// those are real counts the backend computed.
+  /// those are counts the backend computed.
   Future<List<Review>> fetchReviews();
 
   /// Records a review. Rejects a second one for the same booking in the same
@@ -35,9 +43,11 @@ class MockReviewService with MockServiceBase implements ReviewService {
   @override
   final AppConfig config;
 
-  final List<Review> _reviews = [];
+  final List<Review> _reviews = [...MockSeed.reviews];
 
-  int _nextId = 1;
+  /// Starts above the seeded ids so a review written this session cannot
+  /// collide with one from the demo world.
+  int _nextId = 500;
 
   @override
   Future<List<Review>> fetchReviews() =>

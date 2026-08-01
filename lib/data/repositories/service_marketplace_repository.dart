@@ -1,11 +1,14 @@
 import 'package:collection/collection.dart';
 
+import '../../config/app_config.dart';
 import '../../config/home_ranking_config.dart';
 import '../../core/error/app_exception.dart';
 import '../models/add_on.dart';
+import '../models/audit_entry.dart';
 import '../models/car.dart';
 import '../models/escrow.dart';
 import '../models/offer.dart';
+import '../models/payout_record.dart';
 import '../models/powertrain.dart';
 import '../models/promotion.dart';
 import '../models/proof_of_work.dart';
@@ -16,6 +19,10 @@ import '../models/service_offering.dart';
 import '../models/service_provider.dart';
 import '../models/service_request.dart';
 import '../models/service_stats.dart';
+import '../models/review.dart';
+import '../models/workshop_application.dart';
+import '../models/workshop_earnings.dart';
+import '../models/workshop_metrics.dart';
 import '../services/service_marketplace_service.dart';
 import 'warm_cache.dart';
 
@@ -63,7 +70,35 @@ abstract interface class ServiceMarketplaceRepository {
   /// owner has not said) returns everything, unreordered.
   List<ServiceCategory> categoriesFor(Powertrain? powertrain);
 
+  /// The whole roster, every onboarding stage included.
+  ///
+  /// This is the **operator's** view: the founder's pipeline counts
+  /// applications, and a workshop owner's own profile card has to find their
+  /// pending application in here. Customer-facing code wants
+  /// [visibleProviders] — see the note there for why the distinction is load
+  /// bearing.
   List<ServiceProvider> get providers;
+
+  /// The workshops a customer may see, book or be shown an offer from.
+  ///
+  /// Only [ProviderOnboardingStage.approved] ones (spec §5). This is the
+  /// single rule behind "a workshop that has not been approved does not exist
+  /// yet as far as the marketplace is concerned", and every customer-facing
+  /// read below is filtered through it: the offering lists, the category
+  /// counts, the "from" prices, the availability and the booking calls.
+  ///
+  /// [providers] deliberately is *not* filtered. Hiding pending applications
+  /// from the founder's own panel would hide the thing the panel exists to
+  /// action.
+  List<ServiceProvider> get visibleProviders;
+
+  /// One workshop by id, whatever stage it is in. Null when there is no such
+  /// workshop.
+  ServiceProvider? providerById(String providerId);
+
+  /// The workshop an account owns, or null when it has never applied. What
+  /// `/workshop`'s guard and the profile status card both read.
+  ServiceProvider? providerOwnedBy(String userId);
 
   /// The raw catalogue: published prices, no discounts applied. This is the
   /// reference an offer is validated against, so it must never be discounted
@@ -226,6 +261,11 @@ abstract interface class ServiceMarketplaceRepository {
 
   Future<List<ServiceRequest>> fetchRequests();
 
+  /// Every booking on the marketplace — what the two operator panels queue
+  /// from. Distinct from [fetchRequests], which is the signed-in customer's
+  /// own list.
+  Future<List<ServiceRequest>> fetchOperatorQueue();
+
   /// Fires one escrow transition on behalf of [actor]. See `escrow.dart` for
   /// the table that decides whether it is allowed.
   Future<ServiceRequest> applyEscrowEvent(
@@ -236,12 +276,91 @@ abstract interface class ServiceMarketplaceRepository {
     String? disputeNote,
     String? slot,
   });
+
+  // ----------------------------------------------------- onboarding (§5, §11)
+
+  /// Workshops sitting in [stage], oldest application first — the founder's
+  /// pipeline column.
+  List<ServiceProvider> providersInStage(ProviderOnboardingStage stage);
+
+  /// How many workshops sit in each stage. Every value is present, including
+  /// the empty ones: a pipeline that hides its empty columns changes shape as
+  /// you work through it, which is exactly when you want it to hold still.
+  Map<ProviderOnboardingStage, int> get onboardingPipeline;
+
+  /// Approves, verifies, rejects or suspends one workshop.
+  ///
+  /// [reason] is mandatory when moving to [ProviderOnboardingStage.suspended]
+  /// and ignored otherwise. Writes an [AuditEntry] — see [auditLog].
+  Future<ServiceProvider> setProviderStage(
+    String providerId,
+    ProviderOnboardingStage stage, {
+    String? reason,
+    String actorId = 'founder',
+  });
+
+  /// Files (or re-files) a workshop registration, landing it at
+  /// [ProviderOnboardingStage.documentsSubmitted] in the founder's pipeline.
+  Future<ServiceProvider> submitWorkshopApplication({
+    required String ownerUserId,
+    required WorkshopApplication application,
+    required String region,
+  });
+
+  // ---------------------------------------------------------- money (§3, §5)
+
+  /// One workshop's earnings, derived from its bookings' escrow history.
+  WorkshopEarnings earningsFor(
+    String providerId,
+    List<ServiceRequest> requests, {
+    Duration? window,
+  });
+
+  /// What is still owed to one workshop: everything released to it, less
+  /// commission, less what has already been paid out.
+  double outstandingFor(String providerId, List<ServiceRequest> requests);
+
+  /// The payout ledger, newest first.
+  List<PayoutRecord> get payouts;
+
+  /// Records a transfer the founder made by hand. Writes an [AuditEntry].
+  Future<PayoutRecord> recordPayout({
+    required String providerId,
+    required double amount,
+    required DateTime periodFrom,
+    required DateTime periodTo,
+    String? note,
+    String actorId = 'founder',
+  });
+
+  // -------------------------------------------------------- performance (§4)
+
+  /// One workshop's derived performance figures.
+  ///
+  /// [reviews] are passed in rather than fetched because they belong to
+  /// `ReviewRepository`; the *computation* still happens here, which is the
+  /// rule that matters (§14: no metrics inside widgets).
+  WorkshopMetrics metricsFor(
+    String providerId,
+    List<ServiceRequest> requests,
+    List<Review> reviews,
+  );
+
+  // -------------------------------------------------------------- audit (§6)
+
+  /// The platform-wide audit trail, newest first.
+  List<AuditEntry> get auditLog;
 }
 
 class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
-  ServiceMarketplaceRepositoryImpl(this._service);
+  ServiceMarketplaceRepositoryImpl(this._service, {AppConfig? config})
+      : _config = config ?? AppConfig.current();
 
   final ServiceMarketplaceService _service;
+
+  /// Read for the commission rate and the earnings window only. Injected so a
+  /// test can move either without reaching into the environment.
+  final AppConfig _config;
 
   final _categories = WarmCache<List<ServiceCategory>>(fallback: const []);
   final _providers = WarmCache<List<ServiceProvider>>(fallback: const []);
@@ -251,6 +370,8 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   final _demand = WarmCache<List<CategoryDemand>>(fallback: const []);
   final _workshopDemand = WarmCache<List<WorkshopDemand>>(fallback: const []);
   final _ratings = WarmCache<List<WorkshopRating>>(fallback: const []);
+  final _payouts = WarmCache<List<PayoutRecord>>(fallback: const []);
+  final _auditEntries = WarmCache<List<AuditEntry>>(fallback: const []);
 
   /// Add-ons and slots are per-provider, so they are warmed lazily and cached
   /// as they are asked for rather than fetched for every provider up front.
@@ -268,6 +389,8 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       _demand.load(_service.fetchCategoryDemand),
       _workshopDemand.load(_service.fetchWorkshopDemand),
       _ratings.load(_service.fetchWorkshopRatings),
+      _payouts.load(_service.fetchPayouts),
+      _auditEntries.load(_service.fetchAuditLog),
     ]);
     await Future.wait([
       for (final provider in _providers.value) _warmProvider(provider.id),
@@ -311,27 +434,61 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   List<ServiceProvider> get providers => _providers.value;
 
   @override
+  List<ServiceProvider> get visibleProviders =>
+      [for (final p in providers) if (p.isApproved) p];
+
+  /// Approved provider ids, as a set — every customer-facing filter below is a
+  /// membership test against this, so the rule is written once.
+  Set<String> get _visibleIds => {for (final p in visibleProviders) p.id};
+
+  @override
+  ServiceProvider? providerById(String providerId) =>
+      providers.where((p) => p.id == providerId).firstOrNull;
+
+  @override
+  ServiceProvider? providerOwnedBy(String userId) =>
+      providers.where((p) => p.ownerUserId == userId).firstOrNull;
+
+  @override
   List<ServiceProvider> providersWith(
     ProviderCapability capability, {
     String? region,
   }) =>
-      providers
+      // Visible, not all: this answers "who can do high-voltage work on my
+      // car", which is a customer's question.
+      visibleProviders
           .where((p) =>
               p.capabilities.contains(capability) &&
               (region == null || p.region == region))
           .toList(growable: false);
 
+  /// The raw catalogue — **including** entries belonging to workshops that are
+  /// not approved.
+  ///
+  /// Deliberately unfiltered, and the one place that is true. Offer validation
+  /// compares an offer's reference price against the catalogue, and it has to
+  /// be able to look up the listing of an unapproved workshop in order to
+  /// reject its offer for the right reason (`workshopNotApproved`) rather than
+  /// for the wrong one (`unlistedService`). Everything a customer actually
+  /// sees goes through [pricedOfferings] or [offeringsFor], which are filtered.
   @override
   List<ServiceOffering> get offerings => _offerings.value;
 
   @override
-  List<ServiceOffering> get pricedOfferings => [
-        for (final offering in offerings) pricedOffering(offering.id)!,
-      ];
+  List<ServiceOffering> get pricedOfferings {
+    final visible = _visibleIds;
+    return [
+      for (final offering in offerings)
+        if (visible.contains(offering.provider.id)) pricedOffering(offering.id)!,
+    ];
+  }
 
   @override
   List<String> get providerRegions => {
-        for (final provider in providers)
+        // Built from the visible roster so the region picker can never offer a
+        // governorate whose only workshop is an application nobody has
+        // approved — tapping it would land on a guaranteed empty state.
+        for (final provider in visibleProviders)
           if (provider.region.isNotEmpty) provider.region,
       }.toList(growable: false);
 
@@ -341,12 +498,16 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   /// [offerings] / [offeringById], which is what offer validation compares
   /// against — and it has to, or a discount would validate itself.
   @override
-  List<ServiceOffering> offeringsFor(String categoryId, {String? region}) => [
-        for (final offering in offerings)
-          if (offering.categoryId == categoryId &&
-              (region == null || offering.provider.region == region))
-            pricedOffering(offering.id)!,
-      ];
+  List<ServiceOffering> offeringsFor(String categoryId, {String? region}) {
+    final visible = _visibleIds;
+    return [
+      for (final offering in offerings)
+        if (offering.categoryId == categoryId &&
+            visible.contains(offering.provider.id) &&
+            (region == null || offering.provider.region == region))
+          pricedOffering(offering.id)!,
+    ];
+  }
 
   @override
   int providerCountFor(String categoryId, {String? region}) =>
@@ -440,10 +601,15 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   /// [Promotion.query]) is fine: the services tab can always run a search.
   bool _promotionResolves(Promotion promotion) {
     final offeringId = promotion.offeringId;
-    if (offeringId != null && offeringById(offeringId) == null) return false;
+    final offering = offeringId == null ? null : offeringById(offeringId);
+    if (offeringId != null && offering == null) return false;
+    // The workshop behind the card must be one a customer may actually reach.
+    // Approval gates promotion (§3) and now also gates listing (§5), so a
+    // campaign for a suspended workshop is a card whose tap goes nowhere.
+    if (offering != null && !offering.provider.isApproved) return false;
     final providerId = promotion.providerId;
     if (providerId != null &&
-        !providers.any((p) => p.id == providerId)) {
+        !visibleProviders.any((p) => p.id == providerId)) {
       return false;
     }
     return true;
@@ -544,6 +710,14 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       for (final offer in _offers.value)
         if (offer.id == updated.id) updated else offer,
     ]);
+    await _audit(
+      actor: EscrowActor.founder,
+      actorId: 'founder',
+      action: active ? 'offer.enabled' : 'offer.stopped',
+      subjectType: AuditSubjectType.offer,
+      subjectId: offerId,
+      toState: active ? 'active' : 'stopped',
+    );
     return updated;
   }
 
@@ -653,20 +827,39 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       const BookingAvailability(slots: [], bookedSlots: {});
 
   @override
-  Future<ServiceRequest> createRequest(CreateServiceRequestDraft draft) =>
-      _service.createRequest(draft);
+  Future<ServiceRequest> createRequest(CreateServiceRequestDraft draft) {
+    _requireBookable(draft.offering.provider.id);
+    return _service.createRequest(draft);
+  }
 
   @override
   Future<ServiceRequest> createPartRequest(
     CreatePartRequestDraft draft, {
     required Car car,
   }) {
-    final provider =
-        providers.where((p) => p.id == draft.providerId).firstOrNull;
-    if (provider == null) {
-      throw NotFoundException('Provider ${draft.providerId} not found');
-    }
+    final provider = _requireBookable(draft.providerId);
     return _service.createPartRequest(draft, provider: provider, car: car);
+  }
+
+  /// The second half of §5's rule: an unapproved workshop is not only invisible,
+  /// it takes no bookings.
+  ///
+  /// Enforced here rather than by hiding the button, because hiding a button is
+  /// not a rule — a stale deep link, a cached list, or a workshop suspended
+  /// between opening a page and pressing "book" all reach this path with the
+  /// button already gone.
+  ServiceProvider _requireBookable(String providerId) {
+    final provider = providerById(providerId);
+    if (provider == null) {
+      throw NotFoundException('Provider $providerId not found');
+    }
+    if (!provider.isApproved) {
+      throw BusinessRuleException(
+        'Workshop $providerId is ${provider.stage.key} and cannot take bookings',
+        code: 'workshop_not_approved',
+      );
+    }
+    return provider;
   }
 
   @override
@@ -677,6 +870,54 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   Future<List<ServiceRequest>> fetchRequests() => _service.fetchRequests();
 
   @override
+  Future<List<ServiceRequest>> fetchOperatorQueue() =>
+      _service.fetchOperatorQueue();
+
+  /// **The single write point of the audit trail (§6).**
+  ///
+  /// Everything that changes escrow, onboarding, an offer's switch or the
+  /// payout ledger comes through one of the four methods below, and each of
+  /// them calls this exactly once. No screen may call it: a screen that can
+  /// write its own audit line can also forget to, and a log with holes in it is
+  /// worse than no log, because it is believed.
+  ///
+  /// Failing to record must never fail the action it records — a booking that
+  /// could not be approved because the log was unreachable would be a worse
+  /// outcome than an unlogged approval — so the append is best-effort and the
+  /// caller's result is returned regardless.
+  Future<void> _audit({
+    required EscrowActor actor,
+    required String actorId,
+    required String action,
+    required AuditSubjectType subjectType,
+    required String subjectId,
+    String? fromState,
+    String? toState,
+    String? note,
+  }) async {
+    try {
+      final stored = await _service.appendAudit(
+        AuditEntry(
+          // Replaced by the service, which owns the identity sequence.
+          id: 'pending',
+          at: DateTime.now(),
+          actor: actor,
+          actorId: actorId,
+          action: action,
+          subjectType: subjectType,
+          subjectId: subjectId,
+          fromState: fromState,
+          toState: toState,
+          note: note,
+        ),
+      );
+      _auditEntries.put([stored, ..._auditEntries.value]);
+    } on AppException {
+      // Swallowed on purpose — see the note above.
+    }
+  }
+
+  @override
   Future<ServiceRequest> applyEscrowEvent(
     String requestId,
     EscrowEvent event, {
@@ -684,13 +925,328 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     ProofOfWork? proof,
     String? disputeNote,
     String? slot,
-  }) =>
-      _service.applyEscrowEvent(
-        requestId,
-        event,
-        actor: actor,
-        proof: proof,
-        disputeNote: disputeNote,
-        slot: slot,
-      );
+  }) async {
+    // Read before, so the audit line can say what it moved *from*. The service
+    // is the authority on whether the move is legal and throws if it is not,
+    // which is why nothing is written until after it returns.
+    final before = (await _service.fetchRequests())
+        .where((r) => r.id == requestId)
+        .firstOrNull;
+
+    final updated = await _service.applyEscrowEvent(
+      requestId,
+      event,
+      actor: actor,
+      proof: proof,
+      disputeNote: disputeNote,
+      slot: slot,
+    );
+
+    await _audit(
+      actor: actor,
+      actorId: actor == EscrowActor.workshop
+          ? updated.offering.provider.id
+          : actor.key,
+      action: 'escrow.${event.key}',
+      subjectType: AuditSubjectType.booking,
+      subjectId: requestId,
+      fromState: before?.escrow.key,
+      toState: updated.escrow.key,
+      note: disputeNote?.trim().isEmpty ?? true ? null : disputeNote!.trim(),
+    );
+    return updated;
+  }
+
+  // ----------------------------------------------------- onboarding (§5, §11)
+
+  @override
+  List<ServiceProvider> providersInStage(ProviderOnboardingStage stage) {
+    final matches = [
+      for (final p in providers)
+        if (p.stage == stage) p,
+    ]..sort((a, b) {
+        // Oldest first: the application that has been waiting longest is the
+        // one the founder should answer next, and a queue that sorts any other
+        // way quietly rewards jumping in late.
+        final aAt = a.stageSince;
+        final bAt = b.stageSince;
+        if (aAt == null || bAt == null) return 0;
+        return aAt.compareTo(bAt);
+      });
+    return List.unmodifiable(matches);
+  }
+
+  @override
+  Map<ProviderOnboardingStage, int> get onboardingPipeline => {
+        for (final stage in ProviderOnboardingStage.values)
+          stage: providers.where((p) => p.stage == stage).length,
+      };
+
+  @override
+  Future<ServiceProvider> setProviderStage(
+    String providerId,
+    ProviderOnboardingStage stage, {
+    String? reason,
+    String actorId = 'founder',
+  }) async {
+    final before = providerById(providerId);
+    final updated =
+        await _service.setProviderStage(providerId, stage, reason: reason);
+
+    _providers.put([
+      for (final p in providers)
+        if (p.id == updated.id) updated else p,
+    ]);
+
+    await _audit(
+      actor: EscrowActor.founder,
+      actorId: actorId,
+      action: 'provider.${stage.key}',
+      subjectType: AuditSubjectType.provider,
+      subjectId: providerId,
+      fromState: before?.stage.key,
+      toState: stage.key,
+      note: reason?.trim().isEmpty ?? true ? null : reason!.trim(),
+    );
+    return updated;
+  }
+
+  @override
+  Future<ServiceProvider> submitWorkshopApplication({
+    required String ownerUserId,
+    required WorkshopApplication application,
+    required String region,
+  }) async {
+    final before = providerOwnedBy(ownerUserId);
+    final provider = await _service.submitWorkshopApplication(
+      ownerUserId: ownerUserId,
+      application: application,
+      region: region,
+    );
+
+    _providers.put([
+      if (before == null)
+        ...providers
+      else
+        for (final p in providers)
+          if (p.id != provider.id) p,
+      provider,
+    ]);
+
+    await _audit(
+      // The applicant is acting as the workshop here, even though it is not one
+      // yet — the audit trail's job is to say who did it, and a re-submission
+      // after a rejection is very much the owner's own act.
+      actor: EscrowActor.workshop,
+      actorId: ownerUserId,
+      action: before == null ? 'provider.applied' : 'provider.resubmitted',
+      subjectType: AuditSubjectType.provider,
+      subjectId: provider.id,
+      fromState: before?.stage.key,
+      toState: provider.stage.key,
+      note: before?.stage == ProviderOnboardingStage.suspended
+          ? 'أعاد صاحب الورشة الإرسال بعد الرفض'
+          : null,
+    );
+    return provider;
+  }
+
+  // ---------------------------------------------------------- money (§3, §5)
+
+  @override
+  WorkshopEarnings earningsFor(
+    String providerId,
+    List<ServiceRequest> requests, {
+    Duration? window,
+  }) {
+    final span = window ?? _config.earningsWindow;
+    final rate = _config.platformCommission;
+    final now = DateTime.now();
+    final cutoff = now.subtract(span);
+
+    var held = 0.0;
+    var releasedGross = 0.0;
+    var releasedCommission = 0.0;
+    var totalCommission = 0.0;
+    final lines = <EarningsLine>[];
+
+    for (final request in requests) {
+      if (request.offering.provider.id != providerId) continue;
+
+      // "Held" is money that exists and is not theirs yet. `holdsFunds` is the
+      // escrow machine's own answer to that question, including the disputed
+      // ones — a dispute freezes the money, it does not return it.
+      if (request.escrow.holdsFunds) held += request.total;
+
+      if (request.escrow != EscrowState.releasedToWorkshop) continue;
+      final at = request.inCurrentStateSince;
+      final commission = request.total * rate;
+      totalCommission += commission;
+      if (!at.isBefore(cutoff)) {
+        releasedGross += request.total;
+        releasedCommission += commission;
+      }
+      lines.add(EarningsLine(
+        request: request,
+        at: at,
+        gross: request.total,
+        commission: commission,
+      ));
+    }
+
+    // Open jobs belong in the table too — a workshop wants to see what is
+    // coming, not only what landed.
+    for (final request in requests) {
+      if (request.offering.provider.id != providerId) continue;
+      if (!request.escrow.holdsFunds) continue;
+      lines.add(EarningsLine(
+        request: request,
+        at: request.inCurrentStateSince,
+        gross: request.total,
+        commission: request.total * rate,
+      ));
+    }
+
+    lines.sort((a, b) => b.at.compareTo(a.at));
+    return WorkshopEarnings(
+      heldInEscrow: held,
+      releasedGross: releasedGross,
+      releasedCommission: releasedCommission,
+      totalCommission: totalCommission,
+      // Twenty is what the spec asks the table to show; computing the whole
+      // list and truncating here keeps the totals above complete.
+      lines: List.unmodifiable(lines.take(20)),
+      window: span,
+    );
+  }
+
+  @override
+  double outstandingFor(String providerId, List<ServiceRequest> requests) {
+    // Everything ever released, net of commission…
+    final earned = earningsFor(
+      providerId,
+      requests,
+      window: const Duration(days: 36500),
+    );
+    final net = earned.releasedGross - earned.releasedCommission;
+    // …less what the founder has already recorded as transferred.
+    return net - payouts.forProvider(providerId).total;
+  }
+
+  @override
+  List<PayoutRecord> get payouts => _payouts.value.newestFirst;
+
+  @override
+  Future<PayoutRecord> recordPayout({
+    required String providerId,
+    required double amount,
+    required DateTime periodFrom,
+    required DateTime periodTo,
+    String? note,
+    String actorId = 'founder',
+  }) async {
+    final stored = await _service.recordPayout(
+      PayoutRecord(
+        id: 'pending',
+        providerId: providerId,
+        amount: amount,
+        periodFrom: periodFrom,
+        periodTo: periodTo,
+        markedAt: DateTime.now(),
+        note: note,
+      ),
+    );
+    _payouts.put([stored, ..._payouts.value]);
+
+    await _audit(
+      actor: EscrowActor.founder,
+      actorId: actorId,
+      action: 'payout.marked',
+      subjectType: AuditSubjectType.payout,
+      subjectId: stored.id,
+      note: note?.trim().isEmpty ?? true
+          ? 'OMR ${amount.toStringAsFixed(2)} → $providerId'
+          : note!.trim(),
+    );
+    return stored;
+  }
+
+  // -------------------------------------------------------- performance (§4)
+
+  @override
+  WorkshopMetrics metricsFor(
+    String providerId,
+    List<ServiceRequest> requests,
+    List<Review> reviews,
+  ) {
+    var received = 0;
+    var accepted = 0;
+    var completed = 0;
+    var disputed = 0;
+    final responses = <Duration>[];
+
+    for (final request in requests) {
+      if (request.offering.provider.id != providerId) continue;
+
+      // "Received" is every job that ever reached the workshop's own queue —
+      // read from the history, because a job it rejected is long past
+      // `fundsHeld` by the time anyone looks and would otherwise not be
+      // counted against it.
+      final offeredAt = _entryAt(request, EscrowState.fundsHeld);
+      final acceptedAt = _entryAt(request, EscrowState.acceptedByWorkshop);
+      final rejected = request.history
+          .any((e) => e.event == EscrowEvent.rejectJob);
+      if (offeredAt == null && !rejected) continue;
+
+      received++;
+      if (acceptedAt != null) {
+        accepted++;
+        if (offeredAt != null) responses.add(acceptedAt.difference(offeredAt));
+      }
+      if (request.escrow == EscrowState.releasedToWorkshop) completed++;
+      if (request.history.any((e) => e.state == EscrowState.disputed)) {
+        disputed++;
+      }
+    }
+
+    final mine = reviews.about(
+      providerId,
+      direction: ReviewDirection.customerToWorkshop,
+    );
+
+    return WorkshopMetrics(
+      received: received,
+      accepted: accepted,
+      completed: completed,
+      disputed: disputed,
+      avgResponseTime: responses.isEmpty
+          ? null
+          : Duration(
+              milliseconds: responses.fold<int>(
+                    0,
+                    (sum, d) => sum + d.inMilliseconds,
+                  ) ~/
+                  responses.length,
+            ),
+      // Derived from the reviews themselves — there is no stored rating field
+      // anywhere, which is what stops a number on a card from outliving the
+      // reviews behind it.
+      avgRating: mine.averageRating,
+      reviewCount: mine.length,
+      recentReviews: List.unmodifiable(mine.newestFirst.take(5)),
+    );
+  }
+
+  /// When a booking first entered [state], from its own escrow history.
+  static DateTime? _entryAt(ServiceRequest request, EscrowState state) {
+    for (final entry in request.history) {
+      if (entry.state == state) return entry.at;
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------- audit (§6)
+
+  @override
+  List<AuditEntry> get auditLog => _auditEntries.value.newestFirst;
 }

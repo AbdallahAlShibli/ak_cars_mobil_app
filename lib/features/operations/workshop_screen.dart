@@ -17,25 +17,77 @@ import '../../data/models/models.dart';
 import '../../state/app_state.dart';
 import '../services/proof_upload_sheet.dart';
 import 'escrow_action_bar.dart';
+import 'operator_shell.dart';
 import 'queue_urgency.dart';
 
-/// The workshop's panel (spec §2 and §6): accept or reject a job, start work,
-/// submit the completion proof.
+/// The workshop's panel (spec §2 and §6, extended by phase 2.5 §3 and §4).
 ///
-/// Not decorated, but no longer undifferentiated. It was one flat list in
-/// which a job waiting on this workshop looked exactly like a job waiting on
-/// the customer, and the numbers that describe the day were nowhere. Now it is
-/// two layers (§5): a fixed strip of counts at the top, which is reading
-/// material, and below it the queues, which are the work — "needs you" first,
-/// because that is the only queue anyone opens this screen to clear.
+/// Three tabs, because a workshop asks three different questions and they were
+/// previously answered by one screen that only answered the first:
+///
+/// * **Jobs** — the queue. "Needs you" first, because that is the only reason
+///   anyone opens this screen in a hurry.
+/// * **Earnings** — what is held, what was released, and what the platform
+///   took. Previously nowhere in the app, which meant a workshop's only way to
+///   learn the commission was to compare a booking total against a bank
+///   statement.
+/// * **Performance** — acceptance, response time, completion, disputes and the
+///   real reviews behind the rating. Every figure derived, none stored.
 class WorkshopScreen extends ConsumerWidget {
   const WorkshopScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = S.of(context);
+    final workshop = ref.watch(activeWorkshopProvider);
+    final standIn = ref.watch(isStandingInForDemoProvider);
+
+    return OperatorShell(
+      title: s.t('لوحة الورشة', 'Workshop panel'),
+      // Named rather than implied: on the pilot's role switcher this panel is
+      // showing a workshop the account does not own, and a figures screen that
+      // does not say whose figures they are will be read as yours.
+      banner: standIn && workshop != null
+          ? OffAppTransferNotice(
+              s.t(
+                'عرض تجريبي — تشاهد لوحة ${workshop.name.of(s)}. الأرقام تخص هذه الورشة، لا حسابك.',
+                'Demo view — you are looking at ${workshop.name.of(s)}. These figures are that workshop\'s, not your account\'s.',
+              ),
+            )
+          : null,
+      tabs: [
+        OperatorTab(
+          label: s.t('الطلبات', 'Jobs'),
+          builder: (context) => const _JobsTab(),
+        ),
+        OperatorTab(
+          label: s.t('الأرباح', 'Earnings'),
+          builder: (context) => const _EarningsTab(),
+        ),
+        OperatorTab(
+          label: s.t('الأداء', 'Performance'),
+          builder: (context) => const _PerformanceTab(),
+        ),
+      ],
+    );
+  }
+}
+
+/// The queue, unchanged in substance from the pre-2.5 screen: a pinned strip of
+/// counts, then "waiting on you" and "waiting on others" as separate queues.
+///
+/// What did change is the scope. It used to list every booking the app knew
+/// about; it now lists this workshop's, because the seeded marketplace has
+/// forty of them belonging to a dozen workshops and a panel that mixes them is
+/// not a workshop's panel.
+class _JobsTab extends ConsumerWidget {
+  const _JobsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
     final ak = AkColors.of(context);
-    final requests = ref.watch(requestsProvider);
+    final requests = ref.watch(workshopJobsProvider);
     final open = [
       for (final r in requests)
         if (!r.escrow.isTerminal) r,
@@ -59,91 +111,424 @@ class WorkshopScreen extends ConsumerWidget {
           r,
     ];
 
-    return Scaffold(
-      appBar: AppBar(title: Text(s.t('لوحة الورشة', 'Workshop panel'))),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ------------------------------------------- metrics layer
+        // Pinned, so the shape of the day stays visible while the operator
+        // scrolls through the jobs that make it up.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin,
+              AppSpacing.md, AppSpacing.screenMargin, AppSpacing.lg),
+          child: Row(
+            children: [
+              Expanded(
+                child: MetricTile(
+                  value: '${mine.length}',
+                  label: s.t('بانتظار إجرائك', 'Waiting on you'),
+                  tone: mine.isEmpty ? null : ak.amberText,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: MetricTile(
+                  value: '${waiting.length}',
+                  label: s.t('بانتظار غيرك', 'Waiting on others'),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: MetricTile(
+                  value: '${breaching.length}',
+                  label: s.t('تجاوزت المهلة', 'Past the window'),
+                  tone: breaching.isEmpty ? null : ak.danger,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Divider(height: 1, color: ak.divider),
+        // -------------------------------------------- queue layer
+        Expanded(
+          child: open.isEmpty
+              ? Center(
+                  child: SingleChildScrollView(
+                    child: EmptyState(
+                      icon: LucideIcons.coffee,
+                      title: s.t('لا طلبات مفتوحة', 'Nothing open'),
+                      message: s.t(
+                        'لا طلبات مفتوحة حالياً — راحة بال مستحقة. سيظهر أي طلب جديد هنا فور وصوله.',
+                        'No open jobs right now — a quiet moment, well earned. Anything new lands here the second it arrives.',
+                      ),
+                    ),
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.screenMargin,
+                      AppSpacing.lg,
+                      AppSpacing.screenMargin,
+                      AppSpacing.xl),
+                  children: [
+                    _Queue(
+                      title: s.t('بانتظار إجرائك', 'Waiting on you'),
+                      requests: mine,
+                      waitingOnMe: true,
+                      empty: s.t(
+                        'لا شيء بانتظارك الآن — كل الطلبات المفتوحة عند غيرك.',
+                        'Nothing is on you right now — every open job is with someone else.',
+                      ),
+                    ),
+                    if (waiting.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.sectionGap),
+                      _Queue(
+                        title: s.t('بانتظار غيرك', 'Waiting on others'),
+                        requests: waiting,
+                        waitingOnMe: false,
+                        empty: '',
+                      ),
+                    ],
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// What this workshop has earned, is holding, and has been charged (§3).
+///
+/// Three figures and a table, in that order, because that is the order the
+/// questions are asked in: *is anything coming?*, *what landed?*, *what did it
+/// cost me?*
+///
+/// The commission is a headline, not a column total you have to derive. A
+/// workshop that discovers the platform's cut by subtracting two numbers
+/// trusts the platform less than one that was shown the figure plainly, and
+/// the difference costs nothing to give.
+class _EarningsTab extends ConsumerWidget {
+  const _EarningsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
+    final ak = AkColors.of(context);
+    final earnings = ref.watch(workshopEarningsProvider);
+    final days = earnings.window.inDays;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, AppSpacing.lg,
+          AppSpacing.screenMargin, AppSpacing.xl),
+      children: [
+        OperatorFigure(
+          value: '${s.omr} ${earnings.heldInEscrow.toStringAsFixed(2)}',
+          label: s.t('محجوز في الضمان', 'Held in escrow'),
+          hint: s.t('على طلباتك المفتوحة — ليست لك بعد.',
+              'On your open jobs — not yours yet.'),
+          tone: earnings.heldInEscrow > 0 ? ak.amberText : null,
+        ),
+        const SizedBox(height: AppSpacing.itemGap),
+        OperatorFigure(
+          value: '${s.omr} ${earnings.releasedNet.toStringAsFixed(2)}',
+          label: s.t('حُرِّر خلال ${s.days(days)}', 'Released in $days days'),
+          hint: s.t(
+            'بعد خصم عمولة ${earnings.releasedCommission.toStringAsFixed(2)} من ${earnings.releasedGross.toStringAsFixed(2)}',
+            'After ${earnings.releasedCommission.toStringAsFixed(2)} commission on ${earnings.releasedGross.toStringAsFixed(2)}',
+          ),
+        ),
+        const SizedBox(height: AppSpacing.itemGap),
+        OperatorFigure(
+          value: '${s.omr} ${earnings.totalCommission.toStringAsFixed(2)}',
+          label: s.t('إجمالي العمولة المخصومة', 'Total commission charged'),
+          hint: s.t('منذ بداية تعاملك مع المنصة.',
+              'Since you joined the platform.'),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        OffAppTransferNotice(
+          s.t(
+            'التحويل الفعلي يتم خارج التطبيق في هذه المرحلة. ما تراه هنا سجل لما رصده التطبيق، لا رصيد يحتفظ به.',
+            'Actual transfers happen outside the app at this stage. What you see here is a record of what the app observed, not a balance it holds.',
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sectionGap),
+        SectionHeader(
+          '${s.t('آخر المعاملات', 'Recent transactions')} · ${earnings.lines.length}',
+        ),
+        const SizedBox(height: AppSpacing.headingGap),
+        if (earnings.lines.isEmpty)
+          EmptyState(
+            compact: true,
+            icon: LucideIcons.receipt,
+            message: s.t(
+              'لا معاملات بعد — أول طلب يُحرَّر سيظهر هنا بتفصيل العمولة والصافي.',
+              'No transactions yet — the first released job lands here with its commission and net broken out.',
+            ),
+          )
+        else
+          for (final (i, line) in earnings.lines.indexed) ...[
+            if (i > 0) const SizedBox(height: AppSpacing.itemGap),
+            _EarningsRow(line: line),
+          ],
+      ],
+    );
+  }
+}
+
+class _EarningsRow extends StatelessWidget {
+  const _EarningsRow({required this.line});
+
+  final EarningsLine line;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final ak = AkColors.of(context);
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  line.request.offering.name.of(s).replaceAll('\n', ' '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.text.cardTitle,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              // "Held" and "released" are the only two states this table
+              // distinguishes, because they are the only two that change
+              // whether the money is the workshop's.
+              line.pending
+                  ? StatusBadge.warn(s.t('محجوز', 'Held'))
+                  : StatusBadge.good(s.t('محرَّر', 'Released')),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs / 2),
+          Text(
+            '${_date(line.at)} · ${line.request.car.label}',
+            style: context.text.bodySecondary,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          // The net is what reached (or will reach) the workshop, so it leads;
+          // the gross and the commission that produced it follow.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('${s.omr} ${line.net.toStringAsFixed(2)}',
+                  style: context.text.price),
+              const SizedBox(width: AppSpacing.sm),
+              Flexible(
+                child: Text(
+                  s.t(
+                    '${line.gross.toStringAsFixed(2)} − عمولة ${line.commission.toStringAsFixed(2)}',
+                    '${line.gross.toStringAsFixed(2)} − ${line.commission.toStringAsFixed(2)} fee',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.text.bodySecondary.copyWith(color: ak.inkSub),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _date(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
+/// How this workshop is actually doing (§4).
+///
+/// Every figure comes from `WorkshopMetrics`, computed in the repository from
+/// the bookings' own escrow history and the real reviews. Nothing on this
+/// screen is stored anywhere, which is deliberate: the previous generation of
+/// provider "stats" in this project was invented from a boolean, and a
+/// performance tab that can drift from the jobs behind it is worse than none.
+///
+/// A rate with no denominator renders as "—", never as 0%. A workshop that has
+/// never been sent a job has not refused any, and printing "0% acceptance"
+/// would be an accusation the data does not support.
+class _PerformanceTab extends ConsumerWidget {
+  const _PerformanceTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
+    final ak = AkColors.of(context);
+    final m = ref.watch(workshopMetricsProvider);
+
+    if (m.isEmpty) {
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.screenMargin),
+          child: EmptyState(
+            icon: LucideIcons.chartNoAxesColumn,
+            title: s.t('لا أرقام بعد', 'Nothing to measure yet'),
+            message: s.t(
+              'تظهر أرقام الأداء بعد أول طلب يصلك. لن نعرض نِسَباً قبل أن يكون خلفها عمل فعلي.',
+              'Performance figures appear after your first job. We will not show a rate before there is real work behind it.',
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, AppSpacing.lg,
+          AppSpacing.screenMargin, AppSpacing.xl),
+      children: [
+        Row(
           children: [
-            // ------------------------------------------- metrics layer
-            // Pinned, so the shape of the day stays visible while the operator
-            // scrolls through the jobs that make it up.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, 0,
-                  AppSpacing.screenMargin, AppSpacing.lg),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: MetricTile(
-                      value: '${mine.length}',
-                      label: s.t('بانتظار إجرائك', 'Waiting on you'),
-                      tone: mine.isEmpty ? null : ak.amberText,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: MetricTile(
-                      value: '${waiting.length}',
-                      label: s.t('بانتظار غيرك', 'Waiting on others'),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: MetricTile(
-                      value: '${breaching.length}',
-                      label: s.t('تجاوزت المهلة', 'Past the window'),
-                      tone: breaching.isEmpty ? null : ak.danger,
-                    ),
-                  ),
-                ],
+            Expanded(
+              child: OperatorFigure(
+                value: _percent(m.acceptanceRate),
+                label: s.t('نسبة القبول', 'Acceptance rate'),
+                hint: s.t('${m.accepted} من ${m.received} طلباً',
+                    '${m.accepted} of ${m.received} jobs'),
               ),
             ),
-            Divider(height: 1, color: ak.divider),
-            // -------------------------------------------- queue layer
+            const SizedBox(width: AppSpacing.sm),
             Expanded(
-              child: open.isEmpty
-                  ? Center(
-                      child: SingleChildScrollView(
-                        child: EmptyState(
-                          icon: LucideIcons.coffee,
-                          title: s.t('لا طلبات مفتوحة', 'Nothing open'),
-                          message: s.t(
-                            'لا طلبات مفتوحة حالياً — راحة بال مستحقة. سيظهر أي طلب جديد هنا فور وصوله.',
-                            'No open jobs right now — a quiet moment, well earned. Anything new lands here the second it arrives.',
-                          ),
-                        ),
-                      ),
-                    )
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.screenMargin,
-                          AppSpacing.lg,
-                          AppSpacing.screenMargin,
-                          AppSpacing.xl),
-                      children: [
-                        _Queue(
-                          title: s.t('بانتظار إجرائك', 'Waiting on you'),
-                          requests: mine,
-                          waitingOnMe: true,
-                          empty: s.t(
-                            'لا شيء بانتظارك الآن — كل الطلبات المفتوحة عند غيرك.',
-                            'Nothing is on you right now — every open job is with someone else.',
-                          ),
-                        ),
-                        if (waiting.isNotEmpty) ...[
-                          const SizedBox(height: AppSpacing.sectionGap),
-                          _Queue(
-                            title: s.t('بانتظار غيرك', 'Waiting on others'),
-                            requests: waiting,
-                            waitingOnMe: false,
-                            empty: '',
-                          ),
-                        ],
-                      ],
-                    ),
+              child: OperatorFigure(
+                value: _duration(s, m.avgResponseTime),
+                label: s.t('متوسط زمن الرد', 'Avg response time'),
+                hint: s.t('من وصول الطلب إلى قبوله',
+                    'From arrival to acceptance'),
+              ),
             ),
           ],
         ),
+        const SizedBox(height: AppSpacing.itemGap),
+        Row(
+          children: [
+            Expanded(
+              child: OperatorFigure(
+                value: _percent(m.completionRate),
+                label: s.t('نسبة الإنجاز', 'Completion rate'),
+                hint: s.t('${m.completed} من ${m.accepted} مقبولاً',
+                    '${m.completed} of ${m.accepted} accepted'),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: OperatorFigure(
+                value: _percent(m.disputeRate),
+                label: s.t('نسبة النزاعات', 'Dispute rate'),
+                hint: s.t('${m.disputed} نزاعاً', '${m.disputed} disputed'),
+                tone: (m.disputeRate ?? 0) > 0.1 ? ak.danger : null,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sectionGap),
+        SectionHeader(s.t('تقييم العملاء', 'Customer rating')),
+        const SizedBox(height: AppSpacing.headingGap),
+        AppCard(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      // Null, not zero: "nobody has rated us" and "we score
+                      // nothing" are different statements and the screen has
+                      // to be able to make the first one.
+                      m.avgRating == null
+                          ? '—'
+                          : m.avgRating!.toStringAsFixed(1),
+                      style: context.text.price,
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      m.reviewCount == 0
+                          ? s.t('لا تقييمات بعد', 'No reviews yet')
+                          : s.reviews(m.reviewCount),
+                      style: context.text.bodySecondary,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(LucideIcons.star, size: 20, color: ak.amberText),
+            ],
+          ),
+        ),
+        if (m.recentReviews.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sectionGap),
+          SectionHeader(s.t('آخر ما كُتب عنك', 'What customers wrote')),
+          const SizedBox(height: AppSpacing.headingGap),
+          for (final (i, review) in m.recentReviews.indexed) ...[
+            if (i > 0) const SizedBox(height: AppSpacing.itemGap),
+            _ReviewRow(review: review),
+          ],
+        ],
+      ],
+    );
+  }
+
+  /// A rate, or an em dash when there is no denominator behind it.
+  static String _percent(double? rate) =>
+      rate == null ? '—' : '${(rate * 100).round()}%';
+
+  static String _duration(S s, Duration? d) {
+    if (d == null) return '—';
+    if (d.inHours < 1) return s.t('${d.inMinutes} دقيقة', '${d.inMinutes} min');
+    if (d.inHours < 24) return s.t('${d.inHours} ساعة', '${d.inHours}h');
+    return s.days(d.inDays);
+  }
+}
+
+class _ReviewRow extends StatelessWidget {
+  const _ReviewRow({required this.review});
+
+  final Review review;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final ak = AkColors.of(context);
+
+    return AppCard(
+      color: ak.surfaceDim,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              for (var i = 0; i < 5; i++)
+                Icon(
+                  LucideIcons.star,
+                  size: 13,
+                  color: i < review.rating ? ak.amberText : ak.inkFaint,
+                ),
+              const Spacer(),
+              // §8: a review written after a dispute is labelled, not hidden.
+              // A resolved dispute is part of the record.
+              if (review.afterDispute)
+                StatusBadge(s.t('بعد نزاع محلول', 'After a resolved dispute')),
+            ],
+          ),
+          if ((review.comment ?? '').isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              // The customer's own words, verbatim.
+              review.comment!,
+              style: context.text.bodyPrimary.copyWith(height: 1.6),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            review.serviceType.of(s),
+            style: context.text.bodySecondary.copyWith(fontSize: 11),
+          ),
+        ],
       ),
     );
   }
@@ -287,7 +672,9 @@ class _JobCard extends ConsumerWidget {
     );
     if (quote == null || !context.mounted) return;
 
-    await ref.read(requestsProvider.notifier).submitQuote(request.id, quote);
+    await ref
+        .read(operatorQueueProvider.notifier)
+        .submitQuote(request.id, quote);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -315,7 +702,7 @@ class _JobCard extends ConsumerWidget {
     if (result == null || !context.mounted) return;
 
     await ref
-        .read(requestsProvider.notifier)
+        .read(operatorQueueProvider.notifier)
         .fire(
           request.id,
           EscrowEvent.submitProof,

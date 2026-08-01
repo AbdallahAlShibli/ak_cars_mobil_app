@@ -65,6 +65,92 @@ extension ProviderCapabilityX on ProviderCapability {
   }
 }
 
+/// Where a workshop stands on the road from "applied" to "sells on the
+/// marketplace" (spec §5, tab 2).
+///
+/// A single ordered path, not a set of booleans, for the same reason
+/// [EscrowState] is: `isVerified && isSuspended` is not a state anyone can
+/// reach here, and the founder panel's pipeline view is just a count per value.
+///
+/// Only [approved] grants anything. Everything before it is an application in
+/// progress; [suspended] is the one terminal-ish value and covers both "we
+/// rejected this application" and "we stopped a workshop that was live" —
+/// which are the same fact from the marketplace's point of view, and are told
+/// apart by [ServiceProvider.rejectionReason] and the audit trail.
+enum ProviderOnboardingStage {
+  /// The account exists and named itself a workshop; no documents yet.
+  applied,
+
+  /// Commercial registration document attached, waiting on a human to read it.
+  /// This is where a registration from `register_screen.dart` lands (§11).
+  documentsSubmitted,
+
+  /// The founder read the documents and they check out, but the workshop is
+  /// not yet switched on for customers.
+  verified,
+
+  /// Live: visible to customers, takes bookings, may run offers.
+  approved,
+
+  /// Rejected, or stopped after having been live. Always carries a written
+  /// reason — see [ServiceProvider.rejectionReason].
+  suspended;
+
+  /// Stable wire value.
+  String get key => name;
+
+  /// The only value that grants anything.
+  bool get grantsAccess => this == ProviderOnboardingStage.approved;
+
+  /// True while the application is waiting on the founder rather than on the
+  /// workshop. Drives the founder panel's "needs you" pipeline columns.
+  bool get awaitsFounder =>
+      this == ProviderOnboardingStage.applied ||
+      this == ProviderOnboardingStage.documentsSubmitted ||
+      this == ProviderOnboardingStage.verified;
+
+  static ProviderOnboardingStage fromKey(String? key) {
+    for (final value in ProviderOnboardingStage.values) {
+      if (value.name.toLowerCase() == key?.toLowerCase()) return value;
+    }
+    return ProviderOnboardingStage.applied;
+  }
+}
+
+extension ProviderOnboardingStageX on ProviderOnboardingStage {
+  String label(S s) => switch (this) {
+        ProviderOnboardingStage.applied => s.t('قُدِّم الطلب', 'Applied'),
+        ProviderOnboardingStage.documentsSubmitted =>
+          s.t('الوثائق مرفوعة', 'Documents submitted'),
+        ProviderOnboardingStage.verified => s.t('تم التحقّق', 'Verified'),
+        ProviderOnboardingStage.approved => s.t('معتمدة', 'Approved'),
+        ProviderOnboardingStage.suspended => s.t('موقوفة', 'Suspended'),
+      };
+
+  /// What the *workshop owner* is told, which is not what the founder's
+  /// pipeline column says: "documents submitted" is an internal position, and
+  /// what the applicant needs to know is that somebody is reading them (§11
+  /// step 5).
+  String ownerStatus(S s) => switch (this) {
+        ProviderOnboardingStage.applied ||
+        ProviderOnboardingStage.documentsSubmitted ||
+        ProviderOnboardingStage.verified =>
+          s.t('طلب ورشتك قيد المراجعة', 'Your workshop application is under review'),
+        ProviderOnboardingStage.approved =>
+          s.t('تم اعتماد ورشتك', 'Your workshop is approved'),
+        ProviderOnboardingStage.suspended =>
+          s.t('طلبك يحتاج تعديلاً', 'Your application needs a change'),
+      };
+
+  IconData get icon => switch (this) {
+        ProviderOnboardingStage.applied => LucideIcons.filePlus,
+        ProviderOnboardingStage.documentsSubmitted => LucideIcons.fileText,
+        ProviderOnboardingStage.verified => LucideIcons.badgeCheck,
+        ProviderOnboardingStage.approved => LucideIcons.circleCheck,
+        ProviderOnboardingStage.suspended => LucideIcons.circleSlash,
+      };
+}
+
 /// A workshop or roadside operator on the marketplace.
 class ServiceProvider {
   const ServiceProvider({
@@ -75,7 +161,11 @@ class ServiceProvider {
     required this.distanceKm,
     required this.verified,
     required this.fulfillments,
-    this.isApproved = false,
+    this.stage = ProviderOnboardingStage.applied,
+    this.stageSince,
+    this.rejectionReason,
+    this.crDocumentUrl,
+    this.ownerUserId,
     this.capabilities = const {},
     this.pickupFee = 3,
     this.phone,
@@ -95,19 +185,54 @@ class ServiceProvider {
   final bool verified;
   final Set<Fulfillment> fulfillments;
 
-  /// Platform approval — the gate on anything that *promotes* this workshop
-  /// (home-page spec §3: "معتمدة من المنصة — شرط لأي عرض أو إبراز").
+  /// Where this workshop stands on the onboarding path (spec §5, tab 2).
   ///
-  /// Distinct from [verified], which is a badge about the business having been
-  /// checked. This one is an editorial decision by the platform, and it gates
-  /// two things and only two: whether the workshop may run an [Offer], and
-  /// whether it may be ranked on the home page's workshop boards. It does
-  /// **not** hide the workshop from the services list — an unapproved workshop
-  /// still sells, it just does not get promoted.
+  /// This replaced a bare `isApproved` boolean in phase 2.5. The boolean is
+  /// still readable — see [isApproved] — but it is now *derived*, so there is
+  /// exactly one field that can say whether a workshop is live and no way for
+  /// two of them to disagree.
   ///
-  /// Defaults to false, including on the wire: a workshop the API says nothing
-  /// about has not been approved, and must not be promoted on that silence.
-  final bool isApproved;
+  /// Defaults to [ProviderOnboardingStage.applied], including on the wire: a
+  /// workshop the API says nothing about has not been approved, and must not
+  /// be promoted, listed or booked on that silence.
+  final ProviderOnboardingStage stage;
+
+  /// When [stage] was last set. The founder's pipeline table sorts on how long
+  /// an application has been sitting where it is, and that is only honest if it
+  /// comes from a recorded timestamp rather than from the row's position.
+  final DateTime? stageSince;
+
+  /// Why the application was rejected, or why a live workshop was stopped.
+  ///
+  /// Never null while [stage] is [ProviderOnboardingStage.suspended] — the
+  /// repository refuses a reasonless suspension (§11 step 3), because the
+  /// owner is shown this text and "rejected" with no sentence after it is not
+  /// something anyone can act on.
+  final String? rejectionReason;
+
+  /// The commercial-registration document the applicant uploaded. The founder
+  /// opens this before deciding (§11 step 2).
+  final String? crDocumentUrl;
+
+  /// The account that owns this workshop, when it came in through
+  /// registration. Null for the seeded workshops the platform onboarded by
+  /// hand. This is what lets `/workshop` check *this* operator's stage rather
+  /// than any approved workshop's.
+  final String? ownerUserId;
+
+  /// Platform approval — the gate on anything that promotes, lists or books
+  /// this workshop (home-page spec §3, and §5 of the phase-2.5 spec).
+  ///
+  /// Derived from [stage] rather than stored. Every existing reader (offer
+  /// validation, the two home-page leaderboards, `approvedWorkshops`) keeps
+  /// working unchanged, and gains the stronger guarantee for free: there is no
+  /// longer a way to be `isApproved: true` while sitting in the middle of an
+  /// application.
+  bool get isApproved => stage.grantsAccess;
+
+  /// True while the workshop cannot yet act — the account exists but the
+  /// panel, the bookings and the listing are all closed to it.
+  bool get isPendingApproval => stage.awaitsFounder;
 
   /// Specialist work this workshop is equipped for. Empty is the normal case —
   /// an ordinary garage — and is why every existing provider needed no change
@@ -150,7 +275,19 @@ class ServiceProvider {
         region: json.stringOr('region', ''),
         distanceKm: json.doubleOr('distanceKm', 0),
         verified: json.boolOr('verified', false),
-        isApproved: json.boolOr('isApproved', false),
+        // Back-compatible read: a payload from before the staged path only
+        // carries the boolean, and `isApproved: true` means exactly
+        // "approved". Anything else starts at the beginning of the path
+        // rather than being guessed at.
+        stage: json['stage'] == null
+            ? (json.boolOr('isApproved', false)
+                ? ProviderOnboardingStage.approved
+                : ProviderOnboardingStage.applied)
+            : ProviderOnboardingStage.fromKey(json.stringOrNull('stage')),
+        stageSince: json.dateTimeOrNull('stageSince'),
+        rejectionReason: json.stringOrNull('rejectionReason'),
+        crDocumentUrl: json.stringOrNull('crDocumentUrl'),
+        ownerUserId: json.stringOrNull('ownerUserId'),
         fulfillments: json
             .stringList('fulfillments')
             .map(FulfillmentX.fromKey)
@@ -174,7 +311,15 @@ class ServiceProvider {
         'region': region,
         'distanceKm': distanceKm,
         'verified': verified,
+        'stage': stage.key,
+        // Written as well as read: it is derived here, but a client on an
+        // older build still reads the boolean, and it costs one line to keep
+        // that contract rather than silently downgrading every workshop.
         'isApproved': isApproved,
+        'stageSince': stageSince?.toIso8601String(),
+        'rejectionReason': rejectionReason,
+        'crDocumentUrl': crDocumentUrl,
+        'ownerUserId': ownerUserId,
         'fulfillments': [for (final f in fulfillments) f.key],
         'capabilities': [for (final c in capabilities) c.key],
         'pickupFee': pickupFee,
@@ -192,7 +337,11 @@ class ServiceProvider {
     String? region,
     double? distanceKm,
     bool? verified,
-    bool? isApproved,
+    ProviderOnboardingStage? stage,
+    DateTime? stageSince,
+    String? rejectionReason,
+    String? crDocumentUrl,
+    String? ownerUserId,
     Set<Fulfillment>? fulfillments,
     Set<ProviderCapability>? capabilities,
     double? pickupFee,
@@ -201,6 +350,11 @@ class ServiceProvider {
     String? vatNumber,
     String? crNumber,
     L? hours,
+    /// Drops a previous rejection. Needed because the ordinary `?? this.x`
+    /// pattern can only set a nullable field, never clear it — and re-approving
+    /// a workshop that keeps showing its old rejection reason to its owner is
+    /// the bug that pattern would cause (§11 step 5).
+    bool clearRejectionReason = false,
   }) =>
       ServiceProvider(
         id: id ?? this.id,
@@ -209,7 +363,12 @@ class ServiceProvider {
         region: region ?? this.region,
         distanceKm: distanceKm ?? this.distanceKm,
         verified: verified ?? this.verified,
-        isApproved: isApproved ?? this.isApproved,
+        stage: stage ?? this.stage,
+        stageSince: stageSince ?? this.stageSince,
+        rejectionReason:
+            clearRejectionReason ? null : (rejectionReason ?? this.rejectionReason),
+        crDocumentUrl: crDocumentUrl ?? this.crDocumentUrl,
+        ownerUserId: ownerUserId ?? this.ownerUserId,
         fulfillments: fulfillments ?? this.fulfillments,
         capabilities: capabilities ?? this.capabilities,
         pickupFee: pickupFee ?? this.pickupFee,
@@ -229,7 +388,11 @@ class ServiceProvider {
       other.region == region &&
       other.distanceKm == distanceKm &&
       other.verified == verified &&
-      other.isApproved == isApproved &&
+      other.stage == stage &&
+      other.stageSince == stageSince &&
+      other.rejectionReason == rejectionReason &&
+      other.crDocumentUrl == crDocumentUrl &&
+      other.ownerUserId == ownerUserId &&
       other.pickupFee == pickupFee &&
       other.phone == phone &&
       other.whatsapp == whatsapp &&
@@ -249,7 +412,11 @@ class ServiceProvider {
         region,
         distanceKm,
         verified,
-        isApproved,
+        stage,
+        stageSince,
+        rejectionReason,
+        crDocumentUrl,
+        ownerUserId,
         pickupFee,
         phone,
         whatsapp,

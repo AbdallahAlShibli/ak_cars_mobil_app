@@ -5,6 +5,7 @@
 /// to the widget tree.
 library;
 
+export 'admin_state.dart';
 export 'auth_state.dart';
 export 'cars_state.dart';
 export 'catalog_state.dart';
@@ -15,6 +16,7 @@ export 'home_state.dart';
 export 'maintenance_state.dart';
 export 'notifications_state.dart';
 export 'offers_state.dart';
+export 'operator_queue_state.dart';
 export 'orders_state.dart';
 export 'requests_state.dart';
 export 'reviews_state.dart';
@@ -22,3 +24,4 @@ export 'role_state.dart';
 export 'search_state.dart';
 export 'settings_state.dart';
 export 'shop_state.dart';
+export 'workshop_state.dart';

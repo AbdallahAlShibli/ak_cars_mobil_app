@@ -140,7 +140,12 @@ class EscrowActionBar extends ConsumerWidget {
       if (confirmed != true) return;
     }
 
-    await ref.read(requestsProvider.notifier).fire(
+    // Fired through the operator queue, not the customer's own list: these
+    // buttons live on the two operator panels, and most of the bookings they
+    // act on belong to somebody else. `OperatorQueueNotifier.fire` delegates
+    // back to the customer path for the one booking that *is* the user's own,
+    // so the release side-effects still happen exactly once.
+    await ref.read(operatorQueueProvider.notifier).fire(
           request.id,
           transition.event,
           actor: actor,
