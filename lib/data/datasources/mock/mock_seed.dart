@@ -9,7 +9,6 @@ import '../../models/powertrain.dart';
 import '../../models/proof_of_work.dart';
 import '../../models/quote.dart';
 import '../../models/review.dart';
-import '../../models/service_offering.dart';
 import '../../models/service_provider.dart';
 import '../../models/service_request.dart';
 import 'mock_service_data.dart';

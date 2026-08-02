@@ -17,6 +17,350 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-08-02 · Onboarding/profile stopped advertising the hidden car-marketplace and parts-store pillars
+
+**Baseline:** on top of the "no longer hang on splash" entry below, same day.
+**Request:** "test and check the app features using adb. see all app screens,
+fix any bugs... see the first app page after splash screen. there is card for
+sell and buy cars. remove it. see other features."
+
+### What was actually wrong
+
+Walked the whole first-launch flow and every bottom-tab screen live on a
+physical device (SM S918B) via `adb`, clearing app data between passes to see
+it as a new install would. `AppFlags.carMarketplaceEnabled` and
+`AppFlags.partsStoreEnabled` are both `false` by default (phase-1 scope, see
+`app_flags.dart`) — neither pillar is reachable from the shell. But five
+always-reachable screens still advertised them as if they were live:
+
+1. `onboarding_screen.dart` — the third onboarding slide ("Buy & sell cars
+   with confidence" / "بِع واشترِ السيارات بثقة") was the literal "card" the
+   request pointed at: it sold a feature with no route behind it.
+2. `start_choice_screen.dart` — the "Add my car now" card's benefit list
+   promised "Parts filtered to your model and year"; the "Not now" card's
+   benefit list promised "Browse listings, workshops, and parts across Oman".
+3. `register_screen.dart` — the lock notice above the form said registration
+   was required "before requesting services, ordering parts, or posting a car
+   ad."
+4. `profile_screen.dart` — the guest banner said "Complete your details to
+   request services, buy parts and post ads."
+
+Tapping any of these promises would strand the user — there is no route to
+push into once account-completion "unlocks" parts/listings, because those
+routes are compiled out of reachability by the same flags.
+
+### Fix
+
+Removed the third onboarding slide entirely (workshops and parts slides
+remain — 2 total). Reworded the four leftover benefit/notice strings (both
+languages, register + profile + both start-choice cards) to
+only reference what phase-1 actually ships: workshop bookings, roadside
+assistance, maintenance reminders. Did not touch the underlying
+marketplace/parts feature code, models, or routes — per `AppFlags`'s own
+"hide, do not delete" principle, those stay intact for the Phase-2 flip.
+
+### Verified
+
+- `flutter test` — full suite, 426 tests, all passing (updated
+  `test/onboarding_test.dart`'s slide-count-dependent assertions to match the
+  now-2-slide carousel).
+- Rebuilt debug APK, reinstalled on the physical device, walked the fresh-install
+  flow (splash → onboarding → start-choice) and the profile/register screens
+  again to confirm the corrected copy renders and no slide/benefit still
+  mentions listings or parts.
+- Did not verify the workshop-provider or founder operator panels
+  (`AppFlags.operatorPanelsEnabled`) — out of scope for this pass, no
+  marketplace-copy issue was seen there while browsing casually.
+
+---
+
+## 2026-08-02 · The app can no longer hang on the splash screen
+
+**Baseline:** `8fd25ac`, on top of the uncommitted phase-2.5 work.
+**Request:** "when close the app then return to open it keep hang on splash
+screen. fix it"
+
+### What was actually wrong
+
+`main()` awaited the entire bootstrap — `SharedPreferences`, every repository
+warm-up, the session restore — and only then called `runApp`. Nothing wrapped
+that. So **any** failure in start-up meant `runApp` was never reached, Flutter
+never painted a frame, and the OS launch screen (the app icon on a plain
+background) stayed up indefinitely with no error, no spinner and no way out.
+Reopening the app failed at the same place, which is exactly what "it keeps
+hanging on the splash screen" looks like from the outside.
+
+Two shapes of failure produced it, and neither was handled:
+
+1. **A throw** — reproduced on a physical device (SM S918B, Android 16) by
+   building with `--dart-define=AK_DATA_SOURCE=api`, where
+   `UnconfiguredApiClient` throws `NetworkException` inside
+   `ServiceMarketplaceRepositoryImpl.warmUp`. The app sat on the launch icon
+   forever; the stack was only visible in `adb logcat`.
+2. **A future that never completes** — nothing had a timeout, so a service that
+   accepts and never answers would suspend `main()` permanently. No exception
+   exists to catch in that case, so only a deadline can end it.
+
+### The fix
+
+- **`lib/app/app_launcher.dart` (new)** — `AppLauncher.launch()` owns the path
+  from `main()` to the first frame. It wraps the bootstrap in a try/catch *and*
+  a timeout, reports the failure through `FlutterError.reportError`, and paints
+  a failure screen instead of nothing. The guarantee it enforces: **a frame is
+  painted no matter what.**
+- **`lib/app/boot_failure_screen.dart` (new)** — Sand & Ink themed, bilingual
+  (platform locale, since there is no container to read the stored preference
+  from), with a "Try again" button and the error text behind a disclosure. The
+  message names what could not be reached, which is the difference between a
+  bug report and "it doesn't work".
+- **`lib/app/bootstrap.dart`** — `bootTimeout` (20s) applied to each awaited
+  stage, and a half-built container is now disposed before the throw
+  propagates, so a retry does not leave the first one's notifiers and timers
+  running.
+- **`lib/main.dart`** — reduced to `AppLauncher.launch()`.
+
+A defect in the first version of the fix, caught on-device and then covered by
+a test: a *failed* retry called `runApp` with the same widget type, so Flutter
+updated the existing element tree and kept the old state — the button stayed on
+a disabled "Trying…" forever. `BootFailureApp` is now keyed by attempt number.
+
+### What this does not claim
+
+The exact failure on the user's device was **not** identified — with a customer
+account, a workshop-less profile and a fresh install, debug and release builds
+both cold-started correctly through every stage of the first-run flow on the
+test device. What is fixed is the reason *any* such failure presented as a
+permanent, silent hang. If it recurs, the screen now names the error.
+
+**Verified:** `flutter analyze` clean; full suite 426 tests + the 5 new ones in
+`test/boot_failure_test.dart` passing; on-device — the api-mode build that
+previously hung on the launch icon now shows the failure screen, and tapping
+"Try again" after a repeat failure returns a usable button. Note: the test
+device's app data was cleared during diagnosis (`adb shell pm clear`), so the
+demo account and garage on it are gone.
+
+---
+
+## 2026-08-01 · Phase 2.5 — the operational gap, and workshop registration
+
+**Baseline:** `99118bd` — the Sand & Ink polish pass, which is where this brief
+starts from. Note that `8fd25ac` ("add workshops scinerio") is a **partial
+commit of this same work**, taken while it was still in progress; `git diff
+99118bd` is what shows the whole change.
+**Request:** `@"C:\Projects\Cars Project\MobileApp-Design\AK_Cars_تعليمات_المرحلة_2_5_موحد.md"` —
+"analize this new instructions with current project files then apply them"
+
+A 16-section brief in two halves: the operational gap left after the Sand & Ink
+polish pass, and a new scenario — registering a workshop account. All sixteen
+sections are implemented. The brief's §15 execution order was followed, because
+its dependencies are real: §11 calls §5, §6 and §7 directly.
+
+### The one thing that was actually broken
+
+The panels had no data. `MockServiceMarketplaceService` started with an **empty**
+booking list, so both operator screens opened on an empty state and *no SLA
+colour was reachable* — the amber and red states added in the previous pass had
+never been seen by anyone, because reaching them required placing a booking by
+hand and then waiting a day. Everything else in the brief builds on fixing that.
+
+### §2 — `mock_seed.dart`
+
+New: `lib/data/datasources/mock/mock_seed.dart`. One `now`, every timestamp
+relative to it, `Random(42)`, so two runs see the same world and it never goes
+stale.
+
+- **40 bookings covering all 13 `EscrowState` values** (the old data reached
+  one). Ages are chosen against specific `QueueSla` thresholds and commented
+  where they are: 3 `createdPendingPayment` either side of the founder's 4h,
+  3 `awaitingApproval` including one past the 72h window, 2 `disputed` either
+  side of 4h, 4 `customQuote` across its phases.
+- Histories are **walked, not fabricated** — `_booking` fires real events
+  through `ServiceRequest.apply`, so a seeded booking cannot sit in a state the
+  transition table could not have produced. That matters because the panels
+  derive "how long has this been stuck" from the history.
+- 15 workshops (not 12 — see *Deviations*), reviews in both directions
+  including one after a resolved dispute, payouts, audit lines.
+
+`MockServiceData` keeps the catalogue and reads its roster from the seed.
+
+**Not seeded, deliberately:** the user's garage and maintenance books. This
+project already removed a global maintenance seed once, for the reason recorded
+in `mock_garage_data.dart` — a user who has just registered their first car must
+not be shown services that car never had. The seeded cars belong to the seeded
+*bookings*.
+
+### §3–§4 — the workshop panel
+
+`OperatorShell` (shared by both panels) + three tabs. Earnings shows held,
+released-net-of-commission, and **total commission as a headline figure** — a
+workshop that discovers the platform's cut by subtracting two numbers trusts the
+platform less than one that was told plainly. Performance is backed by the new
+`WorkshopMetrics`, computed in `ServiceMarketplaceRepository.metricsFor`.
+
+Every rate renders as `—` when its denominator is zero. A workshop that has
+never been sent a job has not refused any, and "0% acceptance" would be an
+accusation the data does not support.
+
+`AppConfig.platformCommission` is the single rate both panels read, so they
+cannot quote different commissions for the same job.
+
+### §5 — the founder panel, and `ProviderOnboardingStage`
+
+Five tabs (the brief's four plus §6's log). `isApproved` is now a **derived
+getter** over the new stage; every existing reader kept working and gained the
+guarantee that nothing can be `isApproved: true` mid-application.
+
+The brief's rule — *"a non-approved workshop is not shown to customers, takes no
+bookings, and runs no offers"* — is enforced in the repository:
+`visibleProviders` filters the customer-facing reads, and `_requireBookable`
+refuses a booking outright. Hiding a button is not a rule: a stale deep link, a
+cached list, or a workshop suspended between opening a page and pressing "book"
+all reach that path with the button already gone.
+
+`providers` stays unfiltered — the founder's pipeline is the one place pending
+applications must be visible.
+
+### §6 — the audit trail
+
+`AuditEntry` + **one** write point: `ServiceMarketplaceRepositoryImpl._audit`,
+called by exactly four methods. No screen can write a line, because a screen
+that can write one can also forget to, and a log with holes is worse than none —
+it is believed. Recording is best-effort: a booking that could not be approved
+because the log was unreachable is a worse outcome than an unlogged approval.
+
+### §7 — real role guards
+
+`redirect` in `app_router.dart`, so it fires on **every** navigation rather than
+once per route build. `/workshop` additionally requires
+`stage == approved`, re-checked each entry — a workshop suspended an hour ago
+must not still be inside its panel because its session predates the suspension.
+
+An account with **no** application falls through to the role check alone. The
+pilot's device-local role switcher is a demo tool the brief says to build on, not
+replace; the stage check applies where a real onboarding decision exists.
+
+### §8–§11 — workshop registration
+
+`AccountKind`, `WorkshopApplication` (in `ServiceProvider`'s own field names, so
+approval copies across with no mapping step), `UserProfile.kind`/`.workshop`.
+
+`register_screen.dart` gained a step-zero picker (first registration only) and a
+conditional workshop section — **not** a second registration screen, per §14. It
+is the same account, the same OTP and the same `_errors` map; a parallel screen
+would be a parallel copy of all three.
+
+The flow, end to end: submit → filed at `documentsSubmitted` (not `applied`,
+because the certificate came with it) → invisible and unbookable → the founder's
+pipeline → approve, or reject **with a mandatory written reason** → the owner
+sees that reason verbatim on their profile and can correct and re-submit, which
+re-files the same workshop rather than opening a second one.
+
+The mandatory reason is enforced three deep — dialog, repository, mock service —
+because it is the only thing standing between "rejected" and an owner with no
+idea what to fix.
+
+A workshop gets its own receipt screen, not the customer's "you can now
+transact" snackbar. Nothing has been approved at that point.
+
+### §12 — API readiness
+
+`DataSourceMode`, `apiClientProvider`, five `Api*` services, every binding in
+`di/providers.dart` conditional, `docs/api_contract.md`.
+
+`UnconfiguredApiClient` throws `NetworkException` naming the base URL. That is
+the acceptance behaviour and it is deliberate: an app that silently falls back to
+demo data while talking to nothing looks healthy, which is the failure this
+switch exists to make impossible. Phase 2 replaces one class.
+
+### §13 — scenario integrity
+
+`test/scenario_integrity_test.dart` — all twelve journeys, plus seed and
+derived-metric assertions. `test/data_source_switch_test.dart` covers §12's
+acceptance criterion as a test rather than a manual step.
+
+### Deviations from the brief, and why
+
+- **15 workshops, not 12.** The region-coverage rule (`services_region_test`)
+  needs every governorate's *approved* workshops to sell every category between
+  them, which takes 11 approved on its own; §11 then needs applications actually
+  sitting in the queue. Twelve cannot be both. The four applicants carry no
+  catalogue entries — a workshop that has not been approved has never listed a
+  service — so they do not affect coverage.
+- **The audit log is a 5th tab, not a sub-tab.** §6 asks for "a filterable
+  sub-tab inside the founder panel"; a peer tab is the same thing without
+  nesting a tab bar inside a tab bar.
+- **`ProofUploadSheet` is reused as `MediaStrip` + `pickAttachments`, not
+  wholesale.** The sheet is built around a `ServiceRequest` and its part-box
+  rule; reusing it literally would mean fabricating a booking to attach a
+  commercial registration to. The *picker* — the part §0 actually names — is now
+  shared, and there is still exactly one uploader in the app.
+- **The operator panels read a new `operatorQueueProvider`, not
+  `requestsProvider`.** The seed's 40 bookings belong to other people; putting
+  them in a customer's "My bookings" would be the app claiming they are theirs.
+  `fetchRequests` (mine) and `fetchOperatorQueue` (the platform's) are separate
+  endpoints because they are authorised differently.
+
+### Files
+
+**New models** — `audit_entry.dart`, `payout_record.dart`,
+`workshop_metrics.dart`, `workshop_earnings.dart`, `account_kind.dart`,
+`workshop_application.dart`. **New:** `mock_seed.dart`,
+`operator_queue_state.dart`, `workshop_state.dart`, `admin_state.dart`,
+`operator_shell.dart`, `workshop_application_received_screen.dart`,
+`unconfigured_api_client.dart`, `data/services/api/*` (5),
+`docs/api_contract.md`, `scenario_integrity_test.dart`,
+`data_source_switch_test.dart`.
+
+**Changed** — `service_provider.dart` (staged onboarding, `isApproved` derived),
+`user_profile.dart`, `app_config.dart` (`DataSourceMode`, commission, earnings
+window), `service_marketplace_service.dart`/`_repository.dart` (visibility rule,
+audit, metrics, earnings, onboarding, payouts), `auth_state.dart`,
+`app_router.dart` (guards), `register_screen.dart`, `profile_screen.dart`
+(status card), `admin_screen.dart` (rebuilt), `workshop_screen.dart` (tabbed),
+`escrow_action_bar.dart`, `proof_upload_sheet.dart`, `review_service.dart`,
+`providers.dart`, `bootstrap.dart`, `mock_service_data.dart`.
+
+### Verified
+
+- `flutter analyze lib test` — clean (one pre-existing `info` in
+  `core/utils/contact.dart`, untouched).
+- `flutter test` — **421 passing**, up from 396.
+- Five existing tests were updated, each because a rule genuinely changed, not
+  to make them pass:
+  - `services_region_test` — `fromPriceFor('full')` is 27, not Sohar's 26: Sohar
+    is an unapproved application now, and a "from" price has to quote something
+    the tap can reach.
+  - `home_offers_test` — the "board of one widens" case moved to Ad Dakhiliyah;
+    North Al Batinah gained a second approved workshop.
+  - `reviews_test` — three counts scoped to the booking under test, since the
+    seed now contains reviews of its own completed jobs.
+  - `operator_panels_test` — runs with `seeded: false`; these tests are about
+    one booking they placed, and 40 others would drown the assertions.
+  - `account_test` — answers step zero, and pumps on a taller surface so the
+    whole form mounts.
+- **One production bug found and fixed while testing:**
+  `ServiceMarketplaceRepository.createRequest`/`createPartRequest` threw
+  synchronously from a `Future`-returning method, so
+  `createRequest(...).catchError(...)` would never have seen a rejected booking.
+  Both are now `async`.
+
+### Known-adjacent, not done
+
+- **No maintenance/garage seed.** §2 asks for cars with two odometer readings,
+  one, and none. Those live in per-car maintenance books, which are the signed-in
+  user's own records — see above. Doing it needs a decision about demo-only
+  seeding that the brief does not make.
+- **`AK_DATA_SOURCE=api` is verified by test, not by a device run.** The
+  bindings, the client and the failure mode are asserted; nobody has launched
+  the app with the define set.
+- **The CR document is shown to the founder as its stored reference, not
+  rendered.** Pilot uploads are local device files; a viewer that silently
+  failed to open one would look like a document somebody checked.
+- The `UnconfiguredApiClient` means no `Api*` service has ever round-tripped
+  real JSON. Their `fromJson` paths are unexercised.
+
+---
+
 ## 2026-07-31 · Sand & Ink polish pass — spacing, hierarchy, state, icons
 
 **Baseline:** `7468760` (working tree)

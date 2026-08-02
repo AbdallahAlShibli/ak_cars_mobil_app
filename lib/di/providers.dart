@@ -1,10 +1,15 @@
 /// Composition root.
 ///
 /// This is the *only* file that names a concrete service implementation.
-/// Phase 2 (real backend) is a change here and nowhere else: add the REST
-/// implementations, then make each `*ServiceProvider` return
-/// `config.useMockData ? Mock…(…) : Rest…(apiClient: …)`. Repositories, state
-/// and every screen are written against the interfaces and stay untouched.
+///
+/// Phase 2.5 (§12) finished the job the original note here described: every
+/// core service now has an `Api*` implementation beside its `Mock*` one, and
+/// each binding picks between them on [AppConfig.dataSource]. Switching the
+/// whole app over is a `--dart-define=AK_DATA_SOURCE=api` away, and it fails
+/// loudly rather than silently falling back — see [apiClientProvider].
+///
+/// Repositories, state and every screen are written against the interfaces and
+/// stayed untouched through all of it, which is the point.
 ///
 /// Nothing outside this file constructs a service or repository, and no
 /// widget ever instantiates one.
@@ -14,6 +19,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
+import '../core/network/api_client.dart';
+import '../core/network/unconfigured_api_client.dart';
+import '../data/services/api/api_auth_service.dart';
+import '../data/services/api/api_garage_service.dart';
+import '../data/services/api/api_maintenance_service.dart';
+import '../data/services/api/api_review_service.dart';
+import '../data/services/api/api_service_marketplace_service.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/cars_repository.dart';
 import '../data/repositories/catalog_repository.dart';
@@ -50,6 +62,25 @@ final sharedPrefsProvider = Provider<SharedPreferences>(
 /// Override in tests to point at a different environment or add mock latency.
 final appConfigProvider = Provider<AppConfig>((ref) => AppConfig.current());
 
+/// The HTTP transport every `Api*` service is written against.
+///
+/// Bound to [UnconfiguredApiClient] in this build, which throws a
+/// [NetworkException] naming the base URL on any call. That is the §12
+/// acceptance behaviour: `AK_DATA_SOURCE=api` boots, and the first request
+/// fails with something a reader can act on rather than the app quietly
+/// serving demo data and looking healthy.
+///
+/// Phase 2 swaps this one line for a real adapter. Nothing else moves.
+final apiClientProvider = Provider<ApiClient>(
+  (ref) => UnconfiguredApiClient(
+    baseUrl: ref.watch(appConfigProvider).apiBaseUrl,
+  ),
+);
+
+/// True when the bindings below should resolve to the REST implementations.
+bool _useApi(Ref ref) =>
+    ref.watch(appConfigProvider).dataSource == DataSourceMode.api;
+
 // ----------------------------------------------------------------- services
 
 final catalogServiceProvider = Provider<CatalogService>(
@@ -59,24 +90,30 @@ final catalogServiceProvider = Provider<CatalogService>(
 // Takes prefs because the mock stands in for the session store too: the
 // registered profile has to survive a cold start.
 final authServiceProvider = Provider<AuthService>(
-  (ref) => MockAuthService(
-    config: ref.watch(appConfigProvider),
-    prefs: ref.watch(sharedPrefsProvider),
-  ),
+  (ref) => _useApi(ref)
+      ? ApiAuthService(ref.watch(apiClientProvider))
+      : MockAuthService(
+          config: ref.watch(appConfigProvider),
+          prefs: ref.watch(sharedPrefsProvider),
+        ),
 );
 
 // Takes prefs for the same reason auth does: the mock stands in for the
 // server's storage too, and a car the user registered has to survive a cold
 // start.
 final garageServiceProvider = Provider<GarageService>(
-  (ref) => MockGarageService(
-    config: ref.watch(appConfigProvider),
-    prefs: ref.watch(sharedPrefsProvider),
-  ),
+  (ref) => _useApi(ref)
+      ? ApiGarageService(ref.watch(apiClientProvider))
+      : MockGarageService(
+          config: ref.watch(appConfigProvider),
+          prefs: ref.watch(sharedPrefsProvider),
+        ),
 );
 
 final serviceMarketplaceServiceProvider = Provider<ServiceMarketplaceService>(
-  (ref) => MockServiceMarketplaceService(config: ref.watch(appConfigProvider)),
+  (ref) => _useApi(ref)
+      ? ApiServiceMarketplaceService(ref.watch(apiClientProvider))
+      : MockServiceMarketplaceService(config: ref.watch(appConfigProvider)),
 );
 
 final shopServiceProvider = Provider<ShopService>(
@@ -100,10 +137,12 @@ final chatServiceProvider = Provider<ChatService>(
 );
 
 final maintenanceServiceProvider = Provider<MaintenanceService>(
-  (ref) => MockMaintenanceService(
-    config: ref.watch(appConfigProvider),
-    prefs: ref.watch(sharedPrefsProvider),
-  ),
+  (ref) => _useApi(ref)
+      ? ApiMaintenanceService(ref.watch(apiClientProvider))
+      : MockMaintenanceService(
+          config: ref.watch(appConfigProvider),
+          prefs: ref.watch(sharedPrefsProvider),
+        ),
 );
 
 final challengeServiceProvider = Provider<ChallengeService>(
@@ -111,7 +150,9 @@ final challengeServiceProvider = Provider<ChallengeService>(
 );
 
 final reviewServiceProvider = Provider<ReviewService>(
-  (ref) => MockReviewService(config: ref.watch(appConfigProvider)),
+  (ref) => _useApi(ref)
+      ? ApiReviewService(ref.watch(apiClientProvider))
+      : MockReviewService(config: ref.watch(appConfigProvider)),
 );
 
 // ------------------------------------------------------------- repositories
@@ -132,6 +173,7 @@ final serviceMarketplaceRepositoryProvider =
     Provider<ServiceMarketplaceRepository>(
       (ref) => ServiceMarketplaceRepositoryImpl(
         ref.watch(serviceMarketplaceServiceProvider),
+        config: ref.watch(appConfigProvider),
       ),
     );
 

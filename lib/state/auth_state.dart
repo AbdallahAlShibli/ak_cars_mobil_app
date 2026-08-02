@@ -3,7 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_flags.dart';
 import '../core/constants/app_constants.dart';
+import '../data/models/service_provider.dart';
 import '../data/models/user_profile.dart';
+import '../data/models/workshop_application.dart';
 import '../di/providers.dart';
 
 /// Session state.
@@ -102,10 +104,57 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       final stored = await ref.read(authRepositoryProvider).register(profile);
       state = state.copyWith(profile: stored);
+
+      // §11 step 1: a workshop account files its application *as part of
+      // registering*, not as a follow-up the user could abandon halfway. If it
+      // were a second step, an account could exist as `kind: workshop` with no
+      // application behind it — a workshop the founder has never been asked
+      // about and that the owner believes they submitted.
+      //
+      // It runs after `register` rather than beside it only because the
+      // application has to be filed against the id the server assigns; the two
+      // are one operation from the user's point of view and one failure
+      // rolls both back.
+      final application = stored.workshop;
+      if (application != null) {
+        await ref
+            .read(serviceMarketplaceRepositoryProvider)
+            .submitWorkshopApplication(
+              ownerUserId: stored.id ?? stored.phone,
+              application: application,
+              region: stored.region,
+            );
+      }
     } catch (_) {
       state = previous;
       rethrow;
     }
+  }
+
+  /// Re-files a rejected workshop application after the owner corrected it
+  /// (§11 step 5).
+  ///
+  /// Puts the workshop back to [ProviderOnboardingStage.documentsSubmitted], so
+  /// it reappears in the founder's pipeline exactly as a first submission does.
+  /// Deliberately the same repository call as the original: a re-submission is
+  /// the same act with the same rules, and a second path would be a second
+  /// place for those rules to drift.
+  Future<void> resubmitWorkshopApplication(
+    WorkshopApplication application,
+  ) async {
+    final profile = state.profile;
+    if (profile == null) return;
+    final updated = profile.copyWith(workshop: application);
+    state = state.copyWith(profile: updated);
+
+    await ref.read(authRepositoryProvider).updateProfile(updated);
+    await ref
+        .read(serviceMarketplaceRepositoryProvider)
+        .submitWorkshopApplication(
+          ownerUserId: updated.id ?? updated.phone,
+          application: application,
+          region: updated.region,
+        );
   }
 
   /// Saves edits to an already-registered profile.

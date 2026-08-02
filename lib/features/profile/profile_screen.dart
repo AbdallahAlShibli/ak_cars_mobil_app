@@ -9,6 +9,9 @@ import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/contact.dart';
+import '../../di/providers.dart';
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
@@ -67,6 +70,13 @@ class ProfileScreen extends ConsumerWidget {
             if (!auth.isRegistered) ...[
               const SizedBox(height: 10),
               _RegisterPrompt(onTap: () => context.push('/register')),
+            ],
+            // §11 step 5. A workshop applicant's only window onto their own
+            // application — they have no access to the panel, so without this
+            // card the wait is entirely silent.
+            if (auth.profile?.isWorkshopAccount ?? false) ...[
+              const SizedBox(height: 10),
+              const _WorkshopApplicationCard(),
             ],
             const SizedBox(height: 14),
             // ----------------------------------------------- stat tiles
@@ -491,6 +501,122 @@ class _IdentityCard extends ConsumerWidget {
 
 /// Amber call-to-action shown until the user completes registration —
 /// transactions are gated behind it, so it should not be a quiet menu row.
+/// Where a workshop applicant stands (§11 step 5).
+///
+/// Renders the three outcomes the onboarding path can be in, and nothing else:
+///
+/// * **under review** — submitted, nobody has decided. No promises, no ETA the
+///   app cannot keep.
+/// * **approved** — the panel is open, with the link to it. This is the only
+///   place in the customer-facing app that offers that link, and it appears
+///   only when the guard would actually let them through (§7).
+/// * **needs a change** — the founder's *own words* for why, verbatim, plus
+///   the way back in. A rejection the applicant cannot read is a rejection
+///   they cannot act on, which is why the reason is mandatory at the point it
+///   is recorded.
+///
+/// Reads the workshop from the marketplace roster rather than from the profile:
+/// the profile holds what was *submitted*, and the stage is what the founder
+/// *decided*. Showing the second is the whole point of the card.
+class _WorkshopApplicationCard extends ConsumerWidget {
+  const _WorkshopApplicationCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = S.of(context);
+    final ak = AkColors.of(context);
+    final profile = ref.watch(authProvider).profile;
+    if (profile == null) return const SizedBox.shrink();
+
+    final ownerId = profile.id ?? profile.phone;
+    final workshop =
+        ref.watch(serviceMarketplaceRepositoryProvider).providerOwnedBy(ownerId);
+    // Submitted but not yet visible in the roster — treat it as under review
+    // rather than as nothing, which is what it is.
+    final stage = workshop?.stage ?? ProviderOnboardingStage.documentsSubmitted;
+    final rejected = stage == ProviderOnboardingStage.suspended;
+    final approved = stage == ProviderOnboardingStage.approved;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.cardPadding),
+      decoration: BoxDecoration(
+        color: approved
+            ? ak.successSoft
+            : rejected
+                ? ak.dangerSoft
+                : ak.amberBgSoft,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: approved
+              ? ak.success.withValues(alpha: 0.35)
+              : rejected
+                  ? ak.dangerBorder
+                  : ak.amberBorder,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(stage.icon,
+                  size: 17,
+                  color: approved
+                      ? ak.success
+                      : rejected
+                          ? ak.dangerText
+                          : ak.amberText),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(stage.ownerStatus(s), style: context.text.cardTitle),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            approved
+                ? s.t(
+                    'ورشتك تظهر الآن للعملاء ويمكنها استقبال الحجوزات.',
+                    'Your workshop is now visible to customers and can take bookings.')
+                : rejected
+                    // The founder's own sentence, unedited. Paraphrasing it
+                    // would paraphrase the instruction the owner has to follow.
+                    ? '"${workshop?.rejectionReason ?? ''}"'
+                    : s.t(
+                        'نراجع بيانات ورشتك ووثيقة السجل التجاري. عادة خلال يوم إلى يومي عمل.',
+                        'We are checking your details and your commercial registration. Usually within one to two working days.'),
+            style: context.text.bodyPrimary.copyWith(height: 1.65),
+          ),
+          if (approved || rejected) ...[
+            const SizedBox(height: AppSpacing.md),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: InkPill(
+                label: approved
+                    ? s.t('افتح لوحة الورشة', 'Open the workshop panel')
+                    : s.t('عدّل وأعد الإرسال', 'Edit and re-submit'),
+                fontSize: 12,
+                onTap: () => context.push(approved ? '/workshop' : '/register'),
+              ),
+            ),
+          ],
+          if (approved) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              // The role switch is device-local and separate from approval, so
+              // an approved workshop that has not switched roles would tap the
+              // button and land back in Settings without knowing why.
+              s.t('إن لم تفتح اللوحة، بدّل الدور إلى «ورشة» من الإعدادات.',
+                  'If the panel does not open, switch your role to "Workshop" in Settings.'),
+              style: context.text.bodySecondary.copyWith(height: 1.5),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _RegisterPrompt extends StatelessWidget {
   const _RegisterPrompt({required this.onTap});
 
@@ -511,8 +637,8 @@ class _RegisterPrompt extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              s.t('أكمل بياناتك لطلب الخدمات وشراء القطع ونشر الإعلانات.',
-                  'Complete your details to request services, buy parts and post ads.'),
+              s.t('أكمل بياناتك لطلب الخدمات وحجز الصيانة.',
+                  'Complete your details to request services and book maintenance.'),
               style: TextStyle(
                 fontSize: 12,
                 height: 1.45,

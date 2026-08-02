@@ -13,18 +13,32 @@ import '../state/app_state.dart';
 /// refactor introduce a real async data layer without adding loading states
 /// the design does not have.
 ///
-/// When the REST services land, this is also the natural place to decide what
-/// a failed warm-up means — retry, fall back to a cached snapshot, or show an
-/// error screen. Today the mock services cannot fail.
+/// A failed warm-up is **fatal and visible**: this throws, and `AppLauncher`
+/// turns the throw into the boot-failure screen. It deliberately does not fall
+/// back to an empty container — screens read reference data synchronously on
+/// the assumption it is there, so a half-warmed app is a wrong app, not a
+/// degraded one. The one thing it must never do is hang: see [bootTimeout].
 abstract final class AppBootstrap {
+  /// Ceiling on the whole start-up sequence.
+  ///
+  /// Nothing here is allowed to take longer than this, whatever it is waiting
+  /// on. Without it a service that never completes its future — an API call
+  /// against an unreachable host, a platform channel that never answers — left
+  /// `main()` suspended before `runApp`, so the OS launch screen stayed on
+  /// screen forever with no error, no spinner and no way out. A timeout turns
+  /// that silent hang into the boot-failure screen, which at least says what
+  /// happened and offers a retry.
+  static const bootTimeout = Duration(seconds: 20);
+
   /// Builds a container with platform dependencies injected and every
   /// repository warmed. Callers own the returned container and must dispose
   /// it.
   static Future<ProviderContainer> createContainer({
     List<Override> overrides = const [],
+    Duration timeout = bootTimeout,
   }) async {
     WidgetsFlutterBinding.ensureInitialized();
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance().timeout(timeout);
 
     final container = ProviderContainer(
       overrides: [
@@ -32,13 +46,21 @@ abstract final class AppBootstrap {
         ...overrides,
       ],
     );
-    await warmUp(container);
-    // Re-attach the stored session before the first frame: the router picks
-    // its start route from auth state, so this has to land before anything
-    // reads it. Deliberately outside `warmUp` — that one is reference data,
-    // and the pure-data test container has no SharedPreferences to restore
-    // from.
-    await container.read(authProvider.notifier).restore();
+    try {
+      await warmUp(container).timeout(timeout);
+      // Re-attach the stored session before the first frame: the router picks
+      // its start route from auth state, so this has to land before anything
+      // reads it. Deliberately outside `warmUp` — that one is reference data,
+      // and the pure-data test container has no SharedPreferences to restore
+      // from.
+      await container.read(authProvider.notifier).restore().timeout(timeout);
+    } catch (_) {
+      // A container that failed half way through still holds live notifiers
+      // and their timers. Retrying the boot builds a second one, so the first
+      // has to go.
+      container.dispose();
+      rethrow;
+    }
     return container;
   }
 

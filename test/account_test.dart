@@ -28,7 +28,14 @@ Future<ProviderContainer> pumpAccount(
   String initialLocation = '/profile',
   String locale = 'en',
 }) async {
-  tester.view.physicalSize = const Size(402 * 3, 874 * 3);
+  // Tall enough that the whole form mounts at once.
+  //
+  // These tests assert on rows all the way down the page — the name at the top
+  // and the OTP block at the bottom — and a finder only sees widgets the
+  // ListView has actually built. On a phone-height surface the account-type
+  // step (§9) pushes the OTP block past the fold, and the tests would be
+  // failing on scroll position rather than on behaviour.
+  tester.view.physicalSize = const Size(402 * 3, 1800 * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
 
@@ -80,6 +87,17 @@ Finder fieldUnder(String label) => find.descendant(
 
 String textIn(WidgetTester tester, String label) =>
     tester.widget<TextField>(fieldUnder(label)).controller?.text ?? '';
+
+/// Answers step zero (§9) so the submit button becomes live.
+///
+/// Every registration test below is about a *customer* account, which is what
+/// this picks. The workshop half of the form has its own tests in
+/// `workshop_registration_test.dart`; here it must stay entirely hidden, and a
+/// test that never chose a kind could not tell the two apart.
+Future<void> chooseCustomerAccount(WidgetTester tester) async {
+  await tester.tap(find.text('Customer account'));
+  await tester.pumpAndSettle();
+}
 
 Future<void> pickGovernorate(WidgetTester tester, String name) async {
   await tester.tap(find.text('Governorate'));
@@ -188,6 +206,7 @@ void main() {
         (tester) async {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
+      await chooseCustomerAccount(tester);
 
       await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '123');
@@ -206,6 +225,7 @@ void main() {
         (tester) async {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
+      await chooseCustomerAccount(tester);
 
       // Nothing to choose from until the governorate narrows it.
       expect(find.text('Choose a governorate first'), findsOneWidget);
@@ -255,6 +275,7 @@ void main() {
         (tester) async {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
+      await chooseCustomerAccount(tester);
 
       await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '24478120');
@@ -306,6 +327,7 @@ void main() {
         (tester) async {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
+      await chooseCustomerAccount(tester);
 
       await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '99887766');
@@ -337,6 +359,7 @@ void main() {
 
     testWidgets('email verification needs an email address', (tester) async {
       await pumpAccount(tester, initialLocation: '/register');
+      await chooseCustomerAccount(tester);
 
       await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '99887766');

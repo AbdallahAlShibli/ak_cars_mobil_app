@@ -1,5 +1,30 @@
 import 'app_environment.dart';
 
+/// Where the app's data comes from (§12).
+///
+/// Replaces the old `useMockData` boolean as the thing the composition root
+/// switches on. A boolean answered "are we still on demo data?"; this answers
+/// "which implementation of every service is bound", which is the question
+/// `di/providers.dart` actually asks — and it leaves room for a third source
+/// (a recorded fixture, an offline cache) without every binding growing a
+/// second condition.
+enum DataSourceMode {
+  /// The `Mock*` services and `MockSeed`'s world. Fully working offline.
+  mock,
+
+  /// The `Api*` services against [AppConfig.apiBaseUrl].
+  api;
+
+  String get key => name;
+
+  static DataSourceMode fromKey(String? key) {
+    for (final value in DataSourceMode.values) {
+      if (value.name.toLowerCase() == key?.toLowerCase()) return value;
+    }
+    return DataSourceMode.mock;
+  }
+}
+
 /// Immutable, environment-scoped runtime configuration.
 ///
 /// This is the single place that answers "which backend do we talk to, and
@@ -31,7 +56,29 @@ class AppConfig {
   final String apiBaseUrl;
 
   /// When true the DI layer binds the `Mock*` services instead of REST ones.
+  ///
+  /// Kept as the *stored* field so every existing environment definition and
+  /// test override goes on meaning what it meant. [dataSource] is what the
+  /// composition root reads, and it is derived from this plus the
+  /// `AK_DATA_SOURCE` define — so there is one answer, not two that can
+  /// disagree.
   final bool useMockData;
+
+  /// Which set of service implementations to bind (§12).
+  ///
+  /// `--dart-define=AK_DATA_SOURCE=api` forces the REST path on any
+  /// environment, which is how the acceptance check is run: the app boots and
+  /// the first request fails with a clear [NetworkException] naming the base
+  /// URL, rather than silently falling back to demo data and looking like it
+  /// works.
+  DataSourceMode get dataSource {
+    final override = DataSourceMode.fromKey(_dataSourceKey);
+    if (_dataSourceKey.isNotEmpty) return override;
+    return useMockData ? DataSourceMode.mock : DataSourceMode.api;
+  }
+
+  static const _dataSourceKey =
+      String.fromEnvironment('AK_DATA_SOURCE', defaultValue: '');
 
   final Duration connectTimeout;
   final Duration receiveTimeout;

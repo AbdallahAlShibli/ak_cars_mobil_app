@@ -179,13 +179,13 @@ void main() {
       final container = await pumpIntro(tester, at: '/onboarding');
 
       expect(find.text('Next'), findsOneWidget);
-      for (var i = 0; i < 2; i++) {
+      for (var i = 0; i < 1; i++) {
         await tester.tap(find.text('Next'));
         await tester.pumpAndSettle();
       }
 
       expect(find.text('Get started'), findsOneWidget);
-      expect(find.textContaining('Buy & sell cars'), findsOneWidget);
+      expect(find.textContaining('Parts that fit'), findsOneWidget);
 
       await tester.tap(find.text('Get started'));
       await tester.pumpAndSettle();

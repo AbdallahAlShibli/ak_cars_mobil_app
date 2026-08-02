@@ -71,42 +71,15 @@ class _ProofUploadSheetState extends State<ProofUploadSheet> {
     super.dispose();
   }
 
-  /// Photos are downscaled on capture: a proof shot is looked at on a phone,
-  /// and a full-resolution image would make the eventual upload the slowest
-  /// part of finishing a job.
   Future<void> _add(ImageSource source) async {
     if (_busy) return;
     setState(() => _busy = true);
-    try {
-      final shots = source == ImageSource.gallery
-          ? await _picker.pickMultiImage(maxWidth: 1600, imageQuality: 82)
-          : [
-              ?await _picker.pickImage(
-                source: source,
-                maxWidth: 1600,
-                imageQuality: 82,
-              ),
-            ];
-      if (!mounted) return;
-      setState(() {
-        for (final shot in shots) {
-          _media.add(
-            ProofMedia(
-              id: 'm${DateTime.now().microsecondsSinceEpoch}-${_media.length}',
-              uri: shot.path,
-            ),
-          );
-        }
-      });
-    } on Exception {
-      // A denied permission or a cancelled picker is an ordinary outcome, not
-      // an error worth a dialog. The sheet stays open with whatever was
-      // already attached, and the disabled submit button still says what is
-      // missing.
-      if (!mounted) return;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    final picked = await pickAttachments(_picker, source, startIndex: _media.length);
+    if (!mounted) return;
+    setState(() {
+      _media.addAll(picked);
+      _busy = false;
+    });
   }
 
   void _remove(String id) =>
@@ -143,7 +116,7 @@ class _ProofUploadSheetState extends State<ProofUploadSheet> {
             ),
             const SizedBox(height: 14),
 
-            _MediaStrip(
+            MediaStrip(
               s: s,
               media: _media,
               busy: _busy,
@@ -228,9 +201,57 @@ class _ProofUploadSheetState extends State<ProofUploadSheet> {
   }
 }
 
+/// Picks one or more images and wraps them as [ProofMedia].
+///
+/// Shared by the proof sheet and the workshop-registration form (§10), which
+/// attach very different things for very different reasons but pick them
+/// identically.
+///
+/// Photos are downscaled on capture: an attachment is looked at on a phone, and
+/// a full-resolution image would make the eventual upload the slowest part of
+/// whatever the user was doing.
+///
+/// A denied permission or a cancelled picker returns an empty list rather than
+/// throwing — both are ordinary outcomes, not errors worth a dialog. The caller
+/// keeps whatever was already attached, and its disabled submit button goes on
+/// saying what is still missing.
+Future<List<ProofMedia>> pickAttachments(
+  ImagePicker picker,
+  ImageSource source, {
+  int startIndex = 0,
+}) async {
+  try {
+    final shots = source == ImageSource.gallery
+        ? await picker.pickMultiImage(maxWidth: 1600, imageQuality: 82)
+        : [
+            ?await picker.pickImage(
+              source: source,
+              maxWidth: 1600,
+              imageQuality: 82,
+            ),
+          ];
+    return [
+      for (final (i, shot) in shots.indexed)
+        ProofMedia(
+          id: 'm${DateTime.now().microsecondsSinceEpoch}-${startIndex + i}',
+          uri: shot.path,
+        ),
+    ];
+  } on Exception {
+    return const [];
+  }
+}
+
 /// The attached shots, with the two ways to add one.
-class _MediaStrip extends StatelessWidget {
-  const _MediaStrip({
+///
+/// Public because the workshop-registration form attaches a commercial
+/// registration certificate through exactly this control (§10). Two upload
+/// widgets that look almost the same is how a design drifts, so this is the
+/// one — the *caller* owns what the attachments mean and what rule they have
+/// to satisfy, and this owns only how they are picked and shown.
+class MediaStrip extends StatelessWidget {
+  const MediaStrip({
+    super.key,
     required this.s,
     required this.media,
     required this.busy,

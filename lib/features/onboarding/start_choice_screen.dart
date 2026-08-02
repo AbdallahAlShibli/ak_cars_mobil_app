@@ -123,9 +123,9 @@ class _StartChoiceScreenState extends ConsumerState<StartChoiceScreen> {
                               'Quotes from workshops that service your exact car'),
                         ),
                         (
-                          LucideIcons.shoppingBag,
-                          s.t('قطع غيار مفلترة على موديلك وسنة الصنع',
-                              'Parts filtered to your model and year'),
+                          LucideIcons.zap,
+                          s.t('مساعدة طريق سريعة عند الحاجة',
+                              'Fast roadside help when you need it'),
                         ),
                         (
                           LucideIcons.bellRing,
@@ -156,8 +156,8 @@ class _StartChoiceScreenState extends ConsumerState<StartChoiceScreen> {
                       benefits: [
                         (
                           LucideIcons.compass,
-                          s.t('تصفّح الإعلانات والورش والقطع في كل عُمان',
-                              'Browse listings, workshops, and parts across Oman'),
+                          s.t('تصفّح الورش الموثوقة واحجز الصيانة في كل عُمان',
+                              'Browse trusted workshops and book service across Oman'),
                         ),
                         (
                           LucideIcons.clock3,

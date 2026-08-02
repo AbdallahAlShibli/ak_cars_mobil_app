@@ -826,8 +826,13 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       _availability[providerId] ??
       const BookingAvailability(slots: [], bookedSlots: {});
 
+  // Both are `async` so the guard's rejection arrives *through the future*
+  // rather than being thrown while the call expression is still being
+  // evaluated. A `Future`-returning method that can throw synchronously is a
+  // trap: `createRequest(...).catchError(...)` would never see it, and neither
+  // would anything awaiting it inside a `try`.
   @override
-  Future<ServiceRequest> createRequest(CreateServiceRequestDraft draft) {
+  Future<ServiceRequest> createRequest(CreateServiceRequestDraft draft) async {
     _requireBookable(draft.offering.provider.id);
     return _service.createRequest(draft);
   }
@@ -836,7 +841,7 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   Future<ServiceRequest> createPartRequest(
     CreatePartRequestDraft draft, {
     required Car car,
-  }) {
+  }) async {
     final provider = _requireBookable(draft.providerId);
     return _service.createPartRequest(draft, provider: provider, car: car);
   }

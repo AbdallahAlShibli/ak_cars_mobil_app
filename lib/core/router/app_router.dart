@@ -9,6 +9,7 @@ import '../../data/models/service_provider.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../features/auth/register_screen.dart';
+import '../../features/auth/workshop_application_received_screen.dart';
 import '../../features/cars/listing_detail_screen.dart';
 import '../../features/cars/make_filter_screen.dart';
 import '../../features/cars/my_ads_screen.dart';
@@ -66,6 +67,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
+      ),
+      // §11 step 4. A route rather than a dialog because it is where the
+      // registration flow *ends* for a workshop — there is nothing behind it
+      // to go back to, and the customer's flow pops to the action it came from.
+      GoRoute(
+        path: '/workshop-application-received',
+        builder: (context, state) => const WorkshopApplicationReceivedScreen(),
       ),
       GoRoute(
         path: '/add-car',

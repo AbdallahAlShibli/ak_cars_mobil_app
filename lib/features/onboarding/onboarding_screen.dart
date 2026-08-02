@@ -35,14 +35,6 @@ const _slides = [
       'Shop parts for your car — or any car — with filters for category, provider, price, and region.',
     ),
   ),
-  _Slide(
-    LucideIcons.car,
-    L('بِع واشترِ السيارات\nبثقة', 'Buy & sell cars\nwith confidence'),
-    L(
-      'تصفّح الإعلانات في كل عُمان، واحفظ المفضلة، وانشر إعلانك في دقائق.',
-      'Browse listings across Oman, save favorites, and post your own ad in minutes.',
-    ),
-  ),
 ];
 
 /// First-launch guide — step 2 of 3, shown once per install.
