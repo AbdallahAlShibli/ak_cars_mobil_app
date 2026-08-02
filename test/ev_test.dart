@@ -18,6 +18,7 @@ import 'package:ak_cars_mobil_app/features/shop/product_detail_screen.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 /// AK Cars serves petrol, diesel, hybrid and electric owners. These tests pin
 /// the behaviour that makes an EV owner a first-class user rather than a petrol
@@ -384,7 +385,7 @@ void main() {
       final container = await createDataContainer();
       final marketplace = container.read(serviceMarketplaceRepositoryProvider);
       final evCheck =
-          marketplace.categories.firstWhere((c) => c.id == 'ev-check');
+          marketplace.categories.firstWhere((c) => c.id == mockIdEvCheck);
 
       expect(evCheck.evOnly, isTrue);
       expect(evCheck.appliesTo(Powertrain.electric), isTrue);
@@ -395,7 +396,7 @@ void main() {
       expect(evCheck.appliesTo(null), isTrue);
 
       final oilService =
-          marketplace.categories.firstWhere((c) => c.id == 'express');
+          marketplace.categories.firstWhere((c) => c.id == mockIdExpress);
       expect(oilService.evOnly, isFalse);
       expect(oilService.appliesTo(Powertrain.electric), isTrue,
           reason: 'an EV still needs tyres, AC and the ordinary services');
@@ -535,13 +536,13 @@ void main() {
       expect(matches, isNotEmpty);
       expect(matches.every((p) => p.fitsPowertrain(Powertrain.electric)),
           isTrue);
-      expect(matches.map((p) => p.id), contains('pr7')); // Type 2 cable
+      expect(matches.map((p) => p.id), contains(mockIdPr7)); // Type 2 cable
       expect(filter.activeCount, 1);
     });
 
     test('an EV-only part is kept away from a petrol car', () async {
       final container = await createDataContainer();
-      final cable = container.read(shopRepositoryProvider).productById('pr7')!;
+      final cable = container.read(shopRepositoryProvider).productById(mockIdPr7)!;
 
       expect(cable.fitsCar(_camry), isFalse);
       expect(cable.fitsCar(_tesla), isTrue);
@@ -556,11 +557,11 @@ void main() {
       final container = await createDataContainer();
       final shop = container.read(shopRepositoryProvider);
 
-      expect(shop.productById('pr7')!.universalFit, isFalse,
+      expect(shop.productById(mockIdPr7)!.universalFit, isFalse,
           reason: 'restricted to a powertrain, so not universal');
-      expect(shop.productById('pr7')!.evOnly, isTrue);
+      expect(shop.productById(mockIdPr7)!.evOnly, isTrue);
       // A part with no powertrain restriction still is.
-      expect(shop.productById('pr2')!.universalFit, isTrue);
+      expect(shop.productById(mockIdPr2)!.universalFit, isTrue);
     });
 
     test('EV parts are findable by what is printed on them', () async {
@@ -570,10 +571,10 @@ void main() {
       Iterable<String> hits(String query) =>
           shop.products.where((p) => p.matchesQuery(query)).map((p) => p.id);
 
-      expect(hits('type 2'), contains('pr7'));
-      expect(hits('T2-32A-5M'), contains('pr7'));
-      expect(hits('electric'), containsAll(['pr7', 'pr10', 'pr11']));
-      expect(hits('كهربائي'), contains('pr12'));
+      expect(hits('type 2'), contains(mockIdPr7));
+      expect(hits('T2-32A-5M'), contains(mockIdPr7));
+      expect(hits('electric'), containsAll([mockIdPr7, mockIdPr10, mockIdPr11]));
+      expect(hits('كهربائي'), contains(mockIdPr12));
     });
 
     test('every EV part carries the specs a buyer decides on', () async {
@@ -605,7 +606,7 @@ void main() {
       await pump(
         tester,
         await containerWith(const [_camry]),
-        const ProductDetailScreen(productId: 'pr7'),
+        const ProductDetailScreen(productId: mockIdPr7),
         height: 2200,
       );
 
@@ -620,7 +621,7 @@ void main() {
       await pump(
         tester,
         await containerWith(const [_tesla]),
-        const ProductDetailScreen(productId: 'pr7'),
+        const ProductDetailScreen(productId: mockIdPr7),
         height: 2200,
       );
 
@@ -636,7 +637,7 @@ void main() {
       final board = container.read(challengeProvider);
 
       expect(board.current, isNotNull);
-      expect(board.current!.id, 'ev-trip-charge');
+      expect(board.current!.id, mockIdEvTripCharge);
       expect(
         board.current!.steps.map((step) => step.title.en).join(' '),
         contains('charging'),
@@ -647,13 +648,13 @@ void main() {
 
     test('everyone else keeps the combustion challenge', () async {
       final petrol = await containerWith(const [_camry]);
-      expect(petrol.read(challengeProvider).current!.id, 'tyre-pressure');
+      expect(petrol.read(challengeProvider).current!.id, mockIdTyrePressure);
 
       final unstated = await containerWith(const [_unstated]);
-      expect(unstated.read(challengeProvider).current!.id, 'tyre-pressure');
+      expect(unstated.read(challengeProvider).current!.id, mockIdTyrePressure);
 
       final empty = await createTestContainer();
-      expect(empty.read(challengeProvider).current!.id, 'tyre-pressure');
+      expect(empty.read(challengeProvider).current!.id, mockIdTyrePressure);
     });
 
     test('the loyalty balance does not change with the car', () async {
@@ -713,7 +714,7 @@ void main() {
       await container.read(garageProvider.notifier).add(_camry);
       await container.read(garageProvider.notifier).setPrimary(_camry.id);
       expect(container.read(challengeProvider).current, isNotNull);
-      expect(container.read(challengeProvider).current!.id, 'tyre-pressure');
+      expect(container.read(challengeProvider).current!.id, mockIdTyrePressure);
     });
   });
 
@@ -774,7 +775,7 @@ void main() {
       final tesla = container
           .read(carsRepositoryProvider)
           .listings
-          .firstWhere((l) => l.id == 'g11');
+          .firstWhere((l) => l.id == mockIdG11);
 
       expect(tesla.plugsIn, isTrue);
       expect(tesla.rangeKm, 533);
@@ -786,7 +787,7 @@ void main() {
       final camry = container
           .read(carsRepositoryProvider)
           .listings
-          .firstWhere((l) => l.id == 'g1');
+          .firstWhere((l) => l.id == mockIdG1);
       expect(camry.plugsIn, isFalse);
       expect(camry.rangeKm, isNull);
       expect(camry.batteryWarrantyUntilYear, isNull);
@@ -802,7 +803,7 @@ void main() {
       final results = electric.apply(feed, specs);
       expect(results, isNotEmpty);
       expect(results.every((l) => l.fuel == 'Electric'), isTrue);
-      expect(results.map((l) => l.id), contains('g11'));
+      expect(results.map((l) => l.id), contains(mockIdG11));
     });
   });
 }

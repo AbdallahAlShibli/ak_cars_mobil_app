@@ -18,6 +18,7 @@ import 'package:ak_cars_mobil_app/features/services/services_screen.dart';
 import 'package:ak_cars_mobil_app/features/shop/product_detail_screen.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 /// These screens shipped with hard-coded English text, so they stayed English
 /// no matter which language was selected. Each case pumps the same screen
@@ -103,14 +104,14 @@ void main() {
   // shows the real opening hours instead, so there is no such badge to find.
   bilingualTest(
     'Service detail screen',
-    () => const ServiceDetailScreen(offeringId: 'o-p1-express'),
+    () => ServiceDetailScreen(offeringId: mockOfferingId(mockIdP1, mockIdExpress)),
     ar: ['صيانة سريعة', 'المدة', 'سعر ثابت', 'ما الذي يشمله السعر'],
     en: ['Express service', 'Duration', 'Fixed price', "What's included"],
   );
 
   bilingualTest(
     'Booking screen',
-    () => const BookingScreen(offeringId: 'o-p1-express'),
+    () => BookingScreen(offeringId: mockOfferingId(mockIdP1, mockIdExpress)),
     ar: ['الوقت والمكان', 'زيارة الورشة', 'لوحة السيارة', 'الإجمالي'],
     en: ['Time & place', 'Visit workshop', 'Car plate', 'Total'],
   );
@@ -126,7 +127,7 @@ void main() {
   // slivers past the viewport are never built for the finder to see.
   bilingualTest(
     'Listing detail screen',
-    () => const ListingDetailScreen(listingId: 'g1'),
+    () => const ListingDetailScreen(listingId: mockIdG1),
     ar: ['اسم السيارة', 'الحالة', 'اسأل عن السعر', 'الممشى'],
     en: ['Car name', 'Condition', 'Ask about price', 'Mileage'],
   );
@@ -135,7 +136,7 @@ void main() {
   // asserts only what the first viewport builds.
   bilingualTest(
     'Product detail screen',
-    () => const ProductDetailScreen(productId: 'pr1'),
+    () => const ProductDetailScreen(productId: mockIdPr1),
     ar: ['قطعة أصلية', 'رقم القطعة', 'شامل ضريبة القيمة المضافة', 'الوصف'],
     en: ['Genuine / OEM', 'Part no.', 'Includes 5% VAT', 'Description'],
   );
@@ -189,7 +190,7 @@ void main() {
   // owner can buy with confidence — so they get the same bilingual guarantee.
   bilingualTest(
     'Product detail screen — EV charging cable',
-    () => const ProductDetailScreen(productId: 'pr7'),
+    () => const ProductDetailScreen(productId: mockIdPr7),
     ar: ['كيبل شحن', 'نوع القابس', 'مخصصة لـ', 'الوصف'],
     en: ['Type 2 charging cable', 'Connector', 'For: Electric', 'Description'],
   );

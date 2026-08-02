@@ -16,6 +16,42 @@ one config value and nothing above the service layer knows which is bound.
   resolved server-side from `Accept-Language`. A notification has to render in
   whichever language is active when it is read, not the one active when it was
   written.
+- **Ids are GUIDs.** Every `id` on the wire is a lowercase hyphenated v4, and
+  it is the primary key of the row behind it. The client generates the id for
+  anything it creates, so `POST` bodies arrive *with* an `id` and the server
+  stores it rather than assigning one — that is what lets a record be composed
+  offline and uploaded unchanged. A server that reassigns ids breaks the
+  client's local references to the record it just sent.
+- **Files are base64 on the record, never a URL.** See "Attachments" below.
+
+## Attachments
+
+Anything a user uploads is an attachment object, inline on the record that
+owns it:
+
+```jsonc
+{
+  "id": "8c2f1a04-6d3b-4e17-9f52-0ab7c9d41e63",  // GUID
+  "base64Data": "iVBORw0KGgoAAAANSUhEUg…",        // the bytes, no `data:` prefix
+  "mimeType": "image/jpeg",                        // authoritative: the client
+                                                   // renders on this alone
+  "fileName": "proof-1.jpg",
+  "caption": "الفلتر القديم"                       // optional, user-authored
+}
+```
+
+There is no upload endpoint and no file URL anywhere in this contract. The
+client encodes at capture and sends the bytes with the record; the server
+stores them in the column beside the row and returns them the same way.
+
+- `base64Data` carries **no** `data:` prefix. The client tolerates one on read
+  but never writes one.
+- The client refuses to attach a file over **4 MB** before encoding, and
+  downscales camera captures to 1600px. A server limit should sit above that,
+  and reject with `413` rather than truncating — a truncated attachment decodes
+  to a broken image on the screen where a customer releases money.
+- An attachment with an empty `base64Data` is treated as *absent*, not as
+  evidence. Do not return placeholder attachments.
 
 ## Switching the app over
 
@@ -88,7 +124,13 @@ would be a parallel copy of all three.
     "businessNameEn": "Al Noor Workshop",   // optional
     "crNumber": "1198432",                   // 6–10 digits
     "vatNumber": "OM1100047382",             // optional — not every workshop is VAT registered
-    "crDocumentUrl": "https://…/cr.pdf",
+    "crDocument": {                            // the certificate itself, not a link
+      "id": "8c2f1a04-6d3b-4e17-9f52-0ab7c9d41e63",
+      "base64Data": "iVBORw0KGgoAAAANSUhEUg…",
+      "mimeType": "image/png",
+      "fileName": "cr-1198432.png",
+      "caption": ""
+    },
     "area": "Al Khuwair",                    // canonical English key, LocationCatalog
     "fulfillments": ["workshop", "pickup"],
     "submittedAt": "2026-08-01T09:14:00Z"
@@ -123,7 +165,13 @@ Files (or re-files) a workshop registration.
   // …then every field of the `workshop` object above, flattened.
   "businessNameAr": "ورشة النور",
   "crNumber": "1198432",
-  "crDocumentUrl": "https://…/cr.pdf",
+  "crDocument": {                            // the certificate itself, not a link
+    "id": "8c2f1a04-6d3b-4e17-9f52-0ab7c9d41e63",
+    "base64Data": "iVBORw0KGgoAAAANSUhEUg…",
+    "mimeType": "image/png",
+    "fileName": "cr-1198432.png",
+    "caption": ""
+  },
   "area": "Al Khuwair",
   "fulfillments": ["workshop"],
   "submittedAt": "2026-08-01T09:14:00Z"

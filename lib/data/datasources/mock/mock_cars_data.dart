@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../models/car_listing.dart';
 import '../../models/gallery_listing.dart';
+import 'mock_ids.dart';
 
 /// Demo inventory for the cars marketplace.
 ///
@@ -12,7 +13,7 @@ import '../../models/gallery_listing.dart';
 abstract final class MockCarsData {
   static const galleryListings = <GalleryListing>[
     GalleryListing(
-      id: 'g1',
+      id: mockIdG1,
       make: 'Toyota',
       model: 'Camry',
       trim: 'SE',
@@ -52,7 +53,7 @@ abstract final class MockCarsData {
           'available. Silver exterior, black interior.',
     ),
     GalleryListing(
-      id: 'g2',
+      id: mockIdG2,
       make: 'Toyota',
       model: 'Camry',
       trim: 'SE',
@@ -91,7 +92,7 @@ abstract final class MockCarsData {
           'No accidents, GCC specs.',
     ),
     GalleryListing(
-      id: 'g3',
+      id: mockIdG3,
       make: 'Toyota',
       model: 'Camry',
       trim: 'SE',
@@ -130,7 +131,7 @@ abstract final class MockCarsData {
           'negotiable.',
     ),
     GalleryListing(
-      id: 'g4',
+      id: mockIdG4,
       make: 'Toyota',
       model: 'Camry',
       trim: 'XSE',
@@ -169,7 +170,7 @@ abstract final class MockCarsData {
           'wireless CarPlay.',
     ),
     GalleryListing(
-      id: 'g5',
+      id: mockIdG5,
       make: 'Toyota',
       model: 'Camry',
       trim: 'LE',
@@ -206,7 +207,7 @@ abstract final class MockCarsData {
       description: 'Economical daily driver, AC ice cold, ready to transfer.',
     ),
     GalleryListing(
-      id: 'g6',
+      id: mockIdG6,
       make: 'Nissan',
       model: 'Armada',
       trim: '',
@@ -244,7 +245,7 @@ abstract final class MockCarsData {
           'Armada 2018 V8, full service history, screens + 360 camera.',
     ),
     GalleryListing(
-      id: 'g7',
+      id: mockIdG7,
       make: 'Nissan',
       model: 'Patrol',
       trim: 'LE',
@@ -281,7 +282,7 @@ abstract final class MockCarsData {
       description: 'Patrol LE Platinum, no desert use, garage kept.',
     ),
     GalleryListing(
-      id: 'g8',
+      id: mockIdG8,
       make: 'Lexus',
       model: 'ES',
       trim: '350',
@@ -318,7 +319,7 @@ abstract final class MockCarsData {
       description: 'Lexus ES350 — lady driven, agency maintained, GCC.',
     ),
     GalleryListing(
-      id: 'g9',
+      id: mockIdG9,
       make: 'Toyota',
       model: 'Hilux',
       trim: 'GLX',
@@ -357,7 +358,7 @@ abstract final class MockCarsData {
           'tyres, full service history.',
     ),
     GalleryListing(
-      id: 'g10',
+      id: mockIdG10,
       make: 'Toyota',
       model: 'RAV4',
       trim: 'Limited',
@@ -396,7 +397,7 @@ abstract final class MockCarsData {
           'fuel consumption, one owner.',
     ),
     GalleryListing(
-      id: 'g11',
+      id: mockIdG11,
       make: 'Tesla',
       model: 'Model Y',
       trim: '',
@@ -441,7 +442,7 @@ abstract final class MockCarsData {
       chargerIncluded: true,
     ),
     GalleryListing(
-      id: 'g12',
+      id: mockIdG12,
       make: 'Nissan',
       model: 'Patrol',
       trim: 'Platinum',
@@ -484,7 +485,7 @@ abstract final class MockCarsData {
   /// Trimmed projection shown on the home screen rail.
   static const homeListings = <CarListing>[
     CarListing(
-      id: 'l1',
+      id: mockIdL1,
       title: 'Lexus ES 350',
       year: 2021,
       km: 64000,
@@ -495,7 +496,7 @@ abstract final class MockCarsData {
       photoCount: 12,
     ),
     CarListing(
-      id: 'l2',
+      id: mockIdL2,
       title: 'Nissan Patrol',
       year: 2019,
       km: 98000,
@@ -506,7 +507,7 @@ abstract final class MockCarsData {
       photoCount: 8,
     ),
     CarListing(
-      id: 'l3',
+      id: mockIdL3,
       title: 'Toyota Corolla',
       year: 2022,
       km: 31000,

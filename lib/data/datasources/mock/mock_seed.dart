@@ -12,6 +12,9 @@ import '../../models/review.dart';
 import '../../models/service_provider.dart';
 import '../../models/service_request.dart';
 import 'mock_service_data.dart';
+import 'mock_ids.dart';
+import '../../../core/utils/guid.dart';
+import 'mock_media.dart';
 
 /// The demo world, in one place (spec §2).
 ///
@@ -87,7 +90,7 @@ abstract final class MockSeed {
   static final providers = <ServiceProvider>[
     // ------------------------------------------------------------ Muscat
     ServiceProvider(
-      id: 'p1',
+      id: mockIdP1,
       name: const L('ورشة النور', 'Al Noor Workshop'),
       area: 'Al Khuwair',
       region: 'Muscat',
@@ -105,7 +108,7 @@ abstract final class MockSeed {
           'Sat–Thu 8:00–20:00 · Fri closed'),
     ),
     ServiceProvider(
-      id: 'p2',
+      id: mockIdP2,
       name: const L('الخليج للعناية بالسيارات', 'Gulf Auto Care'),
       area: 'Seeb',
       region: 'Muscat',
@@ -130,7 +133,7 @@ abstract final class MockSeed {
           'Sat–Thu 7:30–21:00 · Fri 16:00–21:00'),
     ),
     ServiceProvider(
-      id: 'p4',
+      id: mockIdP4,
       name: const L('خبراء القرم للسيارات', 'Qurum Auto Experts'),
       area: 'Qurum',
       region: 'Muscat',
@@ -153,7 +156,7 @@ abstract final class MockSeed {
     /// hidden and its offer (`of-p3-express-unapproved`) is rejected — which
     /// is exactly the case `home_offers_test` pins.
     ServiceProvider(
-      id: 'p3',
+      id: mockIdP3,
       name: const L('كراج صحار سبيد', 'Sohar Speed Garage'),
       area: 'Sohar',
       region: 'North Al Batinah',
@@ -161,7 +164,10 @@ abstract final class MockSeed {
       verified: false,
       stage: ProviderOnboardingStage.documentsSubmitted,
       stageSince: hoursAgo(31),
-      crDocumentUrl: 'seed://cr/1307654.pdf',
+      crDocument: mockCrDocument(
+        id: derivedGuid('cr-document', '1307654'),
+        crNumber: '1307654',
+      ),
       fulfillments: const {Fulfillment.workshop},
       phone: '+96826841203',
       whatsapp: '96897440319',
@@ -169,7 +175,7 @@ abstract final class MockSeed {
       hours: const L('السبت–الخميس ٨:٠٠–١٨:٠٠', 'Sat–Thu 8:00–18:00'),
     ),
     ServiceProvider(
-      id: 'p8',
+      id: mockIdP8,
       name: const L('مركز صحم للسيارات', 'Saham Auto Centre'),
       area: 'Saham',
       region: 'North Al Batinah',
@@ -196,7 +202,7 @@ abstract final class MockSeed {
     /// Added so North Al Batinah still covers every category once `p3` is
     /// correctly hidden from customers.
     ServiceProvider(
-      id: 'p12',
+      id: mockIdP12,
       name: const L('لوى للميكانيكا الشاملة', 'Liwa Complete Motors'),
       area: 'Liwa',
       region: 'North Al Batinah',
@@ -214,7 +220,7 @@ abstract final class MockSeed {
     ),
     // -------------------------------------------------- South Al Batinah
     ServiceProvider(
-      id: 'p7',
+      id: mockIdP7,
       name: const L('بركاء كويك فكس', 'Barka Quick Fix'),
       area: 'Barka',
       region: 'South Al Batinah',
@@ -230,7 +236,7 @@ abstract final class MockSeed {
       hours: const L('السبت–الخميس ٨:٠٠–٢٢:٠٠', 'Sat–Thu 8:00–22:00'),
     ),
     ServiceProvider(
-      id: 'p9',
+      id: mockIdP9,
       name: const L('الرستاق لميكانيكا السيارات', 'Rustaq Motor Works'),
       area: 'Rustaq',
       region: 'South Al Batinah',
@@ -255,7 +261,7 @@ abstract final class MockSeed {
     /// exists to prove approval is a *decision*, not a consequence of the
     /// paperwork being in order.
     ServiceProvider(
-      id: 'p13',
+      id: mockIdP13,
       name: const L('ورشة المصنعة الحديثة', 'Musannah Modern Workshop'),
       area: 'Al Musannah',
       region: 'South Al Batinah',
@@ -263,7 +269,10 @@ abstract final class MockSeed {
       verified: true,
       stage: ProviderOnboardingStage.verified,
       stageSince: hoursAgo(9),
-      crDocumentUrl: 'seed://cr/1402886.pdf',
+      crDocument: mockCrDocument(
+        id: derivedGuid('cr-document', '1402886'),
+        crNumber: '1402886',
+      ),
       ownerUserId: 'u-seed-musannah',
       fulfillments: const {Fulfillment.workshop, Fulfillment.pickup},
       phone: '+96826862190',
@@ -271,7 +280,7 @@ abstract final class MockSeed {
     ),
     // ----------------------------------------------------- Ad Dakhiliyah
     ServiceProvider(
-      id: 'p5',
+      id: mockIdP5,
       name: const L('نزوى للعناية بالسيارات', 'Nizwa Car Care'),
       area: 'Nizwa',
       region: 'Ad Dakhiliyah',
@@ -292,7 +301,7 @@ abstract final class MockSeed {
           'Sat–Thu 7:30–19:00 · Fri closed'),
     ),
     ServiceProvider(
-      id: 'p10',
+      id: mockIdP10,
       name: const L('نقطة خدمة سمائل', 'Samail Service Point'),
       area: 'Samail',
       region: 'Ad Dakhiliyah',
@@ -314,7 +323,7 @@ abstract final class MockSeed {
     /// on. Re-submitting puts it back to [ProviderOnboardingStage
     /// .documentsSubmitted] and back into the founder's pipeline.
     ServiceProvider(
-      id: 'p14',
+      id: mockIdP14,
       name: const L('ورشة بهلاء للسيارات', 'Bahla Auto Workshop'),
       area: 'Bahla',
       region: 'Ad Dakhiliyah',
@@ -324,7 +333,10 @@ abstract final class MockSeed {
       stageSince: hoursAgo(52),
       rejectionReason:
           'صورة السجل التجاري غير واضحة — الرقم غير مقروء. أعد رفعها بجودة أعلى.',
-      crDocumentUrl: 'seed://cr/1411203.pdf',
+      crDocument: mockCrDocument(
+        id: derivedGuid('cr-document', '1411203'),
+        crNumber: '1411203',
+      ),
       ownerUserId: 'u-seed-bahla',
       fulfillments: const {Fulfillment.workshop},
       phone: '+96825420117',
@@ -332,7 +344,7 @@ abstract final class MockSeed {
     ),
     // ------------------------------------------------------------ Dhofar
     ServiceProvider(
-      id: 'p6',
+      id: mockIdP6,
       name: const L('مركز صلالة للمحركات', 'Salalah Motors Hub'),
       area: 'Salalah',
       region: 'Dhofar',
@@ -358,7 +370,7 @@ abstract final class MockSeed {
           'Sat–Thu 8:00–20:30 · Fri 16:00–20:30'),
     ),
     ServiceProvider(
-      id: 'p11',
+      id: mockIdP11,
       name: const L('كراج طاقة للسيارات', 'Taqah Auto Garage'),
       area: 'Taqah',
       region: 'Dhofar',
@@ -375,7 +387,7 @@ abstract final class MockSeed {
     /// The freshest application — submitted hours ago, still inside the SLA
     /// the founder panel measures against.
     ServiceProvider(
-      id: 'p15',
+      id: mockIdP15,
       name: const L('ورشة مرباط البحرية', 'Mirbat Marine & Auto'),
       area: 'Mirbat',
       region: 'Dhofar',
@@ -383,7 +395,10 @@ abstract final class MockSeed {
       verified: false,
       stage: ProviderOnboardingStage.documentsSubmitted,
       stageSince: hoursAgo(5),
-      crDocumentUrl: 'seed://cr/1423970.pdf',
+      crDocument: mockCrDocument(
+        id: derivedGuid('cr-document', '1423970'),
+        crNumber: '1423970',
+      ),
       ownerUserId: 'u-seed-mirbat',
       fulfillments: const {Fulfillment.workshop, Fulfillment.roadside},
       phone: '+96823268804',
@@ -403,7 +418,7 @@ abstract final class MockSeed {
   /// model and plate to show instead of a placeholder.
   static const cars = <Car>[
     Car(
-      id: 'sc-1',
+      id: mockIdSc1,
       make: 'Toyota',
       model: 'Land Cruiser',
       year: 2021,
@@ -413,7 +428,7 @@ abstract final class MockSeed {
       powertrain: Powertrain.petrol,
     ),
     Car(
-      id: 'sc-2',
+      id: mockIdSc2,
       make: 'Nissan',
       model: 'Patrol',
       year: 2019,
@@ -423,7 +438,7 @@ abstract final class MockSeed {
       powertrain: Powertrain.petrol,
     ),
     Car(
-      id: 'sc-3',
+      id: mockIdSc3,
       make: 'Hyundai',
       model: 'Elantra',
       year: 2022,
@@ -433,7 +448,7 @@ abstract final class MockSeed {
       powertrain: Powertrain.petrol,
     ),
     Car(
-      id: 'sc-4',
+      id: mockIdSc4,
       make: 'Tesla',
       model: 'Model 3',
       year: 2023,
@@ -443,7 +458,7 @@ abstract final class MockSeed {
       powertrain: Powertrain.electric,
     ),
     Car(
-      id: 'sc-5',
+      id: mockIdSc5,
       make: 'Mitsubishi',
       model: 'Pajero',
       year: 2018,
@@ -453,7 +468,7 @@ abstract final class MockSeed {
       powertrain: Powertrain.diesel,
     ),
     Car(
-      id: 'sc-6',
+      id: mockIdSc6,
       make: 'Kia',
       model: 'Sportage',
       year: 2020,
@@ -544,20 +559,20 @@ abstract final class MockSeed {
 
   static ProofOfWork _proof(String requestId, {required bool partBox}) =>
       ProofOfWork(
-        id: 'proof-$requestId',
+        id: derivedGuid('proof', requestId),
         requestId: requestId,
         notes: 'تم تنفيذ العمل وفحص السيارة قبل التسليم.',
         submittedAt: hoursAgo(6),
         media: [
-          ProofMedia(
-            id: 'pm-$requestId-1',
-            uri: 'seed://proof/$requestId-1.jpg',
+          mockProofPhoto(
+            id: mockProofMediaId(requestId, 1),
+            fileName: 'proof-$requestId-1.jpg',
             caption: 'بعد الإنجاز',
           ),
           if (partBox)
-            ProofMedia(
-              id: 'pm-$requestId-2',
-              uri: 'seed://proof/$requestId-box.jpg',
+            mockProofPhoto(
+              id: mockProofMediaId(requestId, 2),
+              fileName: 'proof-$requestId-box.jpg',
               caption: 'علبة القطعة',
             ),
         ],
@@ -691,22 +706,22 @@ abstract final class MockSeed {
     // ---------------------------------------- awaiting the founder's money
     // `QueueSla.founder` is 4h: below 2/3 of it is calm, past it is red.
     _booking(
-      id: '2101',
-      offeringId: 'o-p1-major',
+      id: mockId2101,
+      offeringId: mockOfferingId(mockIdP1, mockIdMajor),
       target: EscrowState.createdPendingPayment,
       ageHours: 0.7,
       car: cars[0],
     ),
     _booking(
-      id: '2102',
-      offeringId: 'o-p2-full',
+      id: mockId2102,
+      offeringId: mockOfferingId(mockIdP2, mockIdFull),
       target: EscrowState.createdPendingPayment,
       ageHours: 3.1, // past 2/3 × 4h — amber
       car: cars[1],
     ),
     _booking(
-      id: '2103',
-      offeringId: 'o-p6-ac',
+      id: mockId2103,
+      offeringId: mockOfferingId(mockIdP6, mockIdAc),
       target: EscrowState.createdPendingPayment,
       ageHours: 6.5, // past 4h — red
       car: cars[4],
@@ -715,70 +730,70 @@ abstract final class MockSeed {
     // ----------------------------------------------- waiting on a workshop
     // `QueueSla.workshop` is 24h.
     _booking(
-      id: '2104',
-      offeringId: 'o-p4-express',
+      id: mockId2104,
+      offeringId: mockOfferingId(mockIdP4, mockIdExpress),
       target: EscrowState.fundsHeld,
       ageHours: 2,
       car: cars[1],
     ),
     _booking(
-      id: '2105',
-      offeringId: 'o-p8-express',
+      id: mockId2105,
+      offeringId: mockOfferingId(mockIdP8, mockIdExpress),
       target: EscrowState.fundsHeld,
       ageHours: 17.5, // past 2/3 × 24h — amber
       car: cars[2],
     ),
     _booking(
-      id: '2106',
-      offeringId: 'o-p5-major',
+      id: mockId2106,
+      offeringId: mockOfferingId(mockIdP5, mockIdMajor),
       target: EscrowState.fundsHeld,
       ageHours: 30, // past 24h — red
       car: cars[5],
     ),
     _booking(
-      id: '2107',
-      offeringId: 'o-p9-full',
+      id: mockId2107,
+      offeringId: mockOfferingId(mockIdP9, mockIdFull),
       target: EscrowState.acceptedByWorkshop,
       ageHours: 5,
     ),
     _booking(
-      id: '2108',
-      offeringId: 'o-p12-major',
+      id: mockId2108,
+      offeringId: mockOfferingId(mockIdP12, mockIdMajor),
       target: EscrowState.acceptedByWorkshop,
       ageHours: 26,
       car: cars[2],
     ),
     _booking(
-      id: '2109',
-      offeringId: 'o-p1-full',
+      id: mockId2109,
+      offeringId: mockOfferingId(mockIdP1, mockIdFull),
       target: EscrowState.inProgress,
       ageHours: 3,
       car: cars[0],
     ),
     _booking(
-      id: '2110',
-      offeringId: 'o-p2-detailing',
+      id: mockId2110,
+      offeringId: mockOfferingId(mockIdP2, mockIdDetailing),
       target: EscrowState.inProgress,
       ageHours: 14,
       fulfillment: Fulfillment.pickup,
     ),
     _booking(
-      id: '2111',
-      offeringId: 'o-p10-battery',
+      id: mockId2111,
+      offeringId: mockOfferingId(mockIdP10, mockIdBattery),
       target: EscrowState.inProgress,
       ageHours: 39,
       car: cars[5],
     ),
     _booking(
-      id: '2112',
-      offeringId: 'o-p11-tyres',
+      id: mockId2112,
+      offeringId: mockOfferingId(mockIdP11, mockIdTyres),
       target: EscrowState.proofSubmitted,
       ageHours: 1.5,
       car: cars[4],
     ),
     _booking(
-      id: '2113',
-      offeringId: 'o-p6-express',
+      id: mockId2113,
+      offeringId: mockOfferingId(mockIdP6, mockIdExpress),
       target: EscrowState.proofSubmitted,
       ageHours: 20,
     ),
@@ -786,22 +801,22 @@ abstract final class MockSeed {
     // -------------------------------------------- waiting on the customer
     // The approval window is 72h; the reminder lead is 24h before that.
     _booking(
-      id: '2114',
-      offeringId: 'o-p1-express',
+      id: mockId2114,
+      offeringId: mockOfferingId(mockIdP1, mockIdExpress),
       target: EscrowState.awaitingApproval,
       ageHours: 2,
       car: cars[0],
     ),
     _booking(
-      id: '2115',
-      offeringId: 'o-p4-tyres',
+      id: mockId2115,
+      offeringId: mockOfferingId(mockIdP4, mockIdTyres),
       target: EscrowState.awaitingApproval,
       ageHours: 51, // inside the 24h reminder lead — the nudge is showing
       car: cars[1],
     ),
     _booking(
-      id: '2116',
-      offeringId: 'o-p8-ev-check',
+      id: mockId2116,
+      offeringId: mockOfferingId(mockIdP8, mockIdEvCheck),
       target: EscrowState.awaitingApproval,
       ageHours: 80, // past 72h — the automatic release is due
       car: cars[3],
@@ -809,16 +824,16 @@ abstract final class MockSeed {
 
     // ------------------------------------------------------------ disputes
     _booking(
-      id: '2117',
-      offeringId: 'o-p9-detailing',
+      id: mockId2117,
+      offeringId: mockOfferingId(mockIdP9, mockIdDetailing),
       target: EscrowState.disputed,
       ageHours: 1.2, // inside `QueueSla.founder`
       disputeNote:
           'التلميع ترك خطوطاً واضحة على غطاء المحرك، وما كانت موجودة قبل.',
     ),
     _booking(
-      id: '2118',
-      offeringId: 'o-p5-ac',
+      id: mockId2118,
+      offeringId: mockOfferingId(mockIdP5, mockIdAc),
       target: EscrowState.disputed,
       ageHours: 9, // well past 4h — red in the founder's queue
       car: cars[5],
@@ -828,62 +843,62 @@ abstract final class MockSeed {
 
     // --------------------------------------------------- settled, and how
     _booking(
-      id: '2119',
-      offeringId: 'o-p1-major',
+      id: mockId2119,
+      offeringId: mockOfferingId(mockIdP1, mockIdMajor),
       target: EscrowState.releasedToWorkshop,
       ageHours: 30,
       car: cars[0],
       withProof: true,
     ),
     _booking(
-      id: '2120',
-      offeringId: 'o-p2-express',
+      id: mockId2120,
+      offeringId: mockOfferingId(mockIdP2, mockIdExpress),
       target: EscrowState.releasedToWorkshop,
       ageHours: 96,
       withProof: true,
     ),
     _booking(
-      id: '2121',
-      offeringId: 'o-p4-detailing',
+      id: mockId2121,
+      offeringId: mockOfferingId(mockIdP4, mockIdDetailing),
       target: EscrowState.releasedToWorkshop,
       ageHours: 240,
       car: cars[1],
       withProof: true,
     ),
     _booking(
-      id: '2122',
-      offeringId: 'o-p6-major',
+      id: mockId2122,
+      offeringId: mockOfferingId(mockIdP6, mockIdMajor),
       target: EscrowState.releasedToWorkshop,
       ageHours: 460,
       car: cars[4],
       withProof: true,
     ),
     _booking(
-      id: '2123',
-      offeringId: 'o-p8-battery',
+      id: mockId2123,
+      offeringId: mockOfferingId(mockIdP8, mockIdBattery),
       target: EscrowState.releasedToWorkshop,
       ageHours: 700,
       car: cars[2],
       withProof: true,
     ),
     _booking(
-      id: '2124',
-      offeringId: 'o-p5-full',
+      id: mockId2124,
+      offeringId: mockOfferingId(mockIdP5, mockIdFull),
       target: EscrowState.releasedToWorkshop,
       ageHours: 980,
       car: cars[5],
       withProof: true,
     ),
     _booking(
-      id: '2125',
-      offeringId: 'o-p9-major',
+      id: mockId2125,
+      offeringId: mockOfferingId(mockIdP9, mockIdMajor),
       target: EscrowState.releasedToWorkshop,
       ageHours: 1340,
       withProof: true,
     ),
     _booking(
-      id: '2126',
-      offeringId: 'o-p2-ac',
+      id: mockId2126,
+      offeringId: mockOfferingId(mockIdP2, mockIdAc),
       target: EscrowState.releasedToWorkshop,
       ageHours: 1720,
       car: cars[3],
@@ -891,16 +906,16 @@ abstract final class MockSeed {
     ),
     // Roughly ninety days back — the far edge of the Money tab's history.
     _booking(
-      id: '2127',
-      offeringId: 'o-p1-diag',
+      id: mockId2127,
+      offeringId: mockOfferingId(mockIdP1, mockIdDiag),
       target: EscrowState.releasedToWorkshop,
       ageHours: 2090,
       car: cars[0],
       withProof: true,
     ),
     _booking(
-      id: '2128',
-      offeringId: 'o-p12-contracts',
+      id: mockId2128,
+      offeringId: mockOfferingId(mockIdP12, mockIdContracts),
       target: EscrowState.releasedToWorkshop,
       ageHours: 2140,
       car: cars[2],
@@ -909,36 +924,36 @@ abstract final class MockSeed {
 
     // --------------------------------------------------- the two endings
     _booking(
-      id: '2129',
-      offeringId: 'o-p7-express',
+      id: mockId2129,
+      offeringId: mockOfferingId(mockIdP7, mockIdExpress),
       target: EscrowState.cancelled,
       ageHours: 62,
     ),
     _booking(
-      id: '2130',
-      offeringId: 'o-p10-detailing',
+      id: mockId2130,
+      offeringId: mockOfferingId(mockIdP10, mockIdDetailing),
       target: EscrowState.cancelled,
       ageHours: 310,
       car: cars[5],
     ),
     _booking(
-      id: '2131',
-      offeringId: 'o-p11-sos',
+      id: mockId2131,
+      offeringId: mockOfferingId(mockIdP11, mockIdSos),
       target: EscrowState.refunded,
       ageHours: 130,
       car: cars[4],
     ),
     _booking(
-      id: '2132',
-      offeringId: 'o-p7-battery',
+      id: mockId2132,
+      offeringId: mockOfferingId(mockIdP7, mockIdBattery),
       target: EscrowState.refunded,
       ageHours: 520,
     ),
 
     // ------------------------------------------- part + installation (§6)
     _partBooking(
-      id: '2133',
-      providerId: 'p1',
+      id: mockId2133,
+      providerId: mockIdP1,
       target: EscrowState.requested,
       ageHours: 4,
       car: cars[0],
@@ -948,8 +963,8 @@ abstract final class MockSeed {
       ),
     ),
     _partBooking(
-      id: '2134',
-      providerId: 'p2',
+      id: mockId2134,
+      providerId: mockIdP2,
       target: EscrowState.quoted,
       ageHours: 11,
       car: cars[1],
@@ -959,9 +974,9 @@ abstract final class MockSeed {
         symptom: 'لمبة البطارية تضيء أثناء القيادة',
       ),
       quote: Quote(
-        id: 'q-2134',
-        requestId: '2134',
-        workshopId: 'p2',
+        id: mockIdQ2134,
+        requestId: mockId2134,
+        workshopId: mockIdP2,
         partDescription: 'دينمو Denso أصلي',
         partPrice: 64,
         laborPrice: 18,
@@ -972,16 +987,16 @@ abstract final class MockSeed {
       ),
     ),
     _partBooking(
-      id: '2135',
-      providerId: 'p4',
+      id: mockId2135,
+      providerId: mockIdP4,
       target: EscrowState.quoteAccepted,
       ageHours: 2,
       car: cars[1],
       part: const PartRequest(description: 'طقم فحمات فرامل أمامية'),
       quote: Quote(
-        id: 'q-2135',
-        requestId: '2135',
-        workshopId: 'p4',
+        id: mockIdQ2135,
+        requestId: mockId2135,
+        workshopId: mockIdP4,
         partDescription: 'فحمات أمامية سيراميك',
         partPrice: 22,
         laborPrice: 9,
@@ -990,8 +1005,8 @@ abstract final class MockSeed {
       ),
     ),
     _partBooking(
-      id: '2136',
-      providerId: 'p9',
+      id: mockId2136,
+      providerId: mockIdP9,
       target: EscrowState.inProgress,
       ageHours: 7,
       car: cars[2],
@@ -1000,9 +1015,9 @@ abstract final class MockSeed {
         symptom: 'حرارة ترتفع في الزحمة',
       ),
       quote: Quote(
-        id: 'q-2136',
-        requestId: '2136',
-        workshopId: 'p9',
+        id: mockIdQ2136,
+        requestId: mockId2136,
+        workshopId: mockIdP9,
         partDescription: 'ردياتير بديل مع خرطوم علوي',
         partPrice: 78,
         laborPrice: 25,
@@ -1014,31 +1029,31 @@ abstract final class MockSeed {
     // A few more completed jobs so the workshop panel's Performance tab has a
     // population worth computing an acceptance rate over.
     _booking(
-      id: '2137',
-      offeringId: 'o-p1-ac',
+      id: mockId2137,
+      offeringId: mockOfferingId(mockIdP1, mockIdAc),
       target: EscrowState.releasedToWorkshop,
       ageHours: 380,
       car: cars[0],
       withProof: true,
     ),
     _booking(
-      id: '2138',
-      offeringId: 'o-p1-express',
+      id: mockId2138,
+      offeringId: mockOfferingId(mockIdP1, mockIdExpress),
       target: EscrowState.releasedToWorkshop,
       ageHours: 620,
       car: cars[1],
       withProof: true,
     ),
     _booking(
-      id: '2139',
-      offeringId: 'o-p1-contracts',
+      id: mockId2139,
+      offeringId: mockOfferingId(mockIdP1, mockIdContracts),
       target: EscrowState.refunded,
       ageHours: 840,
       car: cars[0],
     ),
     _booking(
-      id: '2140',
-      offeringId: 'o-p2-tyres',
+      id: mockId2140,
+      offeringId: mockOfferingId(mockIdP2, mockIdTyres),
       target: EscrowState.releasedToWorkshop,
       ageHours: 1100,
       car: cars[3],
@@ -1059,10 +1074,10 @@ abstract final class MockSeed {
   /// it can only be checked against data that contains the case.
   static final reviews = <Review>[
     Review(
-      id: 'rev-s1',
-      bookingId: '2119',
+      id: mockIdRevS1,
+      bookingId: mockId2119,
       authorId: 'u-seed-1',
-      subjectId: 'p1',
+      subjectId: mockIdP1,
       direction: ReviewDirection.customerToWorkshop,
       rating: 5,
       comment: 'شرحوا لي كل شي قبل ما يبدون، والسيارة رجعت نظيفة.',
@@ -1070,9 +1085,9 @@ abstract final class MockSeed {
       createdAt: hoursAgo(26),
     ),
     Review(
-      id: 'rev-s2',
-      bookingId: '2119',
-      authorId: 'p1',
+      id: mockIdRevS2,
+      bookingId: mockId2119,
+      authorId: mockIdP1,
       subjectId: 'u-seed-1',
       direction: ReviewDirection.workshopToCustomer,
       rating: 5,
@@ -1081,10 +1096,10 @@ abstract final class MockSeed {
       createdAt: hoursAgo(25),
     ),
     Review(
-      id: 'rev-s3',
-      bookingId: '2120',
+      id: mockIdRevS3,
+      bookingId: mockId2120,
       authorId: 'u-seed-2',
-      subjectId: 'p2',
+      subjectId: mockIdP2,
       direction: ReviewDirection.customerToWorkshop,
       rating: 4,
       comment: 'خدمة سريعة، بس الانتظار كان أطول من المتوقع.',
@@ -1092,20 +1107,20 @@ abstract final class MockSeed {
       createdAt: hoursAgo(90),
     ),
     Review(
-      id: 'rev-s4',
-      bookingId: '2121',
+      id: mockIdRevS4,
+      bookingId: mockId2121,
       authorId: 'u-seed-1',
-      subjectId: 'p4',
+      subjectId: mockIdP4,
       direction: ReviewDirection.customerToWorkshop,
       rating: 5,
       serviceType: const L('تلميع السيارة', 'Car detailing'),
       createdAt: hoursAgo(232),
     ),
     Review(
-      id: 'rev-s5',
-      bookingId: '2122',
+      id: mockIdRevS5,
+      bookingId: mockId2122,
       authorId: 'u-seed-3',
-      subjectId: 'p6',
+      subjectId: mockIdP6,
       direction: ReviewDirection.customerToWorkshop,
       rating: 4,
       comment: 'سعر واضح من البداية وما زاد شي.',
@@ -1115,10 +1130,10 @@ abstract final class MockSeed {
     /// Written after a dispute that settled. §8 labels these rather than
     /// hiding them, and that rule needs at least one case to be visible on.
     Review(
-      id: 'rev-s6',
-      bookingId: '2123',
+      id: mockIdRevS6,
+      bookingId: mockId2123,
       authorId: 'u-seed-2',
-      subjectId: 'p8',
+      subjectId: mockIdP8,
       direction: ReviewDirection.customerToWorkshop,
       rating: 3,
       comment: 'صار سوء فهم على السعر، بس حلّوه معي بشكل عادل في النهاية.',
@@ -1127,10 +1142,10 @@ abstract final class MockSeed {
       afterDispute: true,
     ),
     Review(
-      id: 'rev-s7',
-      bookingId: '2124',
+      id: mockIdRevS7,
+      bookingId: mockId2124,
       authorId: 'u-seed-3',
-      subjectId: 'p5',
+      subjectId: mockIdP5,
       direction: ReviewDirection.customerToWorkshop,
       rating: 5,
       serviceType: const L('صيانة كاملة', 'Full service'),
@@ -1139,10 +1154,10 @@ abstract final class MockSeed {
     /// `p12` has exactly one review — the threshold case the ratings board
     /// must refuse to rank on.
     Review(
-      id: 'rev-s8',
-      bookingId: '2128',
+      id: mockIdRevS8,
+      bookingId: mockId2128,
       authorId: 'u-seed-4',
-      subjectId: 'p12',
+      subjectId: mockIdP12,
       direction: ReviewDirection.customerToWorkshop,
       rating: 5,
       comment: 'أفضل ورشة جربتها في الباطنة.',
@@ -1150,20 +1165,20 @@ abstract final class MockSeed {
       createdAt: hoursAgo(2130),
     ),
     Review(
-      id: 'rev-s9',
-      bookingId: '2137',
+      id: mockIdRevS9,
+      bookingId: mockId2137,
       authorId: 'u-seed-1',
-      subjectId: 'p1',
+      subjectId: mockIdP1,
       direction: ReviewDirection.customerToWorkshop,
       rating: 4,
       serviceType: const L('عناية بالمكيف', 'AC care'),
       createdAt: hoursAgo(370),
     ),
     Review(
-      id: 'rev-s10',
-      bookingId: '2138',
+      id: mockIdRevS10,
+      bookingId: mockId2138,
       authorId: 'u-seed-2',
-      subjectId: 'p1',
+      subjectId: mockIdP1,
       direction: ReviewDirection.customerToWorkshop,
       rating: 5,
       comment: 'ما حاولوا يبيعون لي أشياء ما احتاجها. هذا اللي رجّعني.',
@@ -1171,10 +1186,10 @@ abstract final class MockSeed {
       createdAt: hoursAgo(610),
     ),
     Review(
-      id: 'rev-s11',
-      bookingId: '2140',
+      id: mockIdRevS11,
+      bookingId: mockId2140,
       authorId: 'u-seed-4',
-      subjectId: 'p2',
+      subjectId: mockIdP2,
       direction: ReviewDirection.customerToWorkshop,
       rating: 4,
       serviceType: const L('تغيير وترصيص الإطارات', 'Tyre change & balancing'),
@@ -1191,8 +1206,8 @@ abstract final class MockSeed {
   /// settled cannot demonstrate that.
   static final payouts = <PayoutRecord>[
     PayoutRecord(
-      id: 'po-1',
-      providerId: 'p1',
+      id: mockIdPo1,
+      providerId: mockIdP1,
       amount: 118.60,
       periodFrom: daysAgo(90),
       periodTo: daysAgo(60),
@@ -1200,24 +1215,24 @@ abstract final class MockSeed {
       note: 'تحويل بنكي — دفعة الشهر',
     ),
     PayoutRecord(
-      id: 'po-2',
-      providerId: 'p2',
+      id: mockIdPo2,
+      providerId: mockIdP2,
       amount: 74.25,
       periodFrom: daysAgo(90),
       periodTo: daysAgo(60),
       markedAt: daysAgo(58),
     ),
     PayoutRecord(
-      id: 'po-3',
-      providerId: 'p1',
+      id: mockIdPo3,
+      providerId: mockIdP1,
       amount: 62.40,
       periodFrom: daysAgo(60),
       periodTo: daysAgo(30),
       markedAt: daysAgo(28),
     ),
     PayoutRecord(
-      id: 'po-4',
-      providerId: 'p6',
+      id: mockIdPo4,
+      providerId: mockIdP6,
       amount: 48.00,
       periodFrom: daysAgo(60),
       periodTo: daysAgo(30),
@@ -1225,8 +1240,8 @@ abstract final class MockSeed {
       note: 'خصم عمولة الشهر محسوب',
     ),
     PayoutRecord(
-      id: 'po-5',
-      providerId: 'p5',
+      id: mockIdPo5,
+      providerId: mockIdP5,
       amount: 26.60,
       periodFrom: daysAgo(60),
       periodTo: daysAgo(30),
@@ -1245,70 +1260,70 @@ abstract final class MockSeed {
   /// the repository, from its single write point.
   static final audit = <AuditEntry>[
     AuditEntry(
-      id: 'au-1',
+      id: mockIdAu1,
       at: daysAgo(88),
       actor: EscrowActor.founder,
       actorId: 'founder',
       action: 'provider.approved',
       subjectType: AuditSubjectType.provider,
-      subjectId: 'p12',
+      subjectId: mockIdP12,
       fromState: ProviderOnboardingStage.verified.key,
       toState: ProviderOnboardingStage.approved.key,
       note: 'سجل تجاري ساري ومطابق للاسم.',
     ),
     AuditEntry(
-      id: 'au-2',
+      id: mockIdAu2,
       at: daysAgo(64),
       actor: EscrowActor.founder,
       actorId: 'founder',
       action: 'provider.approved',
       subjectType: AuditSubjectType.provider,
-      subjectId: 'p10',
+      subjectId: mockIdP10,
       fromState: ProviderOnboardingStage.verified.key,
       toState: ProviderOnboardingStage.approved.key,
     ),
     AuditEntry(
-      id: 'au-3',
+      id: mockIdAu3,
       at: hoursAgo(52),
       actor: EscrowActor.founder,
       actorId: 'founder',
       action: 'provider.rejected',
       subjectType: AuditSubjectType.provider,
-      subjectId: 'p14',
+      subjectId: mockIdP14,
       fromState: ProviderOnboardingStage.documentsSubmitted.key,
       toState: ProviderOnboardingStage.suspended.key,
       note: 'صورة السجل التجاري غير واضحة — الرقم غير مقروء.',
     ),
     AuditEntry(
-      id: 'au-4',
+      id: mockIdAu4,
       at: hoursAgo(9),
       actor: EscrowActor.founder,
       actorId: 'founder',
       action: 'provider.verified',
       subjectType: AuditSubjectType.provider,
-      subjectId: 'p13',
+      subjectId: mockIdP13,
       fromState: ProviderOnboardingStage.documentsSubmitted.key,
       toState: ProviderOnboardingStage.verified.key,
       note: 'الوثائق مقروءة ومطابقة — بانتظار قرار التفعيل.',
     ),
     AuditEntry(
-      id: 'au-5',
+      id: mockIdAu5,
       at: daysAgo(58),
       actor: EscrowActor.founder,
       actorId: 'founder',
       action: 'payout.marked',
       subjectType: AuditSubjectType.payout,
-      subjectId: 'po-1',
+      subjectId: mockIdPo1,
       note: 'تحويل بنكي — دفعة الشهر',
     ),
     AuditEntry(
-      id: 'au-6',
+      id: mockIdAu6,
       at: daysAgo(12),
       actor: EscrowActor.founder,
       actorId: 'founder',
       action: 'offer.enabled',
       subjectType: AuditSubjectType.offer,
-      subjectId: 'of-p1-major',
+      subjectId: mockIdOfP1Major,
       toState: 'active',
     ),
   ];

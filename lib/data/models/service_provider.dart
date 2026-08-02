@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/json/json_utils.dart';
+import 'media_attachment.dart';
 
 /// How a provider can take delivery of the car.
 enum Fulfillment { workshop, pickup, roadside }
@@ -164,7 +165,7 @@ class ServiceProvider {
     this.stage = ProviderOnboardingStage.applied,
     this.stageSince,
     this.rejectionReason,
-    this.crDocumentUrl,
+    this.crDocument,
     this.ownerUserId,
     this.capabilities = const {},
     this.pickupFee = 3,
@@ -210,9 +211,12 @@ class ServiceProvider {
   /// something anyone can act on.
   final String? rejectionReason;
 
-  /// The commercial-registration document the applicant uploaded. The founder
-  /// opens this before deciding (§11 step 2).
-  final String? crDocumentUrl;
+  /// The commercial-registration document the applicant uploaded, carried as
+  /// base64 bytes on the record. The founder opens this before deciding
+  /// (§11 step 2) and it renders from these bytes — there is no URL to fetch
+  /// and therefore no way for approval to be granted against a document that
+  /// silently failed to load.
+  final MediaAttachment? crDocument;
 
   /// The account that owns this workshop, when it came in through
   /// registration. Null for the seeded workshops the platform onboarded by
@@ -286,7 +290,10 @@ class ServiceProvider {
             : ProviderOnboardingStage.fromKey(json.stringOrNull('stage')),
         stageSince: json.dateTimeOrNull('stageSince'),
         rejectionReason: json.stringOrNull('rejectionReason'),
-        crDocumentUrl: json.stringOrNull('crDocumentUrl'),
+        crDocument: switch (json.objectOrNull('crDocument')) {
+          final JsonMap doc => MediaAttachment.fromJson(doc),
+          _ => null,
+        },
         ownerUserId: json.stringOrNull('ownerUserId'),
         fulfillments: json
             .stringList('fulfillments')
@@ -318,7 +325,7 @@ class ServiceProvider {
         'isApproved': isApproved,
         'stageSince': stageSince?.toIso8601String(),
         'rejectionReason': rejectionReason,
-        'crDocumentUrl': crDocumentUrl,
+        'crDocument': crDocument?.toJson(),
         'ownerUserId': ownerUserId,
         'fulfillments': [for (final f in fulfillments) f.key],
         'capabilities': [for (final c in capabilities) c.key],
@@ -340,7 +347,7 @@ class ServiceProvider {
     ProviderOnboardingStage? stage,
     DateTime? stageSince,
     String? rejectionReason,
-    String? crDocumentUrl,
+    MediaAttachment? crDocument,
     String? ownerUserId,
     Set<Fulfillment>? fulfillments,
     Set<ProviderCapability>? capabilities,
@@ -367,7 +374,7 @@ class ServiceProvider {
         stageSince: stageSince ?? this.stageSince,
         rejectionReason:
             clearRejectionReason ? null : (rejectionReason ?? this.rejectionReason),
-        crDocumentUrl: crDocumentUrl ?? this.crDocumentUrl,
+        crDocument: crDocument ?? this.crDocument,
         ownerUserId: ownerUserId ?? this.ownerUserId,
         fulfillments: fulfillments ?? this.fulfillments,
         capabilities: capabilities ?? this.capabilities,
@@ -391,7 +398,7 @@ class ServiceProvider {
       other.stage == stage &&
       other.stageSince == stageSince &&
       other.rejectionReason == rejectionReason &&
-      other.crDocumentUrl == crDocumentUrl &&
+      other.crDocument == crDocument &&
       other.ownerUserId == ownerUserId &&
       other.pickupFee == pickupFee &&
       other.phone == phone &&
@@ -415,7 +422,7 @@ class ServiceProvider {
         stage,
         stageSince,
         rejectionReason,
-        crDocumentUrl,
+        crDocument,
         ownerUserId,
         pickupFee,
         phone,

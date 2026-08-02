@@ -20,6 +20,7 @@ export 'escrow.dart';
 export 'gallery_listing.dart';
 export 'location_catalog.dart';
 export 'maintenance.dart';
+export 'media_attachment.dart';
 export 'offer.dart';
 export 'order.dart';
 export 'payout_record.dart';

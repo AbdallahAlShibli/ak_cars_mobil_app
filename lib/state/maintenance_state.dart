@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/utils/guid.dart';
 import '../core/i18n/strings.dart';
 import '../data/models/car.dart';
 import '../data/models/maintenance.dart';
@@ -111,15 +112,15 @@ class MaintenanceNotifier extends Notifier<Map<String, MaintenanceBook>> {
     if (book.hasRecordForBooking(request.id)) return;
 
     final itemKey = request.maintenanceItemKey ??
-        _itemKeyForCategory(request.offering.categoryId, request.car);
+        _itemKeyForCategory(request.offering.categorySlug, request.car);
     if (itemKey == null) return;
 
     await addRecord(
       carId,
       ServiceRecord(
-        // Derived from the booking, so a duplicate event upserts the same row
-        // rather than appending a second one.
-        id: 'booking-${request.id}',
+        // Derived from the booking rather than random, so a duplicate event
+        // upserts the same row instead of appending a second one.
+        id: derivedGuid('service-record', request.id),
         title: request.offering.name,
         workshop: request.offering.provider.name.en,
         odometerKm: book.projectedOdometerKm() ?? request.car.odometerKm ?? 0,
@@ -136,8 +137,8 @@ class MaintenanceNotifier extends Notifier<Map<String, MaintenanceBook>> {
   ///
   /// The powertrain comes off the booking's own car rather than the garage:
   /// this notifier stays free of any dependency on the garage (see [build]).
-  String? _itemKeyForCategory(String categoryId, Car car) {
-    final type = MaintenanceTypeX.forCategory(categoryId);
+  String? _itemKeyForCategory(String categorySlug, Car car) {
+    final type = MaintenanceTypeX.forCategory(categorySlug);
     if (type == null) return null;
     return type.appliesTo(car.powertrain) ? type.key : null;
   }

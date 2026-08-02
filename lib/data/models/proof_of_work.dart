@@ -1,66 +1,5 @@
 import '../../core/json/json_utils.dart';
-
-/// One attachment on a completion proof.
-///
-/// [uri] is whatever the storage layer hands back — an https URL from the
-/// backend, or a local file path while a device upload is still queued. The
-/// model does not care which; the widget that renders it does.
-class ProofMedia {
-  const ProofMedia({
-    required this.id,
-    required this.uri,
-    this.kind = ProofMediaKind.photo,
-    this.caption = '',
-  });
-
-  final String id;
-  final String uri;
-  final ProofMediaKind kind;
-
-  /// What the workshop said this shot is of ("الفلتر القديم"). Optional —
-  /// an uncaptioned photo is still evidence.
-  final String caption;
-
-  factory ProofMedia.fromJson(JsonMap json) => ProofMedia(
-        id: json.requireString('id'),
-        uri: json.stringOr('uri', ''),
-        kind: json.enumOr('kind', ProofMediaKind.values, ProofMediaKind.photo),
-        caption: json.stringOr('caption', ''),
-      );
-
-  JsonMap toJson() => {
-        'id': id,
-        'uri': uri,
-        'kind': kind.name,
-        'caption': caption,
-      };
-
-  ProofMedia copyWith({
-    String? id,
-    String? uri,
-    ProofMediaKind? kind,
-    String? caption,
-  }) =>
-      ProofMedia(
-        id: id ?? this.id,
-        uri: uri ?? this.uri,
-        kind: kind ?? this.kind,
-        caption: caption ?? this.caption,
-      );
-
-  @override
-  bool operator ==(Object other) =>
-      other is ProofMedia &&
-      other.id == id &&
-      other.uri == uri &&
-      other.kind == kind &&
-      other.caption == caption;
-
-  @override
-  int get hashCode => Object.hash(id, uri, kind, caption);
-}
-
-enum ProofMediaKind { photo, video }
+import 'media_attachment.dart';
 
 /// The workshop's evidence that the job was done (spec §2, "إثبات الإنجاز").
 ///
@@ -72,6 +11,11 @@ enum ProofMediaKind { photo, video }
 /// approval screen says so in words rather than drawing placeholder tiles —
 /// an empty gallery must never look like photos that failed to load, and it
 /// must certainly never be filled with invented ones.
+///
+/// Each entry is a [MediaAttachment]: the photo's bytes, base64-encoded, held
+/// on the record itself. A proof is complete the moment the workshop composes
+/// it, with no upload step that could half-succeed and leave the customer
+/// looking at a broken image while being asked to release money.
 class ProofOfWork {
   const ProofOfWork({
     required this.id,
@@ -82,7 +26,10 @@ class ProofOfWork {
     this.includesPartBoxPhoto = false,
   });
 
+  /// GUID.
   final String id;
+
+  /// GUID of the service request this proves.
   final String requestId;
 
   /// What the workshop wrote — free text, in whatever language they typed.
@@ -91,7 +38,7 @@ class ProofOfWork {
   final String notes;
 
   final DateTime submittedAt;
-  final List<ProofMedia> media;
+  final List<MediaAttachment> media;
 
   /// The workshop's declaration that the proof shows the **part's own box or
   /// label**, not just the fitted result.
@@ -104,14 +51,19 @@ class ProofOfWork {
   /// who sees that it was ticked.
   final bool includesPartBoxPhoto;
 
-  bool get hasMedia => media.isNotEmpty;
+  /// Whether there is any evidence attached at all.
+  ///
+  /// Counts only attachments that actually carry bytes: an entry with an empty
+  /// `base64Data` is a placeholder, and letting one satisfy the "at least one
+  /// photo" rule would turn the escrow gate into a formality.
+  bool get hasMedia => media.any((m) => m.hasBytes);
 
   factory ProofOfWork.fromJson(JsonMap json) => ProofOfWork(
         id: json.requireString('id'),
         requestId: json.stringOr('requestId', ''),
         notes: json.stringOr('notes', ''),
         submittedAt: json.dateTimeOr('submittedAt', DateTime.now()),
-        media: json.objectList('media').map(ProofMedia.fromJson).toList(),
+        media: json.objectList('media').map(MediaAttachment.fromJson).toList(),
         includesPartBoxPhoto: json.boolOr('includesPartBoxPhoto', false),
       );
 
@@ -129,7 +81,7 @@ class ProofOfWork {
     String? requestId,
     String? notes,
     DateTime? submittedAt,
-    List<ProofMedia>? media,
+    List<MediaAttachment>? media,
     bool? includesPartBoxPhoto,
   }) =>
       ProofOfWork(
@@ -152,7 +104,7 @@ class ProofOfWork {
       other.includesPartBoxPhoto == includesPartBoxPhoto &&
       _sameMedia(other.media);
 
-  bool _sameMedia(List<ProofMedia> other) {
+  bool _sameMedia(List<MediaAttachment> other) {
     if (other.length != media.length) return false;
     for (var i = 0; i < media.length; i++) {
       if (other[i] != media[i]) return false;

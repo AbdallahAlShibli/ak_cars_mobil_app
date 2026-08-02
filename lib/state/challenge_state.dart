@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/utils/guid.dart';
 import '../core/error/app_exception.dart';
 import '../data/models/challenge.dart';
 import '../data/models/maintenance.dart';
@@ -62,8 +63,7 @@ class ChallengeNotifier extends Notifier<ChallengeBoard> {
     await ref.read(maintenanceProvider.notifier).addRecord(
           car.id,
           ServiceRecord(
-            id: 'challenge-${challenge.id}'
-                '-${DateTime.now().millisecondsSinceEpoch}',
+            id: newGuid(),
             // The record says what the challenge actually had the owner do.
             title: challenge.recordTitle ?? challengeRecordTitle,
             workshop: challengeRecordWorkshop,

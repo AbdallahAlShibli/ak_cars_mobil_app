@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/utils/guid.dart';
 import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
@@ -138,7 +139,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
     }
 
     final wasEmpty = ref.read(garageProvider).isEmpty;
-    final car = _compose(DateTime.now().millisecondsSinceEpoch.toString());
+    final car = _compose(newGuid());
     ref.read(garageProvider.notifier).add(car);
     _syncOdometer(car);
     // Only the first car sets the service region — registering a second car

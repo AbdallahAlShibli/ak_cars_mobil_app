@@ -103,7 +103,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   /// The commercial-registration certificate. Picked with the same control the
   /// proof sheet uses (`MediaStrip`) rather than a second uploader.
-  final _crDocs = <ProofMedia>[];
+  final _crDocs = <MediaAttachment>[];
   final _picker = ImagePicker();
   bool _pickingDoc = false;
 
@@ -135,9 +135,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _vatNumber.text = application.vatNumber ?? '';
       _area = application.area.isEmpty ? null : application.area;
       _fulfillments.addAll(application.fulfillments);
-      if (application.crDocumentUrl.isNotEmpty) {
-        _crDocs.add(ProofMedia(id: 'cr-existing', uri: application.crDocumentUrl));
-      }
+      // Reopening a filed application shows the certificate that was already
+      // attached, bytes and all, so a correction pass does not silently ask
+      // for it again.
+      if (application.crDocument.hasBytes) _crDocs.add(application.crDocument);
     }
   }
 
@@ -303,7 +304,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         errors['crNumber'] = s.t('رقم السجل التجاري من 6 إلى 10 أرقام',
             'A CR number is 6–10 digits');
       }
-      if (_crDocs.isEmpty) {
+      if (!_crDocs.any((d) => d.hasBytes)) {
         errors['crDocument'] = s.t('أرفق صورة السجل التجاري',
             'Attach a photo of the commercial registration');
       }
@@ -424,7 +425,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         // The first attachment is the certificate. More than one is allowed —
         // a two-page CR is ordinary — and the rest ride along on the same
         // record rather than being dropped.
-        crDocumentUrl: _crDocs.first.uri,
+        crDocument: _crDocs.first,
         area: _area ?? '',
         fulfillments: {..._fulfillments},
         submittedAt: DateTime.now(),
@@ -433,14 +434,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _pickCrDocument(ImageSource source) async {
     if (_pickingDoc) return;
     setState(() => _pickingDoc = true);
-    final picked =
-        await pickAttachments(_picker, source, startIndex: _crDocs.length);
+    final picked = await pickAttachments(_picker, source);
     if (!mounted) return;
     setState(() {
-      _crDocs.addAll(picked);
+      _crDocs.addAll(picked.media);
       _pickingDoc = false;
       if (_crDocs.isNotEmpty) _errors.remove('crDocument');
     });
+    if (picked.oversized > 0) showOversizedNotice(context, S.of(context), picked);
   }
 
   Future<void> _pickArea() async {

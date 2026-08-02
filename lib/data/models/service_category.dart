@@ -10,6 +10,7 @@ import 'service_provider.dart';
 class ServiceCategory {
   const ServiceCategory({
     required this.id,
+    required this.slug,
     required this.name,
     required this.icon,
     this.note,
@@ -20,7 +21,27 @@ class ServiceCategory {
     this.requires,
   });
 
+  /// GUID — the record's primary key, and the only thing that identifies
+  /// *this row*. Nothing branches on it.
   final String id;
+
+  /// The stable, human-readable key for what kind of service this is:
+  /// `express`, `tyres`, `ev-check`, `sos`.
+  ///
+  /// **Behaviour hangs off the slug, never off [id].** Two things in the app
+  /// need to know that a category *is* the tyre service and not merely some
+  /// category: the maintenance mapper, which resets the right schedule line
+  /// after a booking (`MaintenanceTypeX.forCategory`), and the booking screen,
+  /// which treats `sos` as an emergency callout.
+  ///
+  /// Those used to switch on `id` back when ids were hand-written words. Once
+  /// every record's id became a GUID that stopped being possible — and it was
+  /// always the wrong field to read. An id says *which row*; a slug says *what
+  /// kind*. Splitting them means a category can be re-seeded, re-imported, or
+  /// created fresh in another environment with a different primary key and the
+  /// oil-change countdown still resets.
+  final String slug;
+
   final L name;
   final IconData icon;
 
@@ -64,6 +85,7 @@ class ServiceCategory {
 
   factory ServiceCategory.fromJson(JsonMap json) => ServiceCategory(
         id: json.requireString('id'),
+        slug: json.stringOr('slug', ''),
         name: L.fromJson(json['name']),
         icon: IconCodec.decode(json.stringOrNull('icon')),
         note: json['note'] == null ? null : L.fromJson(json['note']),
@@ -80,6 +102,7 @@ class ServiceCategory {
 
   JsonMap toJson() => {
         'id': id,
+        'slug': slug,
         'name': name.toJson(),
         'icon': IconCodec.encode(icon),
         'note': note?.toJson(),
@@ -92,6 +115,7 @@ class ServiceCategory {
 
   ServiceCategory copyWith({
     String? id,
+    String? slug,
     L? name,
     IconData? icon,
     L? note,
@@ -103,6 +127,7 @@ class ServiceCategory {
   }) =>
       ServiceCategory(
         id: id ?? this.id,
+        slug: slug ?? this.slug,
         name: name ?? this.name,
         icon: icon ?? this.icon,
         note: note ?? this.note,
@@ -117,6 +142,7 @@ class ServiceCategory {
   bool operator ==(Object other) =>
       other is ServiceCategory &&
       other.id == id &&
+      other.slug == slug &&
       other.name == name &&
       other.icon == icon &&
       other.note == note &&
@@ -130,6 +156,7 @@ class ServiceCategory {
   @override
   int get hashCode => Object.hash(
         id,
+        slug,
         name,
         icon,
         note,

@@ -1,6 +1,7 @@
 import '../../../core/i18n/strings.dart';
 import '../../models/challenge.dart';
 import '../../models/maintenance.dart';
+import 'mock_ids.dart';
 
 /// Demo seed for the weekly challenge. Read only by `MockChallengeService`.
 ///
@@ -12,7 +13,7 @@ import '../../models/maintenance.dart';
 abstract final class MockGarageData {
   static const challengeBoard = ChallengeBoard(
     current: WeeklyChallenge(
-      id: 'tyre-pressure',
+      id: mockIdTyrePressure,
       title: L('افحص ضغط الإطارات الأربعة', 'Check all four tyre pressures'),
       description: L(
         'حرارة الصيف ترفع الضغط — فحص أسبوعي يطيل عمر الإطار ويقلل الاستهلاك.',
@@ -20,17 +21,17 @@ abstract final class MockGarageData {
       ),
       steps: [
         ChallengeStep(
-          id: 's1',
+          id: mockIdS1,
           title: L('حدّث ممشى السيارة', 'Update your odometer'),
           done: true,
         ),
         ChallengeStep(
-          id: 's2',
+          id: mockIdS2,
           title: L('سجّل قراءة الضغط (صورة أو رقم)',
               'Log the pressure reading (photo or number)'),
         ),
         ChallengeStep(
-          id: 's3',
+          id: mockIdS3,
           title: L('قارنها بالموصى به لسيارتك (33 PSI)',
               'Compare with your car\'s recommended (33 PSI)'),
         ),
@@ -72,7 +73,7 @@ abstract final class MockGarageData {
   /// make an EV their default car.
   static const evChallengeBoard = ChallengeBoard(
     current: WeeklyChallenge(
-      id: 'ev-trip-charge',
+      id: mockIdEvTripCharge,
       title: L('خطّط الشحن قبل رحلتك القادمة',
           'Plan your charging before the next long drive'),
       description: L(
@@ -83,17 +84,17 @@ abstract final class MockGarageData {
       ),
       steps: [
         ChallengeStep(
-          id: 'ev-s1',
+          id: mockIdEvS1,
           title: L('حدّد نقطة الشحن التي ستتوقف عندها',
               'Pick the charging stop you will use'),
         ),
         ChallengeStep(
-          id: 'ev-s2',
+          id: mockIdEvS2,
           title: L('افحص كيبل الشحن: سخونة أو تشقق أو أطراف متآكلة',
               'Inspect your charging cable: heat marks, cracks, worn pins'),
         ),
         ChallengeStep(
-          id: 'ev-s3',
+          id: mockIdEvS3,
           title: L('اضبط ضغط الإطارات — الضغط الناقص يقصّر المدى',
               'Set tyre pressures — low pressure costs you range'),
         ),

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
 import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
@@ -9,6 +11,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 
+import 'helpers/test_harness.dart';
+
 /// The completion-proof composer (spec §3).
 ///
 /// The sheet enforces the same two rules as
@@ -18,28 +22,36 @@ import 'package:image_picker_platform_interface/image_picker_platform_interface.
 
 const _car = Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2019);
 
-/// Stands in for the camera. Returns a fixed path rather than touching a
-/// platform channel, so the test exercises the sheet's rules instead of the
-/// plugin's.
+/// Stands in for the camera, without touching a platform channel.
+///
+/// Hands back a file with **real bytes** rather than a bare path. Since
+/// capture encodes the picked file to base64 on the spot, a path-only stub
+/// would exercise none of that — the sheet would attach an empty attachment
+/// and the test would pass on a pipeline that never ran.
 class _StubPickerPlatform extends ImagePickerPlatform {
   int calls = 0;
+
+  XFile _shot() {
+    calls++;
+    return XFile.fromData(
+      base64Decode(testPngBase64),
+      name: 'shot-$calls.png',
+      mimeType: 'image/png',
+    );
+  }
 
   @override
   Future<XFile?> getImageFromSource({
     required ImageSource source,
     ImagePickerOptions options = const ImagePickerOptions(),
-  }) async {
-    calls++;
-    return XFile('https://example.test/shot-$calls.jpg');
-  }
+  }) async =>
+      _shot();
 
   @override
   Future<List<XFile>> getMultiImageWithOptions({
     MultiImagePickerOptions options = const MultiImagePickerOptions(),
-  }) async {
-    calls++;
-    return [XFile('https://example.test/shot-$calls.jpg')];
-  }
+  }) async =>
+      [_shot()];
 }
 
 ServiceRequest _request(BookingType type) => ServiceRequest(

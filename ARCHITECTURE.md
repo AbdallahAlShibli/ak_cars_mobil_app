@@ -182,7 +182,31 @@ Every model is immutable with a `const` constructor and supports `fromJson`,
 `toJson`, `copyWith` and value equality. There is no parallel DTO hierarchy —
 the models *are* the wire format.
 
-Three non-obvious encodings:
+**Identity: every record's `id` is a GUID.** A lowercase, hyphenated v4 from
+`core/utils/guid.dart` — the same value the database column holds as its
+primary key. Nothing in the app derives meaning from an id, and nothing
+branches on one; a record composed offline is born with the id it will keep.
+
+Where code genuinely has to recognise *what kind* of thing a record is, that
+is a **slug**, not an id: `ServiceCategory.slug` (`express`, `tyres`, `sos`)
+is what `MaintenanceTypeX.forCategory` and the booking screen's emergency
+check read. This split is load-bearing — those switches used to run on `id`
+back when ids were hand-written words, and a category re-seeded with a
+different primary key would have silently stopped resetting the oil-change
+countdown.
+
+Ids come from three places and nowhere else:
+
+| Call | Use |
+|---|---|
+| `newGuid()` | a record the user just created |
+| `derivedGuid(namespace, a, b)` | a record *composed* from others, which must compare equal across rebuilds (the part-install stand-in offering, a booking's service record) |
+| `mockId*` in `data/datasources/mock/mock_ids.dart` | the demo dataset's frozen ids |
+
+Four non-obvious encodings:
+
+- **Attachments (`MediaAttachment`)** → the file's bytes, base64, on the
+  record. See §4.1.
 
 - **`L` (bilingual text)** → `{"ar": …, "en": …}`. Both languages live on the
   record because stored content (notifications) must render in whatever
@@ -192,6 +216,45 @@ Three non-obvious encodings:
   Material font; the registry keeps tree-shaking working (verified: 98.5%
   reduction in the release build). Unknown keys degrade to `IconCodec.fallback`.
 - **`Color`** → `#AARRGGBB` via `ColorCodec`.
+
+### 4.1 Attachments travel as base64
+
+Every file a user supplies — a completion-proof photo, a workshop's
+commercial-registration certificate — is a `MediaAttachment`: a GUID, the
+bytes as base64, a MIME type, a file name and an optional caption. There is no
+upload endpoint, no bucket and no URL. The bytes sit in the column next to the
+row that owns them.
+
+```
+pick  →  XFile.readAsBytes()  →  base64Encode  →  MediaAttachment on the record
+show  →  base64Decode (cached) →  Image.memory  →  AttachmentView
+```
+
+- **Capture** is `pickAttachments` in `features/services/proof_upload_sheet.dart`,
+  shared by the proof sheet and the registration form. It encodes on the spot,
+  because a picked file is a temp file the OS may delete and a path held across
+  a process death points at nothing.
+- **Encoding and MIME resolution** are `core/media/media_codec.dart` — pure
+  functions on bytes, no Flutter binding needed to test them.
+- **Display** is `core/widgets/attachment_view.dart`. Images decode and draw
+  from memory; a PDF or video, which the app ships no decoder for, gets a tile
+  naming the file and its size rather than an empty frame that could pass for a
+  checked document.
+- **`kind` is derived from `mimeType`**, never stored, so a record cannot claim
+  to be a photo over PDF bytes.
+
+The costs, taken deliberately: a 400 KB photo is ~533 KB of base64 in every
+request and response that carries it, so captures are downscaled
+(`maxWidth: 1600, imageQuality: 82`) and anything over `maxAttachmentBytes`
+(4 MB) is refused with a message naming the limit. Decoded bytes are cached by
+attachment id, bounded at 16 MB, because `Image.memory` keys Flutter's own
+image cache on byte-list identity — handing it a fresh list each build would
+re-decode the bitmap as well as the base64.
+
+What it bought: one code path on every platform. The app used to need a
+conditional import (`Image.file` behind `dart:io`, `Image.network` on a web
+`blob:` URL) because an attachment was a path and a path means something
+different on each. `core/media/local_image{,_io,_web}.dart` are gone.
 
 `fromJson` uses the null-safe readers in `core/json/json_utils.dart`: identity
 fields are required and throw `SerializationException` when absent, everything
@@ -283,15 +346,16 @@ properties of it are load-bearing and worth keeping:
    has the same shape and the same caveat: it only fires while the app is
    running, which is why `RequestsNotifier.sweepExpiredApprovals` re-checks on
    every visit to the bookings tab. A real deployment needs this server-side.
-7. **Media capture is local-only, with no upload step.** `image_picker` now
-   backs `ProofUploadSheet`, so a workshop can attach real photos and the
-   "every proof needs evidence" rule is enforceable. What is still missing is
-   the *upload*: a captured shot stays a device-local file path (a `blob:` URL
-   on web), so proof media does not survive a reinstall and cannot be seen by
-   anyone on another device. `core/media/local_image.dart` is the conditional
-   import that renders either kind of source, and both the compose sheet and
-   the approval screen go through it. A real deployment needs object storage
-   and a `uri` that comes back as https.
+7. **Attachments are base64 on the record, which is a scaling ceiling, not a
+   bug.** Resolved the old "capture is local-only" gap: a picked file is
+   encoded at capture and travels with the record (§4.1), so proof media
+   survives a reinstall and renders on any device that reads the row. The
+   trade is size. Every response carrying a booking carries its proof photos
+   inline, list endpoints returning many such rows will be large, and there is
+   no way to fetch a record without its attachments or to serve a thumbnail
+   separately. Below a few hundred bookings this is fine; past that the
+   answer is object storage plus a URL, and the seam for it is narrow — the
+   codec, `MediaAttachment`, and `AttachmentView`. Nothing else touches bytes.
 8. **Escrow money movement is manual by design** (spec §3, note 2). The app
    records state; the founder moves the funds. `AdminScreen` says so on the
    screen, so its totals are not mistaken for a ledger of completed transfers.

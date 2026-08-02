@@ -20,6 +20,7 @@ import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 /// Pumps a screen inside the real theme + localization stack. Any layout
 /// overflow or build exception fails the test.
@@ -315,7 +316,7 @@ void main() {
   // one that is not registered says so instead of showing an empty field.
   testWidgets('Product page prints the seller VAT number', (tester) async {
     // pr1 → Al Noor Workshop, VAT registered.
-    await pumpScreen(tester, const ProductDetailScreen(productId: 'pr1'),
+    await pumpScreen(tester, const ProductDetailScreen(productId: mockIdPr1),
         locale: 'en');
     await tester.scrollUntilVisible(find.text('Shop details'), 300,
         scrollable: find.byType(Scrollable).first);
@@ -326,7 +327,7 @@ void main() {
   testWidgets('Product page says when the seller is not VAT registered',
       (tester) async {
     // pr5 → Sohar Speed Garage, no VATIN in the demo data.
-    await pumpScreen(tester, const ProductDetailScreen(productId: 'pr5'),
+    await pumpScreen(tester, const ProductDetailScreen(productId: mockIdPr5),
         locale: 'en');
     await tester.scrollUntilVisible(find.text('Shop details'), 300,
         scrollable: find.byType(Scrollable).first);
@@ -336,8 +337,8 @@ void main() {
 
   // Same two states on the service side, where the card is shared code.
   testWidgets('Service page prints the workshop VAT number', (tester) async {
-    // o-p1-express → Al Noor Workshop, VAT registered.
-    await pumpScreen(tester, const ServiceDetailScreen(offeringId: 'o-p1-express'),
+    // Al Noor Workshop's express service, VAT registered.
+    await pumpScreen(tester, ServiceDetailScreen(offeringId: mockOfferingId(mockIdP1, mockIdExpress)),
         locale: 'en');
     await tester.scrollUntilVisible(find.text('Workshop details'), 300,
         scrollable: find.byType(Scrollable).first);
@@ -346,8 +347,8 @@ void main() {
 
   testWidgets('Service page says when the workshop is not VAT registered',
       (tester) async {
-    // o-p3-express → Sohar Speed Garage, no VATIN in the demo data.
-    await pumpScreen(tester, const ServiceDetailScreen(offeringId: 'o-p3-express'),
+    // Sohar Speed Garage's express service, no VATIN in the demo data.
+    await pumpScreen(tester, ServiceDetailScreen(offeringId: mockOfferingId(mockIdP3, mockIdExpress)),
         locale: 'en');
     await tester.scrollUntilVisible(find.text('Workshop details'), 300,
         scrollable: find.byType(Scrollable).first);

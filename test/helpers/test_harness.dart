@@ -1,4 +1,5 @@
 import 'package:ak_cars_mobil_app/app/bootstrap.dart';
+import 'package:ak_cars_mobil_app/core/utils/guid.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -67,10 +68,27 @@ ProofOfWork testProof(
   bool partBox = true,
   String notes = '',
 }) => ProofOfWork(
-  id: 'proof-$requestId',
+  id: derivedGuid('proof', requestId),
   requestId: requestId,
   notes: notes,
   submittedAt: DateTime.now(),
-  media: const [ProofMedia(id: 'm1', uri: 'https://example.test/proof-1.jpg')],
+  media: [testAttachment(derivedGuid('proof-media', requestId))],
   includesPartBoxPhoto: partBox,
 );
+
+/// A real, decodable attachment — a 1×1 PNG.
+///
+/// Real bytes rather than a stub string so anything that renders it goes
+/// through the same base64 decode the app does; a placeholder that failed to
+/// decode would make a widget test pass against the "cannot preview" tile.
+MediaAttachment testAttachment(String id) => MediaAttachment(
+      id: id,
+      base64Data: testPngBase64,
+      mimeType: 'image/png',
+      fileName: 'proof.png',
+    );
+
+/// 1×1 transparent PNG, base64.
+const String testPngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk'
+    'YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';

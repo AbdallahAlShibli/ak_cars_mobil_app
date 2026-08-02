@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/json/json_utils.dart';
+import '../../core/utils/guid.dart';
 import '../../core/utils/search_match.dart';
 import 'service_provider.dart';
 
@@ -10,6 +11,7 @@ class ServiceOffering {
   const ServiceOffering({
     required this.id,
     required this.categoryId,
+    required this.categorySlug,
     required this.name,
     required this.provider,
     required this.description,
@@ -20,7 +22,21 @@ class ServiceOffering {
   });
 
   final String id;
+
+  /// GUID of the [ServiceCategory] this sits under.
   final String categoryId;
+
+  /// That category's slug, denormalized onto the offering.
+  ///
+  /// Carried here for the same reason [provider] is expanded inline: the
+  /// screens that need it have an offering and nothing else. The booking
+  /// screen decides whether it is drawing an emergency callout, and the
+  /// maintenance mapper decides which schedule line a completed booking
+  /// resets — neither has the category list to hand, and neither should have
+  /// to fetch one to answer a question about the record it is already
+  /// holding.
+  final String categorySlug;
+
   final L name;
 
   /// Expanded relation: the API returns the provider inline on this endpoint
@@ -46,7 +62,7 @@ class ServiceOffering {
   /// under. Not a real category in the marketplace catalogue — nothing lists
   /// or searches it — but a stable key so the maintenance mapper and the
   /// analytics can tell these bookings apart from catalogue ones.
-  static const partInstallCategoryId = 'part-install';
+  static const partInstallCategorySlug = 'part-install';
 
   /// The stand-in offering a [BookingType.customQuote] booking carries.
   ///
@@ -62,8 +78,13 @@ class ServiceOffering {
     required String partDescription,
   }) =>
       ServiceOffering(
-        id: 'part-install-${provider.id}',
-        categoryId: partInstallCategoryId,
+        // Derived rather than random so the same workshop's part-install
+        // offering is the same record every time it is built — this factory
+        // runs on each read of a custom-quote booking, and a fresh GUID per
+        // call would make the offering compare unequal to itself.
+        id: derivedGuid('part-install', provider.id),
+        categoryId: derivedGuid('category', partInstallCategorySlug),
+        categorySlug: partInstallCategorySlug,
         // The customer's own words, shown in both languages because the app
         // does not translate what a user typed.
         name: L(partDescription, partDescription),
@@ -77,7 +98,7 @@ class ServiceOffering {
   bool get quoteOnly => price == null;
 
   /// True for the synthetic offering above rather than a catalogue entry.
-  bool get isPartInstall => categoryId == partInstallCategoryId;
+  bool get isPartInstall => categorySlug == partInstallCategorySlug;
 
   /// Free-text search over the service, its workshop and where that workshop
   /// is. [localizedPlace] carries the translated area/governorate in, so the
@@ -98,6 +119,7 @@ class ServiceOffering {
   factory ServiceOffering.fromJson(JsonMap json) => ServiceOffering(
         id: json.requireString('id'),
         categoryId: json.stringOr('categoryId', ''),
+        categorySlug: json.stringOr('categorySlug', ''),
         name: L.fromJson(json['name']),
         provider: ServiceProvider.fromJson(json.requireObject('provider')),
         description: L.fromJson(json['description']),
@@ -113,6 +135,7 @@ class ServiceOffering {
   JsonMap toJson() => {
         'id': id,
         'categoryId': categoryId,
+        'categorySlug': categorySlug,
         'name': name.toJson(),
         'provider': provider.toJson(),
         'description': description.toJson(),
@@ -125,6 +148,7 @@ class ServiceOffering {
   ServiceOffering copyWith({
     String? id,
     String? categoryId,
+    String? categorySlug,
     L? name,
     ServiceProvider? provider,
     L? description,
@@ -136,6 +160,7 @@ class ServiceOffering {
       ServiceOffering(
         id: id ?? this.id,
         categoryId: categoryId ?? this.categoryId,
+        categorySlug: categorySlug ?? this.categorySlug,
         name: name ?? this.name,
         provider: provider ?? this.provider,
         description: description ?? this.description,
@@ -150,6 +175,7 @@ class ServiceOffering {
       other is ServiceOffering &&
       other.id == id &&
       other.categoryId == categoryId &&
+      other.categorySlug == categorySlug &&
       other.name == name &&
       other.provider == provider &&
       other.description == description &&
@@ -162,6 +188,7 @@ class ServiceOffering {
   int get hashCode => Object.hash(
         id,
         categoryId,
+        categorySlug,
         name,
         provider,
         description,

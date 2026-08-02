@@ -17,6 +17,122 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-08-03 · GUID primary keys everywhere, and attachments stored as base64
+
+**Baseline:** `dd6253e` ("Fix splash-screen hang, add API data-source layer…").
+**Request:** "check what are the docs and images data types and update them to
+follow this scenario which when user upload document or image will send them to
+the backend as base64 in the database, and when this files should display for
+the app users must converted to the appropriate format to view. also, each
+record should has id. and each id must be as GUID. and it should be a primary
+in each database table."
+
+**Scope confirmed with the user before starting:** the mobile app only ("we
+don't have an api for now"), and *real* GUIDs in the demo dataset rather than
+keeping readable ids.
+
+### 1. Attachments
+
+There was no upload step at all. `ProofMedia.uri` and
+`WorkshopApplication.crDocumentUrl` held whatever `image_picker` handed back —
+an Android cache path, or a `blob:` URL on web — and `core/media/local_image
+{,_io,_web}.dart` was a conditional-import shim that rendered one or the other.
+A picked file therefore did not survive a reinstall and could not be seen on
+another device, and the founder's "open CR document" dialog printed the path as
+selectable text because there was nothing to draw.
+
+Replaced by one type, `MediaAttachment` (`data/models/media_attachment.dart`):
+GUID, `base64Data`, `mimeType`, `fileName`, `caption`. `kind` (image / video /
+document) is **derived** from the MIME type rather than stored, so a record
+cannot claim to be a photo over PDF bytes.
+
+- `core/media/media_codec.dart` — encode, decode, MIME resolution, a 4 MB
+  pre-encoding ceiling, byte-size formatting. Pure functions; no Flutter
+  binding needed to test them.
+- `core/widgets/attachment_view.dart` — decode and draw. Images go through
+  `Image.memory`; a PDF or video gets a tile naming the file and its size,
+  because a grey rectangle that might be a failed image is worse than no
+  preview on the screen where a business gets approved.
+- `pickAttachments` now reads and encodes **at capture**, and reports how many
+  files it refused for size so the picker cannot appear to do nothing.
+- Deleted `core/media/local_image.dart`, `_io.dart` and `_web.dart`. Bytes mean
+  the same thing on every platform, so the conditional import had nothing left
+  to do.
+- The admin CR dialog now renders the certificate instead of printing its URL.
+
+The cost is recorded rather than hidden: every response carrying a booking now
+carries its proof photos inline. See ARCHITECTURE.md §4.1 and the rewritten
+debt item 7 — the fix, when it is needed, is object storage, and the seam is
+three files wide.
+
+### 2. GUIDs
+
+`core/utils/guid.dart`: `newGuid()` (v4, `Random.secure()`), `isGuid`,
+`emptyGuid`, `coerceGuid`, and `derivedGuid(namespace, a, b)` for records that
+are *composed* rather than stored and must compare equal across rebuilds.
+Written by hand rather than adding `package:uuid` for one function.
+
+Replaced every id scheme in the app: `'rev-${_nextId++}'` (a counter seeded at
+500 to clear the mock data), `'my-${millisecondsSinceEpoch}'`,
+`'manual-…'`, `'custom-…'`, `'challenge-…'`,
+`'m${microsecondsSinceEpoch}-0'`, and `DateTime.now().millisecondsSinceEpoch
+.toString()`. All 162 demo-dataset ids became frozen v4 GUIDs in
+`data/datasources/mock/mock_ids.dart`, named (`mockIdP3`) so call sites read
+as well as they did before.
+
+### 3. The part that was not mechanical — slugs
+
+Production code *did* branch on ids, in three places a first grep missed
+because the ids were bare words:
+
+- `MaintenanceTypeX.forCategory` switched on `'express' | 'full' | 'major' |
+  'tyres' | 'battery' | 'ac' | 'ev-battery' | 'ev-check'` to decide which
+  maintenance line a completed booking resets.
+- `booking_screen.dart` treated `categoryId == 'sos'` as an emergency callout.
+- `ServiceOffering.partInstallCategoryId` matched `'part-install'`.
+
+Turning those ids into GUIDs would have silently stopped the oil-change
+countdown from resetting. So `ServiceCategory` gained a `slug`, and
+`ServiceOffering` a denormalized `categorySlug` (the model already expands
+`provider` inline for the same reason — the screens that need it hold an
+offering and nothing else). Behaviour now reads the slug; the id says only
+which row. This is the change most likely to matter later: **if a new
+`switch` on a category appears, it must switch on `slug`.**
+
+One near-miss worth recording: `'tyres'` is both a service-category id and, in
+a different namespace, a parts-shop category slug (`shop_screen.dart`'s icon
+map, `mock_shop_data.dart`'s `categoryId`). A blanket literal replacement would
+have broken the shop's tyre icon and filter. The replacement was scoped
+per-file and per-call-site instead.
+
+### Verified
+
+- `flutter analyze` — clean apart from one pre-existing info in
+  `core/utils/contact.dart:23` (untouched by this change).
+- `flutter test` — **450 passing**, up from 426 at baseline. All 426 existing
+  tests still pass; 24 are new.
+- New `test/identity_and_attachments_test.dart` asserts the two rules over the
+  whole dataset rather than on one example: every seeded record of every kind
+  carries a GUID, every cross-reference resolves, every category has a slug
+  that maps back to its id, base64 round-trips byte-for-byte, malformed base64
+  degrades to a "cannot preview" tile instead of throwing, a PDF is named
+  rather than drawn, and the decode cache returns the same byte-list instance
+  twice.
+- `test/proof_upload_test.dart`'s picker stub now returns **real bytes**
+  (`XFile.fromData`) rather than a path — with encoding at capture, a
+  path-only stub would have exercised none of the new pipeline.
+
+**Not checked:** no run on a device or emulator this session; camera and
+gallery capture were exercised only through the stubbed picker. The image
+`assets/` pipeline and remote car imagery (`carImageUrl`, `CarMake.logoUrl`)
+were deliberately left alone — those are catalogue images, not user uploads.
+
+**Not done, deliberately:** test-local fixture ids (`'c1'`, `'r1'`, `'n1'` in
+throwaway objects inside test files) are still short strings. They identify
+nothing in a database and changing them is churn without behaviour.
+
+---
+
 ## 2026-08-02 · Onboarding/profile stopped advertising the hidden car-marketplace and parts-store pillars
 
 **Baseline:** on top of the "no longer hang on splash" entry below, same day.

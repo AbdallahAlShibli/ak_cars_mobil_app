@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 /// The home page's four data-driven sections.
 ///
@@ -107,12 +108,12 @@ void main() {
       final dhofar = marketplace.promotions(region: 'Dhofar');
       final muscat = marketplace.promotions(region: 'Muscat');
 
-      expect(dhofar.map((p) => p.id), contains('promo-p6-ac'));
-      expect(muscat.map((p) => p.id), isNot(contains('promo-p6-ac')));
+      expect(dhofar.map((p) => p.id), contains(mockIdPromoP6Ac));
+      expect(muscat.map((p) => p.id), isNot(contains(mockIdPromoP6Ac)));
       // The nationwide platform cards are in both, so no governorate is left
       // with an empty rail.
-      expect(dhofar.map((p) => p.id), contains('promo-escrow'));
-      expect(muscat.map((p) => p.id), contains('promo-escrow'));
+      expect(dhofar.map((p) => p.id), contains(mockIdPromoEscrow));
+      expect(muscat.map((p) => p.id), contains(mockIdPromoEscrow));
     });
 
     test('an oil-change campaign is not advertised to an electric car',
@@ -125,11 +126,11 @@ void main() {
       final electric = marketplace.promotions(
           region: 'Muscat', powertrain: Powertrain.electric);
 
-      expect(petrol.map((p) => p.id), contains('promo-p1-major'));
-      expect(electric.map((p) => p.id), isNot(contains('promo-p1-major')));
+      expect(petrol.map((p) => p.id), contains(mockIdPromoP1Major));
+      expect(electric.map((p) => p.id), isNot(contains(mockIdPromoP1Major)));
       // Tyres fit any car; the announcements are not about one car at all.
-      expect(electric.map((p) => p.id), contains('promo-p4-tyres'));
-      expect(electric.map((p) => p.id), contains('promo-escrow'));
+      expect(electric.map((p) => p.id), contains(mockIdPromoP4Tyres));
+      expect(electric.map((p) => p.id), contains(mockIdPromoEscrow));
     });
   });
 
@@ -199,7 +200,7 @@ void main() {
       if (oilCards.isNotEmpty) {
         final marketplace = container.read(serviceMarketplaceRepositoryProvider);
         final cheapest = [
-          for (final id in ['major', 'full', 'express'])
+          for (final id in [mockIdMajor, mockIdFull, mockIdExpress])
             marketplace.fromPriceFor(id, region: 'Muscat'),
         ].whereType<double>().reduce((a, b) => a < b ? a : b);
         expect(oilCards.first.fromPrice, cheapest);
@@ -282,12 +283,12 @@ void main() {
 
       // Sohar Speed Garage carries the highest score in the dataset (4.9) on
       // four reviews. It must not top the board.
-      final sohar = marketplace.ratingFor('p3');
+      final sohar = marketplace.ratingFor(mockIdP3);
       expect(sohar!.rating, 4.9);
       expect(sohar.reviews, lessThan(25));
 
       final board = marketplace.topRatedWorkshops();
-      expect(board.map((e) => e.provider.id), isNot(contains('p3')));
+      expect(board.map((e) => e.provider.id), isNot(contains(mockIdP3)));
       expect(board.first.rating.rating, lessThan(4.9));
     });
 
@@ -295,9 +296,9 @@ void main() {
       final container = await containerWith(const []);
       final marketplace = container.read(serviceMarketplaceRepositoryProvider);
 
-      expect(marketplace.ratingFor('p10'), isNull);
+      expect(marketplace.ratingFor(mockIdP10), isNull);
       expect(marketplace.topRatedWorkshops().map((e) => e.provider.id),
-          isNot(contains('p10')));
+          isNot(contains(mockIdP10)));
     });
 
     test('ranked high to low, and every score carries its review count',

@@ -12,6 +12,7 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/escrow_timeline.dart';
 import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/status_indicator.dart';
+import '../../core/widgets/attachment_view.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../di/providers.dart';
@@ -504,7 +505,7 @@ class _ApplicationCard extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: AppSpacing.md),
-          if (provider.crDocumentUrl != null)
+          if (provider.crDocument != null)
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: TextButton.icon(
@@ -528,7 +529,7 @@ class _ApplicationCard extends ConsumerWidget {
                 fontSize: 12,
                 padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.lg + 2, vertical: AppSpacing.sm + 2),
-                onTap: provider.crDocumentUrl == null
+                onTap: provider.crDocument == null
                     ? () => _needsDocument(context, s)
                     : () => _decide(context, ref,
                         stage: ProviderOnboardingStage.approved),
@@ -558,25 +559,40 @@ class _ApplicationCard extends ConsumerWidget {
         )),
       ));
 
-  /// The document reference, shown verbatim rather than rendered.
+  /// The certificate itself, rendered from the bytes stored on the record.
   ///
-  /// The pilot's uploads are local device files; a viewer that silently failed
-  /// to open one would look like an approved-and-checked document nobody read.
+  /// This used to print the document's URL as selectable text, because an
+  /// upload was a path to a file on somebody else's device and there was
+  /// nothing here to draw. Now the bytes are on the provider, so the founder
+  /// reads the actual certificate on the screen where they approve the
+  /// business — which is the only way "the founder checks the document"
+  /// (§11 step 2) is a real step rather than a click.
+  ///
+  /// A PDF still cannot be drawn without a decoder the app does not ship;
+  /// [AttachmentDocumentCard] names the file and its size in that case rather
+  /// than showing an empty frame that could pass for a checked document.
   void _showDocument(BuildContext context, S s, ServiceProvider provider) =>
       showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: Text(s.t('وثيقة السجل التجاري', 'CR document')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${provider.name.of(s)} · ${provider.crNumber ?? ''}',
-                  style: dialogContext.text.bodyPrimary),
-              const SizedBox(height: AppSpacing.sm),
-              SelectableText(provider.crDocumentUrl ?? '',
-                  style: dialogContext.text.bodySecondary),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${provider.name.of(s)} · ${provider.crNumber ?? ''}',
+                    style: dialogContext.text.bodyPrimary),
+                const SizedBox(height: AppSpacing.sm),
+                if (provider.crDocument case final doc?)
+                  AttachmentDocumentCard(attachment: doc)
+                else
+                  Text(
+                    s.t('لا توجد وثيقة مرفقة.', 'No document attached.'),
+                    style: dialogContext.text.bodySecondary,
+                  ),
+              ],
+            ),
           ),
           actions: [
             TextButton(

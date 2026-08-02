@@ -3,16 +3,27 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/i18n/strings.dart';
-import '../../core/media/local_image.dart';
+import '../../core/media/media_codec.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/guid.dart';
+import '../../core/widgets/attachment_view.dart';
 import '../../data/models/models.dart';
 
 /// What the workshop composed, handed back to whoever opened the sheet.
 typedef ProofDraft = ({
   String notes,
-  List<ProofMedia> media,
+  List<MediaAttachment> media,
   bool includesPartBoxPhoto,
 });
+
+/// The outcome of a pick: what was attached, and how many files were refused
+/// for being over [maxAttachmentBytes].
+///
+/// The count is returned rather than swallowed because the alternative is a
+/// picker that appears to do nothing. A user who selects four photos and sees
+/// three appear has to be told why, and "one file was too large" is the only
+/// answer that lets them fix it.
+typedef PickResult = ({List<MediaAttachment> media, int oversized});
 
 /// Where a workshop assembles its completion proof (spec §3).
 ///
@@ -54,7 +65,7 @@ class ProofUploadSheet extends StatefulWidget {
 
 class _ProofUploadSheetState extends State<ProofUploadSheet> {
   final _notes = TextEditingController();
-  final _media = <ProofMedia>[];
+  final _media = <MediaAttachment>[];
   late final ImagePicker _picker = widget.picker ?? ImagePicker();
   bool _partBoxShown = false;
   bool _busy = false;
@@ -74,12 +85,13 @@ class _ProofUploadSheetState extends State<ProofUploadSheet> {
   Future<void> _add(ImageSource source) async {
     if (_busy) return;
     setState(() => _busy = true);
-    final picked = await pickAttachments(_picker, source, startIndex: _media.length);
+    final picked = await pickAttachments(_picker, source);
     if (!mounted) return;
     setState(() {
-      _media.addAll(picked);
+      _media.addAll(picked.media);
       _busy = false;
     });
+    if (picked.oversized > 0) showOversizedNotice(context, widget.s, picked);
   }
 
   void _remove(String id) =>
@@ -171,7 +183,7 @@ class _ProofUploadSheetState extends State<ProofUploadSheet> {
               onPressed: _canSubmit
                   ? () => Navigator.of(context).pop((
                       notes: _notes.text,
-                      media: List<ProofMedia>.unmodifiable(_media),
+                      media: List<MediaAttachment>.unmodifiable(_media),
                       includesPartBoxPhoto: _partBoxShown,
                     ))
                   : null,
@@ -201,25 +213,30 @@ class _ProofUploadSheetState extends State<ProofUploadSheet> {
   }
 }
 
-/// Picks one or more images and wraps them as [ProofMedia].
+/// Picks one or more images and reads them into [MediaAttachment]s.
 ///
 /// Shared by the proof sheet and the workshop-registration form (§10), which
 /// attach very different things for very different reasons but pick them
 /// identically.
 ///
-/// Photos are downscaled on capture: an attachment is looked at on a phone, and
-/// a full-resolution image would make the eventual upload the slowest part of
-/// whatever the user was doing.
+/// **The bytes are read and encoded here, at capture.** The picked file is a
+/// temporary one the OS is free to delete — on Android a camera capture lives
+/// in the app cache, and a path held across a process death points at nothing.
+/// Encoding immediately means the attachment is self-contained from the moment
+/// it exists, which is the whole reason the record can be composed offline.
 ///
-/// A denied permission or a cancelled picker returns an empty list rather than
-/// throwing — both are ordinary outcomes, not errors worth a dialog. The caller
-/// keeps whatever was already attached, and its disabled submit button goes on
-/// saying what is still missing.
-Future<List<ProofMedia>> pickAttachments(
+/// Photos are downscaled on capture: an attachment is looked at on a phone, and
+/// a full-resolution image would put a needlessly large base64 blob in the
+/// database and in every response that ever returns this record.
+///
+/// A denied permission or a cancelled picker returns an empty result rather
+/// than throwing — both are ordinary outcomes, not errors worth a dialog. The
+/// caller keeps whatever was already attached, and its disabled submit button
+/// goes on saying what is still missing.
+Future<PickResult> pickAttachments(
   ImagePicker picker,
-  ImageSource source, {
-  int startIndex = 0,
-}) async {
+  ImageSource source,
+) async {
   try {
     final shots = source == ImageSource.gallery
         ? await picker.pickMultiImage(maxWidth: 1600, imageQuality: 82)
@@ -230,15 +247,30 @@ Future<List<ProofMedia>> pickAttachments(
               imageQuality: 82,
             ),
           ];
-    return [
-      for (final (i, shot) in shots.indexed)
-        ProofMedia(
-          id: 'm${DateTime.now().microsecondsSinceEpoch}-${startIndex + i}',
-          uri: shot.path,
+
+    final attached = <MediaAttachment>[];
+    var oversized = 0;
+    for (final shot in shots) {
+      final bytes = await shot.readAsBytes();
+      if (bytes.lengthInBytes > maxAttachmentBytes) {
+        oversized++;
+        continue;
+      }
+      attached.add(
+        MediaAttachment(
+          id: newGuid(),
+          base64Data: encodeAttachmentBytes(bytes),
+          mimeType:
+              resolveMimeType(declared: shot.mimeType, path: shot.path),
+          fileName: fileNameFrom(shot.name.isEmpty ? shot.path : shot.name),
         ),
-    ];
+      );
+    }
+    return (media: attached, oversized: oversized);
   } on Exception {
-    return const [];
+    // Covers both the picker refusing and the file being unreadable by the
+    // time it is opened. Neither is worth a dialog; nothing was attached.
+    return (media: const <MediaAttachment>[], oversized: 0);
   }
 }
 
@@ -261,7 +293,7 @@ class MediaStrip extends StatelessWidget {
   });
 
   final S s;
-  final List<ProofMedia> media;
+  final List<MediaAttachment> media;
   final bool busy;
   final void Function(String id) onRemove;
   final VoidCallback onCamera;
@@ -318,36 +350,42 @@ class MediaStrip extends StatelessWidget {
   }
 }
 
+/// Tells the user a file was skipped, and why.
+///
+/// A separate function so the registration form (§10) reports an oversized
+/// certificate in exactly the same words as the proof sheet reports an
+/// oversized photo.
+void showOversizedNotice(BuildContext context, S s, PickResult result) {
+  final limit = formatBytes(maxAttachmentBytes);
+  final n = result.oversized;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        n == 1
+            ? s.t(
+                'تم تجاهل ملف واحد لأن حجمه يتجاوز $limit.',
+                'One file was skipped — it is larger than $limit.',
+              )
+            : s.t(
+                'تم تجاهل $n ملفات لأن حجمها يتجاوز $limit.',
+                '$n files were skipped — they are larger than $limit.',
+              ),
+      ),
+    ),
+  );
+}
+
 class _Thumb extends StatelessWidget {
   const _Thumb({required this.media, required this.onRemove});
 
-  final ProofMedia media;
+  final MediaAttachment media;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
-    final ak = AkColors.of(context);
     return Stack(
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            width: 112,
-            height: 86,
-            child: localImage(
-              media.uri,
-              onError: (context) => Container(
-                color: ak.surfaceDim,
-                alignment: Alignment.center,
-                child: Icon(
-                  LucideIcons.imageOff,
-                  size: 22,
-                  color: ak.inkFaint,
-                ),
-              ),
-            ),
-          ),
-        ),
+        AttachmentThumb(attachment: media),
         Positioned(
           top: 2,
           right: 2,

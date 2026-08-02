@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/utils/guid.dart';
 import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
@@ -1078,8 +1079,7 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
     maintenance.addRecord(
       carId,
       ServiceRecord(
-        id: widget.existing?.id ??
-            'manual-${DateTime.now().millisecondsSinceEpoch}',
+        id: widget.existing?.id ?? newGuid(),
         title: widget.item.title,
         // The owner's own words when they gave any; otherwise the honest
         // description of where this row came from.
@@ -1316,8 +1316,7 @@ class _CustomItemSheetState extends ConsumerState<_CustomItemSheet> {
     ref.read(maintenanceProvider.notifier).saveCustomItem(
           widget.car.id,
           CustomMaintenanceItem(
-            id: widget.existing?.id ??
-                'custom-${DateTime.now().millisecondsSinceEpoch}',
+            id: widget.existing?.id ?? newGuid(),
             // Stored exactly as typed and shown the same in both languages —
             // the app does not invent a translation of the owner's words.
             title: title,

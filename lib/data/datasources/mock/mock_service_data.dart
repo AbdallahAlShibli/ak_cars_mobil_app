@@ -1,6 +1,7 @@
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/i18n/strings.dart';
+import '../../../core/utils/guid.dart';
 import '../../models/add_on.dart';
 import '../../models/offer.dart';
 import '../../models/powertrain.dart';
@@ -10,6 +11,7 @@ import '../../models/service_offering.dart';
 import '../../models/service_provider.dart';
 import '../../models/service_stats.dart';
 import 'mock_seed.dart';
+import 'mock_ids.dart';
 
 /// What one workshop sells within one category.
 ///
@@ -70,65 +72,76 @@ abstract final class MockServiceData {
   /// the rest are "Other services" tiles.
   static const categories = <ServiceCategory>[
     ServiceCategory(
-      id: 'major',
+      id: mockIdMajor,
+      slug: 'major',
       name: L('صيانة\nشاملة', 'Major\nService'),
       icon: LucideIcons.settings,
       badge: L('زيت مجاني', 'FREE OIL'),
       primary: true,
     ),
     ServiceCategory(
-      id: 'full',
+      id: mockIdFull,
+      slug: 'full',
       name: L('صيانة\nكاملة', 'Full\nService'),
       icon: LucideIcons.wrench,
       primary: true,
     ),
     ServiceCategory(
-      id: 'express',
+      id: mockIdExpress,
+      slug: 'express',
       name: L('صيانة\nسريعة', 'Express\nService'),
       icon: LucideIcons.zap,
       primary: true,
     ),
     // ------------------------------------------- other services
     ServiceCategory(
-      id: 'repair',
+      id: mockIdRepair,
+      slug: 'repair',
       name: L('إصلاح\nالسيارات', 'Car\nRepair'),
       icon: LucideIcons.carFront,
       note: L('عرض سعر بعد الفحص', 'quote after inspection'),
     ),
     ServiceCategory(
-      id: 'sos',
+      id: mockIdSos,
+      slug: 'sos',
       name: L('مساعدة\nعلى الطريق', 'Roadside\nAssistance'),
       icon: LucideIcons.truck,
       note: L('عند الطلب · متوسط 25 دقيقة', 'on call · avg 25 min'),
       emergency: true,
     ),
     ServiceCategory(
-      id: 'tyres',
+      id: mockIdTyres,
+      slug: 'tyres',
       name: L('إطارات\nوعناية بالعجلات', 'Tyres &\nWheel care'),
       icon: LucideIcons.lifeBuoy,
     ),
     ServiceCategory(
-      id: 'detailing',
+      id: mockIdDetailing,
+      slug: 'detailing',
       name: L('تلميع\nالسيارات', 'Car\nDetailing'),
       icon: LucideIcons.sparkles,
     ),
     ServiceCategory(
-      id: 'battery',
+      id: mockIdBattery,
+      slug: 'battery',
       name: L('بطارية\nوكهرباء', 'Battery\n& Power'),
       icon: LucideIcons.batteryCharging,
     ),
     ServiceCategory(
-      id: 'ac',
+      id: mockIdAc,
+      slug: 'ac',
       name: L('عناية\nبالمكيف', 'AC\nCare'),
       icon: LucideIcons.snowflake,
     ),
     ServiceCategory(
-      id: 'diag',
+      id: mockIdDiag,
+      slug: 'diag',
       name: L('فحص\nالمحرك', 'Engine\nDiagnostics'),
       icon: LucideIcons.activity,
     ),
     ServiceCategory(
-      id: 'contracts',
+      id: mockIdContracts,
+      slug: 'contracts',
       name: L('عقود\nالصيانة', 'Service\nContracts'),
       icon: LucideIcons.clipboardCheck,
     ),
@@ -137,35 +150,40 @@ abstract final class MockServiceData {
     // a petrol car, and by [requires] because high-voltage work needs a
     // trained workshop — see the capability sets on the providers above.
     ServiceCategory(
-      id: 'ev-check',
+      id: mockIdEvCheck,
+      slug: 'ev-check',
       name: L('فحص السيارة\nالكهربائية', 'EV health\ncheck'),
       icon: LucideIcons.batteryFull,
       powertrains: {Powertrain.electric, Powertrain.pluginHybrid},
       requires: ProviderCapability.evService,
     ),
     ServiceCategory(
-      id: 'ev-battery',
+      id: mockIdEvBattery,
+      slug: 'ev-battery',
       name: L('فحص بطارية\nالجهد العالي', 'HV battery\ndiagnostic'),
       icon: LucideIcons.batteryWarning,
       powertrains: {Powertrain.electric, Powertrain.pluginHybrid},
       requires: ProviderCapability.evService,
     ),
     ServiceCategory(
-      id: 'ev-charging',
+      id: mockIdEvCharging,
+      slug: 'ev-charging',
       name: L('فحص كيبل\nومنفذ الشحن', 'Charging cable\n& port check'),
       icon: LucideIcons.cable,
       powertrains: {Powertrain.electric, Powertrain.pluginHybrid},
       requires: ProviderCapability.evService,
     ),
     ServiceCategory(
-      id: 'ev-charger',
+      id: mockIdEvCharger,
+      slug: 'ev-charger',
       name: L('فحص شاحن\nالمنزل', 'Home charger\ninspection'),
       icon: LucideIcons.plugZap,
       powertrains: {Powertrain.electric, Powertrain.pluginHybrid},
       requires: ProviderCapability.evChargerInstall,
     ),
     ServiceCategory(
-      id: 'ev-sos',
+      id: mockIdEvSos,
+      slug: 'ev-sos',
       name: L('شحن أو سحب\nعلى الطريق', 'Roadside charge\n& tow'),
       icon: LucideIcons.plug,
       note: L('عند الطلب', 'on call'),
@@ -175,7 +193,7 @@ abstract final class MockServiceData {
     ),
   ];
 
-  /// Provider id → category id → price and duration.
+  /// Workshop GUID → category GUID → price and duration.
   ///
   /// The coverage matrix: read one governorate's providers together and every
   /// category id in [categories] appears at least once. Wording is shared per
@@ -184,150 +202,150 @@ abstract final class MockServiceData {
   /// fabricating detail the real API will not return.
   static const _catalogue = <String, Map<String, _Sale>>{
     // ------------------------------------------------------------ Muscat
-    'p1': {
-      'major': (price: 45, minutes: 180),
-      'full': (price: 30, minutes: 120),
-      'express': (price: 12, minutes: 45),
-      'repair': (price: null, minutes: null),
-      'ac': (price: 15, minutes: 60),
-      'diag': (price: 8, minutes: 30),
-      'contracts': (price: 120, minutes: null),
-      'ev-check': (price: 18, minutes: 60),
-      'ev-battery': (price: 32, minutes: 90),
-      'ev-charging': (price: 6, minutes: 25),
+    mockIdP1: {
+      mockIdMajor: (price: 45, minutes: 180),
+      mockIdFull: (price: 30, minutes: 120),
+      mockIdExpress: (price: 12, minutes: 45),
+      mockIdRepair: (price: null, minutes: null),
+      mockIdAc: (price: 15, minutes: 60),
+      mockIdDiag: (price: 8, minutes: 30),
+      mockIdContracts: (price: 120, minutes: null),
+      mockIdEvCheck: (price: 18, minutes: 60),
+      mockIdEvBattery: (price: 32, minutes: 90),
+      mockIdEvCharging: (price: 6, minutes: 25),
     },
-    'p2': {
-      'full': (price: 32, minutes: 125),
-      'express': (price: 18, minutes: 50),
-      'sos': (price: 10, minutes: 30),
-      'tyres': (price: 7, minutes: 30),
-      'detailing': (price: 12, minutes: 90),
-      'battery': (price: 5, minutes: 20),
-      'ac': (price: 15, minutes: 60),
-      'ev-check': (price: 16, minutes: 55),
-      'ev-battery': (price: 30, minutes: 85),
-      'ev-charging': (price: 5, minutes: 20),
-      'ev-charger': (price: 15, minutes: 45),
-      'ev-sos': (price: 14, minutes: 40),
+    mockIdP2: {
+      mockIdFull: (price: 32, minutes: 125),
+      mockIdExpress: (price: 18, minutes: 50),
+      mockIdSos: (price: 10, minutes: 30),
+      mockIdTyres: (price: 7, minutes: 30),
+      mockIdDetailing: (price: 12, minutes: 90),
+      mockIdBattery: (price: 5, minutes: 20),
+      mockIdAc: (price: 15, minutes: 60),
+      mockIdEvCheck: (price: 16, minutes: 55),
+      mockIdEvBattery: (price: 30, minutes: 85),
+      mockIdEvCharging: (price: 5, minutes: 20),
+      mockIdEvCharger: (price: 15, minutes: 45),
+      mockIdEvSos: (price: 14, minutes: 40),
     },
-    'p4': {
-      'major': (price: 52, minutes: 200),
-      'express': (price: 14, minutes: 30),
-      'repair': (price: null, minutes: null),
-      'tyres': (price: 6, minutes: 25),
-      'detailing': (price: 18, minutes: 120),
-      'battery': (price: 6, minutes: 25),
-      'diag': (price: 10, minutes: 40),
+    mockIdP4: {
+      mockIdMajor: (price: 52, minutes: 200),
+      mockIdExpress: (price: 14, minutes: 30),
+      mockIdRepair: (price: null, minutes: null),
+      mockIdTyres: (price: 6, minutes: 25),
+      mockIdDetailing: (price: 18, minutes: 120),
+      mockIdBattery: (price: 6, minutes: 25),
+      mockIdDiag: (price: 10, minutes: 40),
     },
     // -------------------------------------------------- North Al Batinah
-    'p3': {
-      'major': (price: 38, minutes: 170),
-      'full': (price: 26, minutes: 110),
-      'express': (price: 10, minutes: 40),
-      'repair': (price: null, minutes: null),
-      'tyres': (price: 6, minutes: 30),
-      'diag': (price: 8, minutes: 30),
-      'contracts': (price: 95, minutes: null),
+    mockIdP3: {
+      mockIdMajor: (price: 38, minutes: 170),
+      mockIdFull: (price: 26, minutes: 110),
+      mockIdExpress: (price: 10, minutes: 40),
+      mockIdRepair: (price: null, minutes: null),
+      mockIdTyres: (price: 6, minutes: 30),
+      mockIdDiag: (price: 8, minutes: 30),
+      mockIdContracts: (price: 95, minutes: null),
     },
-    'p8': {
-      'express': (price: 12, minutes: 35),
-      'sos': (price: 8, minutes: 35),
-      'tyres': (price: 5, minutes: 25),
-      'detailing': (price: 10, minutes: 85),
-      'battery': (price: 5, minutes: 20),
-      'ac': (price: 13, minutes: 55),
-      'ev-check': (price: 15, minutes: 55),
-      'ev-battery': (price: 28, minutes: 85),
-      'ev-charging': (price: 5, minutes: 20),
-      'ev-charger': (price: 13, minutes: 45),
-      'ev-sos': (price: 12, minutes: 45),
+    mockIdP8: {
+      mockIdExpress: (price: 12, minutes: 35),
+      mockIdSos: (price: 8, minutes: 35),
+      mockIdTyres: (price: 5, minutes: 25),
+      mockIdDetailing: (price: 10, minutes: 85),
+      mockIdBattery: (price: 5, minutes: 20),
+      mockIdAc: (price: 13, minutes: 55),
+      mockIdEvCheck: (price: 15, minutes: 55),
+      mockIdEvBattery: (price: 28, minutes: 85),
+      mockIdEvCharging: (price: 5, minutes: 20),
+      mockIdEvCharger: (price: 13, minutes: 45),
+      mockIdEvSos: (price: 12, minutes: 45),
     },
     // Carries what `p8` does not, so North Al Batinah still covers every
     // category now that `p3` is an unapproved application and its listings are
     // hidden from customers.
-    'p12': {
-      'major': (price: 41, minutes: 175),
-      'full': (price: 27, minutes: 115),
-      'repair': (price: null, minutes: null),
-      'tyres': (price: 6, minutes: 30),
-      'diag': (price: 9, minutes: 35),
-      'contracts': (price: 105, minutes: null),
+    mockIdP12: {
+      mockIdMajor: (price: 41, minutes: 175),
+      mockIdFull: (price: 27, minutes: 115),
+      mockIdRepair: (price: null, minutes: null),
+      mockIdTyres: (price: 6, minutes: 30),
+      mockIdDiag: (price: 9, minutes: 35),
+      mockIdContracts: (price: 105, minutes: null),
     },
     // -------------------------------------------------- South Al Batinah
-    'p7': {
-      'express': (price: 11, minutes: 35),
-      'sos': (price: 8, minutes: 35),
-      'tyres': (price: 6, minutes: 30),
-      'battery': (price: 6, minutes: 25),
-      'ac': (price: 14, minutes: 60),
-      'diag': (price: 9, minutes: 35),
-      'ev-check': (price: 15, minutes: 55),
-      'ev-charging': (price: 5, minutes: 25),
-      'ev-sos': (price: 12, minutes: 45),
+    mockIdP7: {
+      mockIdExpress: (price: 11, minutes: 35),
+      mockIdSos: (price: 8, minutes: 35),
+      mockIdTyres: (price: 6, minutes: 30),
+      mockIdBattery: (price: 6, minutes: 25),
+      mockIdAc: (price: 14, minutes: 60),
+      mockIdDiag: (price: 9, minutes: 35),
+      mockIdEvCheck: (price: 15, minutes: 55),
+      mockIdEvCharging: (price: 5, minutes: 25),
+      mockIdEvSos: (price: 12, minutes: 45),
     },
-    'p9': {
-      'major': (price: 42, minutes: 185),
-      'full': (price: 28, minutes: 115),
-      'express': (price: 13, minutes: 40),
-      'repair': (price: null, minutes: null),
-      'detailing': (price: 14, minutes: 100),
-      'contracts': (price: 110, minutes: null),
-      'ev-check': (price: 17, minutes: 60),
-      'ev-battery': (price: 29, minutes: 90),
-      'ev-charger': (price: 14, minutes: 50),
+    mockIdP9: {
+      mockIdMajor: (price: 42, minutes: 185),
+      mockIdFull: (price: 28, minutes: 115),
+      mockIdExpress: (price: 13, minutes: 40),
+      mockIdRepair: (price: null, minutes: null),
+      mockIdDetailing: (price: 14, minutes: 100),
+      mockIdContracts: (price: 110, minutes: null),
+      mockIdEvCheck: (price: 17, minutes: 60),
+      mockIdEvBattery: (price: 29, minutes: 90),
+      mockIdEvCharger: (price: 14, minutes: 50),
     },
     // ----------------------------------------------------- Ad Dakhiliyah
-    'p5': {
-      'major': (price: 40, minutes: 175),
-      'full': (price: 28, minutes: 110),
-      'express': (price: 12, minutes: 40),
-      'sos': (price: 12, minutes: 30),
-      'ac': (price: 14, minutes: 60),
-      'diag': (price: 10, minutes: 40),
-      'contracts': (price: 100, minutes: null),
-      'ev-check': (price: 17, minutes: 60),
-      'ev-battery': (price: 30, minutes: 90),
-      'ev-charging': (price: 6, minutes: 25),
-      'ev-charger': (price: 14, minutes: 50),
-      'ev-sos': (price: 15, minutes: 50),
+    mockIdP5: {
+      mockIdMajor: (price: 40, minutes: 175),
+      mockIdFull: (price: 28, minutes: 110),
+      mockIdExpress: (price: 12, minutes: 40),
+      mockIdSos: (price: 12, minutes: 30),
+      mockIdAc: (price: 14, minutes: 60),
+      mockIdDiag: (price: 10, minutes: 40),
+      mockIdContracts: (price: 100, minutes: null),
+      mockIdEvCheck: (price: 17, minutes: 60),
+      mockIdEvBattery: (price: 30, minutes: 90),
+      mockIdEvCharging: (price: 6, minutes: 25),
+      mockIdEvCharger: (price: 14, minutes: 50),
+      mockIdEvSos: (price: 15, minutes: 50),
     },
-    'p10': {
-      'express': (price: 10, minutes: 35),
-      'repair': (price: null, minutes: null),
-      'sos': (price: 9, minutes: 35),
-      'tyres': (price: 6, minutes: 30),
-      'detailing': (price: 11, minutes: 90),
-      'battery': (price: 5, minutes: 20),
+    mockIdP10: {
+      mockIdExpress: (price: 10, minutes: 35),
+      mockIdRepair: (price: null, minutes: null),
+      mockIdSos: (price: 9, minutes: 35),
+      mockIdTyres: (price: 6, minutes: 30),
+      mockIdDetailing: (price: 11, minutes: 90),
+      mockIdBattery: (price: 5, minutes: 20),
     },
     // ------------------------------------------------------------ Dhofar
-    'p6': {
-      'major': (price: 48, minutes: 190),
-      'full': (price: 31, minutes: 120),
-      'express': (price: 15, minutes: 45),
-      'repair': (price: null, minutes: null),
-      'tyres': (price: 7, minutes: 25),
-      'ac': (price: 18, minutes: 75),
-      'contracts': (price: 140, minutes: null),
-      'ev-check': (price: 19, minutes: 60),
-      'ev-battery': (price: 34, minutes: 95),
-      'ev-charging': (price: 7, minutes: 25),
-      'ev-charger': (price: 16, minutes: 50),
-      'ev-sos': (price: 16, minutes: 55),
+    mockIdP6: {
+      mockIdMajor: (price: 48, minutes: 190),
+      mockIdFull: (price: 31, minutes: 120),
+      mockIdExpress: (price: 15, minutes: 45),
+      mockIdRepair: (price: null, minutes: null),
+      mockIdTyres: (price: 7, minutes: 25),
+      mockIdAc: (price: 18, minutes: 75),
+      mockIdContracts: (price: 140, minutes: null),
+      mockIdEvCheck: (price: 19, minutes: 60),
+      mockIdEvBattery: (price: 34, minutes: 95),
+      mockIdEvCharging: (price: 7, minutes: 25),
+      mockIdEvCharger: (price: 16, minutes: 50),
+      mockIdEvSos: (price: 16, minutes: 55),
     },
-    'p11': {
-      'express': (price: 12, minutes: 40),
-      'sos': (price: 11, minutes: 35),
-      'tyres': (price: 6, minutes: 30),
-      'detailing': (price: 13, minutes: 95),
-      'battery': (price: 6, minutes: 25),
-      'diag': (price: 9, minutes: 35),
+    mockIdP11: {
+      mockIdExpress: (price: 12, minutes: 40),
+      mockIdSos: (price: 11, minutes: 35),
+      mockIdTyres: (price: 6, minutes: 30),
+      mockIdDetailing: (price: 13, minutes: 95),
+      mockIdBattery: (price: 6, minutes: 25),
+      mockIdDiag: (price: 9, minutes: 35),
     },
   };
 
   /// Category id → the name and description every offering in it carries.
   /// Every category id used in [_catalogue] must appear here.
   static const _copy = <String, _Copy>{
-    'major': (
+    mockIdMajor: (
       name: L('صيانة شاملة', 'Major service'),
       description: L(
         'صيانة كاملة: زيت المحرك مجاناً، جميع الفلاتر، فحص الفرامل، '
@@ -349,7 +367,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 6,
     ),
-    'full': (
+    mockIdFull: (
       name: L('صيانة كاملة', 'Full service'),
       description: L(
         'زيت وفلاتر، فحص الفرامل والتعليق، اختبار أداء المكيف، '
@@ -366,7 +384,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 6,
     ),
-    'express': (
+    mockIdExpress: (
       name: L('صيانة سريعة', 'Express service'),
       description: L(
         'تغيير الزيت والفلتر مع فحص أمان من 10 نقاط — تخرج خلال ساعة.',
@@ -383,7 +401,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 3,
     ),
-    'repair': (
+    mockIdRepair: (
       name: L('إصلاح وفحص السيارة', 'Car repair & inspection'),
       description: L(
         'فحص كامل أولاً — عرض سعر مفصّل قبل أي عمل.',
@@ -400,7 +418,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 3,
     ),
-    'sos': (
+    mockIdSos: (
       name: L('مساعدة على الطريق', 'Roadside assistance'),
       description: L(
         'شحن البطارية، تغيير الإطار، وتنسيق السحب.',
@@ -416,7 +434,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: null,
     ),
-    'tyres': (
+    mockIdTyres: (
       name: L('تغيير وترصيص الإطارات', 'Tyre change & balancing'),
       description: L(
         'تركيب وترصيص وفحص الضغط لكل إطار.',
@@ -431,7 +449,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 3,
     ),
-    'detailing': (
+    mockIdDetailing: (
       name: L('تلميع السيارة', 'Car detailing'),
       description: L(
         'تنظيف داخلي عميق، تلميع خارجي وشمع.',
@@ -446,7 +464,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: null,
     ),
-    'battery': (
+    mockIdBattery: (
       name: L('تغيير البطارية', 'Battery replacement'),
       description: L(
         'فحص وتوريد وتركيب — ويتم تدوير البطارية القديمة.',
@@ -463,7 +481,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 12,
     ),
-    'ac': (
+    mockIdAc: (
       name: L('عناية بالمكيف', 'AC care'),
       description: L(
         'تعبئة الغاز، فحص التسريب، وفحص فلتر المقصورة.',
@@ -477,7 +495,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 3,
     ),
-    'diag': (
+    mockIdDiag: (
       name: L('فحص المحرك', 'Engine diagnostics'),
       description: L(
         'فحص OBD كامل مع تقرير مطبوع.',
@@ -494,7 +512,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: null,
     ),
-    'contracts': (
+    mockIdContracts: (
       name: L('عقد صيانة سنوي', 'Annual service contract'),
       description: L(
         'جميع الصيانات الدورية لمدة سنة — حجز بأولوية واستلام مجاني.',
@@ -514,7 +532,7 @@ abstract final class MockServiceData {
     // ------------------------------------------------- electric & plug-in
     // No claim here rests on reading the car: everything listed is something
     // a technician measures with the car in front of them.
-    'ev-check': (
+    mockIdEvCheck: (
       name: L('فحص السيارة الكهربائية', 'EV health check'),
       description: L(
         'فحص دوري للسيارة الكهربائية: الإطارات والزوايا، بطارية ١٢ فولت، '
@@ -536,7 +554,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 6,
     ),
-    'ev-battery': (
+    mockIdEvBattery: (
       name: L('فحص بطارية الجهد العالي', 'High-voltage battery diagnostic'),
       description: L(
         'قراءة بيانات البطارية من وحدة التحكم وتقرير مكتوب بحالتها — '
@@ -555,7 +573,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: null,
     ),
-    'ev-charging': (
+    mockIdEvCharging: (
       name: L('فحص كيبل ومنفذ الشحن', 'Charging cable & port check'),
       description: L(
         'فحص الكيبل والقابس ومنفذ الشحن — أكثر أعطال الشحن سببها الكيبل '
@@ -575,7 +593,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 3,
     ),
-    'ev-charger': (
+    mockIdEvCharger: (
       name: L('فحص تركيب الشاحن المنزلي', 'Home charger installation check'),
       description: L(
         'زيارة للمنزل لفحص الشاحن ولوحة الكهرباء والتأريض قبل أو بعد '
@@ -593,7 +611,7 @@ abstract final class MockServiceData {
       ],
       warrantyMonths: 6,
     ),
-    'ev-sos': (
+    mockIdEvSos: (
       name: L('شحن أو سحب على الطريق', 'Roadside charge & tow'),
       description: L(
         'سيارة كهربائية متوقفة بلا شحن: شحن طارئ في الموقع أو تنسيق سحب '
@@ -615,14 +633,20 @@ abstract final class MockServiceData {
     ),
   };
 
-  /// [_catalogue] × [_copy], in provider order. Ids read as
-  /// `o-{provider}-{category}` so a fixture pointing at one says what it is.
+  /// [_catalogue] × [_copy], in provider order.
+  ///
+  /// Offering ids are *derived* from the workshop and the category rather
+  /// than listed in [mockIds]: there is one per cell of the matrix, the matrix
+  /// is edited regularly, and hand-maintaining ~90 constants that nothing
+  /// refers to by name would be upkeep for no reader. [derivedGuid] keeps them
+  /// stable across runs, which is the only property tests need.
   static final offerings = <ServiceOffering>[
     for (final provider in providers)
       for (final sale in (_catalogue[provider.id] ?? const {}).entries)
         ServiceOffering(
-          id: 'o-${provider.id}-${sale.key}',
+          id: mockOfferingId(provider.id, sale.key),
           categoryId: sale.key,
+          categorySlug: mockCategorySlug(sale.key),
           name: _copy[sale.key]!.name,
           provider: provider,
           description: _copy[sale.key]!.description,
@@ -636,22 +660,22 @@ abstract final class MockServiceData {
   /// Sold by every workshop.
   static const _routineAddOns = <AddOn>[
     AddOn(
-        id: 'a-rotation',
+        id: mockIdARotation,
         name: L('تدوير الإطارات', 'Tyre rotation'),
         price: 4,
         isPart: false),
     AddOn(
-        id: 'a-ac-gas',
+        id: mockIdAAcGas,
         name: L('تعبئة غاز المكيف', 'AC gas top-up'),
         price: 8,
         isPart: false),
     AddOn(
-        id: 'a-oil-filter',
+        id: mockIdAOilFilter,
         name: L('فلتر زيت أصلي', 'Genuine oil filter'),
         price: 3.5,
         isPart: true),
     AddOn(
-        id: 'a-wipers',
+        id: mockIdAWipers,
         name: L('زوج مساحات', 'Wiper blades pair'),
         price: 5,
         isPart: true),
@@ -660,17 +684,17 @@ abstract final class MockServiceData {
   /// Extras only the larger workshops carry.
   static const _detailingAddOns = <AddOn>[
     AddOn(
-        id: 'a-interior',
+        id: mockIdAInterior,
         name: L('تنظيف داخلي', 'Interior detailing'),
         price: 12,
         isPart: false),
     AddOn(
-        id: 'a-cabin-filter',
+        id: mockIdACabinFilter,
         name: L('فلتر مقصورة', 'Cabin filter'),
         price: 4,
         isPart: true),
     AddOn(
-        id: 'a-engine-flush',
+        id: mockIdAEngineFlush,
         name: L('غسيل المحرك', 'Engine flush'),
         price: 6,
         isPart: false),
@@ -679,18 +703,18 @@ abstract final class MockServiceData {
   /// Every provider has a list — an empty extras step on the booking screen
   /// reads as a loading bug rather than as a workshop that sells no extras.
   static const addOnsByProvider = <String, List<AddOn>>{
-    'p1': [..._routineAddOns, ..._detailingAddOns],
-    'p2': [..._routineAddOns, ..._detailingAddOns],
-    'p3': _routineAddOns,
-    'p4': [..._routineAddOns, ..._detailingAddOns],
-    'p5': [..._routineAddOns, ..._detailingAddOns],
-    'p6': [..._routineAddOns, ..._detailingAddOns],
-    'p7': _routineAddOns,
-    'p8': [..._routineAddOns, ..._detailingAddOns],
-    'p9': [..._routineAddOns, ..._detailingAddOns],
-    'p10': _routineAddOns,
-    'p11': _routineAddOns,
-    'p12': [..._routineAddOns, ..._detailingAddOns],
+    mockIdP1: [..._routineAddOns, ..._detailingAddOns],
+    mockIdP2: [..._routineAddOns, ..._detailingAddOns],
+    mockIdP3: _routineAddOns,
+    mockIdP4: [..._routineAddOns, ..._detailingAddOns],
+    mockIdP5: [..._routineAddOns, ..._detailingAddOns],
+    mockIdP6: [..._routineAddOns, ..._detailingAddOns],
+    mockIdP7: _routineAddOns,
+    mockIdP8: [..._routineAddOns, ..._detailingAddOns],
+    mockIdP9: [..._routineAddOns, ..._detailingAddOns],
+    mockIdP10: _routineAddOns,
+    mockIdP11: _routineAddOns,
+    mockIdP12: [..._routineAddOns, ..._detailingAddOns],
   };
 
   static const slots = ['9:00', '10:30', '13:00', '16:00'];
@@ -719,7 +743,7 @@ abstract final class MockServiceData {
   static final promotions = <Promotion>[
     // ---------------------------------------------------- platform, nationwide
     Promotion(
-      id: 'promo-escrow',
+      id: mockIdPromoEscrow,
       title: L('مبلغك محفوظ حتى تستلم سيارتك',
           'Your money is held until you collect the car'),
       body: L(
@@ -731,7 +755,7 @@ abstract final class MockServiceData {
       query: 'صيانة',
     ),
     Promotion(
-      id: 'promo-pickup-platform',
+      id: mockIdPromoPickupPlatform,
       title: L('ورش تستلم سيارتك من مكانك',
           'Workshops that collect your car'),
       body: L(
@@ -744,90 +768,90 @@ abstract final class MockServiceData {
     ),
     // ------------------------------------------------------------- Muscat
     Promotion(
-      id: 'promo-p1-major',
+      id: mockIdPromoP1Major,
       title: L('صيانة شاملة في ورشة النور',
           'Major service at Al Noor Workshop'),
       body: L('زيت المحرك مجاناً ضمن الباقة + فحص ٤٠ نقطة.',
           'Engine oil free with the package + a 40-point inspection.'),
       icon: LucideIcons.settings,
       badge: L('زيت مجاني', 'FREE OIL'),
-      providerId: 'p1',
-      offeringId: 'o-p1-major',
+      providerId: mockIdP1,
+      offeringId: mockOfferingId(mockIdP1, mockIdMajor),
       regions: {'Muscat'},
       endsAt: _endsIn(12),
     ),
     Promotion(
-      id: 'promo-p2-full',
+      id: mockIdPromoP2Full,
       title: L('الخليج للعناية بالسيارات — نستلم ونعيد',
           'Gulf Auto Care — we collect and return'),
       body: L('صيانة كاملة مع خيار استلام السيارة من مكانك.',
           'Full service, with the option to collect the car from you.'),
       icon: LucideIcons.truck,
       badge: L('استلام وإعادة', 'Pickup & return'),
-      providerId: 'p2',
-      offeringId: 'o-p2-full',
+      providerId: mockIdP2,
+      offeringId: mockOfferingId(mockIdP2, mockIdFull),
       regions: {'Muscat'},
     ),
     Promotion(
-      id: 'promo-p4-tyres',
+      id: mockIdPromoP4Tyres,
       title: L('ترصيص وتركيب إطارات في القرم',
           'Tyre fitting & balancing in Qurum'),
       body: L('تركيب وترصيص وصمام جديد لكل إطار.',
           'Fitting, balancing and a new valve stem per tyre.'),
       icon: LucideIcons.lifeBuoy,
-      providerId: 'p4',
-      offeringId: 'o-p4-tyres',
+      providerId: mockIdP4,
+      offeringId: mockOfferingId(mockIdP4, mockIdTyres),
       regions: {'Muscat'},
       endsAt: _endsIn(6),
     ),
     // -------------------------------------------------- North Al Batinah
     Promotion(
-      id: 'promo-p8-ev',
+      id: mockIdPromoP8Ev,
       title: L('مركز صحم: فحص السيارات الكهربائية',
           'Saham Auto Centre: EV health check'),
       body: L('ورشة معتمدة للجهد العالي مع تقرير في التطبيق.',
           'High-voltage certified, with the report delivered in the app.'),
       icon: LucideIcons.batteryFull,
       badge: L('معتمدة للكهربائية', 'EV-certified'),
-      providerId: 'p8',
-      offeringId: 'o-p8-ev-check',
+      providerId: mockIdP8,
+      offeringId: mockOfferingId(mockIdP8, mockIdEvCheck),
       regions: {'North Al Batinah'},
     ),
     // -------------------------------------------------- South Al Batinah
     Promotion(
-      id: 'promo-p9-detailing',
+      id: mockIdPromoP9Detailing,
       title: L('تلميع وتنظيف عميق في الرستاق',
           'Detailing & deep clean in Rustaq'),
       body: L('تنظيف داخلي عميق، تلميع خارجي وطبقة شمع.',
           'Interior deep clean, exterior polish and a wax coat.'),
       icon: LucideIcons.sparkles,
-      providerId: 'p9',
-      offeringId: 'o-p9-detailing',
+      providerId: mockIdP9,
+      offeringId: mockOfferingId(mockIdP9, mockIdDetailing),
       regions: {'South Al Batinah'},
       endsAt: _endsIn(9),
     ),
     // ----------------------------------------------------- Ad Dakhiliyah
     Promotion(
-      id: 'promo-p5-contracts',
+      id: mockIdPromoP5Contracts,
       title: L('عقد صيانة سنوي في نزوى',
           'Yearly service contract in Nizwa'),
       body: L('صيانة مجدولة طوال السنة بسعر واحد معروف مقدماً.',
           'A year of scheduled servicing at one price, known up front.'),
       icon: LucideIcons.clipboardCheck,
-      providerId: 'p5',
-      offeringId: 'o-p5-contracts',
+      providerId: mockIdP5,
+      offeringId: mockOfferingId(mockIdP5, mockIdContracts),
       regions: {'Ad Dakhiliyah'},
     ),
     // ------------------------------------------------------------ Dhofar
     Promotion(
-      id: 'promo-p6-ac',
+      id: mockIdPromoP6Ac,
       title: L('جهّز مكيفك قبل الصيف — صلالة',
           'AC ready before summer — Salalah'),
       body: L('فحص تسريب، تعبئة غاز، وفلتر مقصورة.',
           'Leak test, gas recharge and a cabin filter.'),
       icon: LucideIcons.snowflake,
-      providerId: 'p6',
-      offeringId: 'o-p6-ac',
+      providerId: mockIdP6,
+      offeringId: mockOfferingId(mockIdP6, mockIdAc),
       regions: {'Dhofar'},
       endsAt: _endsIn(21),
     ),
@@ -860,50 +884,50 @@ abstract final class MockServiceData {
   static final offers = <Offer>[
     // ------------------------------------------------------------- valid
     Offer(
-      id: 'of-p1-major',
-      workshopId: 'p1',
-      serviceOfferingId: 'o-p1-major',
-      referencePrice: _published('o-p1-major'),
+      id: mockIdOfP1Major,
+      workshopId: mockIdP1,
+      serviceOfferingId: mockOfferingId(mockIdP1, mockIdMajor),
+      referencePrice: _published(mockOfferingId(mockIdP1, mockIdMajor)),
       discountedPrice: 36,
       startsAt: _startedDaysAgo(3),
       endsAt: _endsIn(12),
       activeByFounder: true,
     ),
     Offer(
-      id: 'of-p4-tyres',
-      workshopId: 'p4',
-      serviceOfferingId: 'o-p4-tyres',
-      referencePrice: _published('o-p4-tyres'),
+      id: mockIdOfP4Tyres,
+      workshopId: mockIdP4,
+      serviceOfferingId: mockOfferingId(mockIdP4, mockIdTyres),
+      referencePrice: _published(mockOfferingId(mockIdP4, mockIdTyres)),
       discountedPrice: 4.5,
       startsAt: _startedDaysAgo(1),
       endsAt: _endsIn(6),
       activeByFounder: true,
     ),
     Offer(
-      id: 'of-p8-ev-check',
-      workshopId: 'p8',
-      serviceOfferingId: 'o-p8-ev-check',
-      referencePrice: _published('o-p8-ev-check'),
+      id: mockIdOfP8EvCheck,
+      workshopId: mockIdP8,
+      serviceOfferingId: mockOfferingId(mockIdP8, mockIdEvCheck),
+      referencePrice: _published(mockOfferingId(mockIdP8, mockIdEvCheck)),
       discountedPrice: 11,
       startsAt: _startedDaysAgo(5),
       endsAt: _endsIn(18),
       activeByFounder: true,
     ),
     Offer(
-      id: 'of-p9-detailing',
-      workshopId: 'p9',
-      serviceOfferingId: 'o-p9-detailing',
-      referencePrice: _published('o-p9-detailing'),
+      id: mockIdOfP9Detailing,
+      workshopId: mockIdP9,
+      serviceOfferingId: mockOfferingId(mockIdP9, mockIdDetailing),
+      referencePrice: _published(mockOfferingId(mockIdP9, mockIdDetailing)),
       discountedPrice: 10.5,
       startsAt: _startedDaysAgo(2),
       endsAt: _endsIn(9),
       activeByFounder: true,
     ),
     Offer(
-      id: 'of-p6-ac',
-      workshopId: 'p6',
-      serviceOfferingId: 'o-p6-ac',
-      referencePrice: _published('o-p6-ac'),
+      id: mockIdOfP6Ac,
+      workshopId: mockIdP6,
+      serviceOfferingId: mockOfferingId(mockIdP6, mockIdAc),
+      referencePrice: _published(mockOfferingId(mockIdP6, mockIdAc)),
       discountedPrice: 13,
       startsAt: _startedDaysAgo(4),
       endsAt: _endsIn(21),
@@ -913,10 +937,10 @@ abstract final class MockServiceData {
     // The workshop is on the marketplace but the platform has not approved
     // it, so it may not be promoted (§3 rule 2).
     Offer(
-      id: 'of-p3-express-unapproved',
-      workshopId: 'p3',
-      serviceOfferingId: 'o-p3-express',
-      referencePrice: _published('o-p3-express'),
+      id: mockIdOfP3ExpressUnapproved,
+      workshopId: mockIdP3,
+      serviceOfferingId: mockOfferingId(mockIdP3, mockIdExpress),
+      referencePrice: _published(mockOfferingId(mockIdP3, mockIdExpress)),
       discountedPrice: 7,
       startsAt: _startedDaysAgo(2),
       endsAt: _endsIn(10),
@@ -925,9 +949,9 @@ abstract final class MockServiceData {
     // An inflated "was" price — the workshop publishes 32, the offer claims 45
     // was struck through. Rejected on §3 rule 1.
     Offer(
-      id: 'of-p2-full-inflated',
-      workshopId: 'p2',
-      serviceOfferingId: 'o-p2-full',
+      id: mockIdOfP2FullInflated,
+      workshopId: mockIdP2,
+      serviceOfferingId: mockOfferingId(mockIdP2, mockIdFull),
       referencePrice: 45,
       discountedPrice: 29,
       startsAt: _startedDaysAgo(2),
@@ -936,10 +960,10 @@ abstract final class MockServiceData {
     ),
     // Ran, and finished. Rejected on §3 rule 5.
     Offer(
-      id: 'of-p5-contracts-expired',
-      workshopId: 'p5',
-      serviceOfferingId: 'o-p5-contracts',
-      referencePrice: _published('o-p5-contracts'),
+      id: mockIdOfP5ContractsExpired,
+      workshopId: mockIdP5,
+      serviceOfferingId: mockOfferingId(mockIdP5, mockIdContracts),
+      referencePrice: _published(mockOfferingId(mockIdP5, mockIdContracts)),
       discountedPrice: 85,
       startsAt: _startedDaysAgo(40),
       endsAt: _startedDaysAgo(2),
@@ -947,10 +971,10 @@ abstract final class MockServiceData {
     ),
     // Submitted, not yet switched on by the founder. Rejected on §3 rule 4.
     Offer(
-      id: 'of-p1-express-draft',
-      workshopId: 'p1',
-      serviceOfferingId: 'o-p1-express',
-      referencePrice: _published('o-p1-express'),
+      id: mockIdOfP1ExpressDraft,
+      workshopId: mockIdP1,
+      serviceOfferingId: mockOfferingId(mockIdP1, mockIdExpress),
+      referencePrice: _published(mockOfferingId(mockIdP1, mockIdExpress)),
       discountedPrice: 9,
       startsAt: _startedDaysAgo(1),
       endsAt: _endsIn(15),
@@ -965,17 +989,17 @@ abstract final class MockServiceData {
   /// marketplace always has businesses the aggregate has never seen. Neither
   /// may be ranked, and neither may be shown as a zero on a leaderboard.
   static const workshopDemand = <WorkshopDemand>[
-    WorkshopDemand(providerId: 'p2', completedBookings: 84),
-    WorkshopDemand(providerId: 'p1', completedBookings: 68),
-    WorkshopDemand(providerId: 'p6', completedBookings: 52),
-    WorkshopDemand(providerId: 'p4', completedBookings: 41),
-    WorkshopDemand(providerId: 'p5', completedBookings: 37),
-    WorkshopDemand(providerId: 'p8', completedBookings: 33),
-    WorkshopDemand(providerId: 'p9', completedBookings: 24),
-    WorkshopDemand(providerId: 'p7', completedBookings: 19),
-    WorkshopDemand(providerId: 'p12', completedBookings: 11),
-    WorkshopDemand(providerId: 'p3', completedBookings: 6),
-    WorkshopDemand(providerId: 'p10', completedBookings: 0),
+    WorkshopDemand(providerId: mockIdP2, completedBookings: 84),
+    WorkshopDemand(providerId: mockIdP1, completedBookings: 68),
+    WorkshopDemand(providerId: mockIdP6, completedBookings: 52),
+    WorkshopDemand(providerId: mockIdP4, completedBookings: 41),
+    WorkshopDemand(providerId: mockIdP5, completedBookings: 37),
+    WorkshopDemand(providerId: mockIdP8, completedBookings: 33),
+    WorkshopDemand(providerId: mockIdP9, completedBookings: 24),
+    WorkshopDemand(providerId: mockIdP7, completedBookings: 19),
+    WorkshopDemand(providerId: mockIdP12, completedBookings: 11),
+    WorkshopDemand(providerId: mockIdP3, completedBookings: 6),
+    WorkshopDemand(providerId: mockIdP10, completedBookings: 0),
   ];
 
   /// Marketplace-wide booking counts per category, trailing 30 days.
@@ -984,22 +1008,22 @@ abstract final class MockServiceData {
   /// bookings, so "most booked" cannot be computed here — see [CategoryDemand].
   /// Phase 2 replaces this with the same figures from the API.
   static const categoryDemand = <CategoryDemand>[
-    CategoryDemand(categoryId: 'express', bookings: 412),
-    CategoryDemand(categoryId: 'major', bookings: 268),
-    CategoryDemand(categoryId: 'tyres', bookings: 231),
-    CategoryDemand(categoryId: 'ac', bookings: 197),
-    CategoryDemand(categoryId: 'full', bookings: 156),
-    CategoryDemand(categoryId: 'battery', bookings: 143),
-    CategoryDemand(categoryId: 'diag', bookings: 121),
-    CategoryDemand(categoryId: 'detailing', bookings: 96),
-    CategoryDemand(categoryId: 'repair', bookings: 88),
-    CategoryDemand(categoryId: 'sos', bookings: 74),
-    CategoryDemand(categoryId: 'contracts', bookings: 31),
-    CategoryDemand(categoryId: 'ev-check', bookings: 22),
-    CategoryDemand(categoryId: 'ev-charging', bookings: 14),
-    CategoryDemand(categoryId: 'ev-battery', bookings: 9),
-    CategoryDemand(categoryId: 'ev-charger', bookings: 7),
-    CategoryDemand(categoryId: 'ev-sos', bookings: 5),
+    CategoryDemand(categoryId: mockIdExpress, bookings: 412),
+    CategoryDemand(categoryId: mockIdMajor, bookings: 268),
+    CategoryDemand(categoryId: mockIdTyres, bookings: 231),
+    CategoryDemand(categoryId: mockIdAc, bookings: 197),
+    CategoryDemand(categoryId: mockIdFull, bookings: 156),
+    CategoryDemand(categoryId: mockIdBattery, bookings: 143),
+    CategoryDemand(categoryId: mockIdDiag, bookings: 121),
+    CategoryDemand(categoryId: mockIdDetailing, bookings: 96),
+    CategoryDemand(categoryId: mockIdRepair, bookings: 88),
+    CategoryDemand(categoryId: mockIdSos, bookings: 74),
+    CategoryDemand(categoryId: mockIdContracts, bookings: 31),
+    CategoryDemand(categoryId: mockIdEvCheck, bookings: 22),
+    CategoryDemand(categoryId: mockIdEvCharging, bookings: 14),
+    CategoryDemand(categoryId: mockIdEvBattery, bookings: 9),
+    CategoryDemand(categoryId: mockIdEvCharger, bookings: 7),
+    CategoryDemand(categoryId: mockIdEvSos, bookings: 5),
   ];
 
   /// Customer ratings, aggregated from completed bookings.
@@ -1012,26 +1036,26 @@ abstract final class MockServiceData {
   /// that it is the best workshop in the country.
   static const workshopRatings = <WorkshopRating>[
     WorkshopRating(
-        providerId: 'p1', rating: 4.8, reviews: 312, completedJobs: 1840),
+        providerId: mockIdP1, rating: 4.8, reviews: 312, completedJobs: 1840),
     WorkshopRating(
-        providerId: 'p2', rating: 4.6, reviews: 487, completedJobs: 2610),
+        providerId: mockIdP2, rating: 4.6, reviews: 487, completedJobs: 2610),
     WorkshopRating(
-        providerId: 'p3', rating: 4.9, reviews: 4, completedJobs: 37),
+        providerId: mockIdP3, rating: 4.9, reviews: 4, completedJobs: 37),
     WorkshopRating(
-        providerId: 'p4', rating: 4.7, reviews: 168, completedJobs: 903),
+        providerId: mockIdP4, rating: 4.7, reviews: 168, completedJobs: 903),
     WorkshopRating(
-        providerId: 'p5', rating: 4.8, reviews: 204, completedJobs: 1122),
+        providerId: mockIdP5, rating: 4.8, reviews: 204, completedJobs: 1122),
     WorkshopRating(
-        providerId: 'p6', rating: 4.6, reviews: 263, completedJobs: 1475),
+        providerId: mockIdP6, rating: 4.6, reviews: 263, completedJobs: 1475),
     WorkshopRating(
-        providerId: 'p7', rating: 4.3, reviews: 96, completedJobs: 512),
+        providerId: mockIdP7, rating: 4.3, reviews: 96, completedJobs: 512),
     WorkshopRating(
-        providerId: 'p8', rating: 4.7, reviews: 143, completedJobs: 764),
+        providerId: mockIdP8, rating: 4.7, reviews: 143, completedJobs: 764),
     WorkshopRating(
-        providerId: 'p9', rating: 4.5, reviews: 121, completedJobs: 688),
+        providerId: mockIdP9, rating: 4.5, reviews: 121, completedJobs: 688),
     // Newly onboarded — one review, which is below the ranking threshold for
     // the same reason `p3`'s four are.
     WorkshopRating(
-        providerId: 'p12', rating: 5.0, reviews: 1, completedJobs: 11),
+        providerId: mockIdP12, rating: 5.0, reviews: 1, completedJobs: 11),
   ];
 }

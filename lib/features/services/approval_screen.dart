@@ -7,9 +7,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
-import '../../core/media/local_image.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/widgets/attachment_view.dart';
 import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
@@ -426,45 +426,15 @@ class _ProofBody extends StatelessWidget {
 class _ProofTile extends StatelessWidget {
   const _ProofTile({required this.media});
 
-  final ProofMedia media;
+  final MediaAttachment media;
 
   @override
   Widget build(BuildContext context) {
-    // Two sources, both normal. A backend-hosted proof arrives as an https
-    // URL; one the workshop shot on this device is still a local file, because
-    // the pilot has no upload step yet. `localImage` is the conditional-import
-    // shim that keeps `dart:io` out of the web build.
-    final remote = media.uri.startsWith('http');
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: SizedBox(
-        width: 112,
-        height: 86,
-        child: remote
-            ? Image.network(
-                media.uri,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const _ProofTileFallback(),
-              )
-            : localImage(media.uri, onError: (_) => const _ProofTileFallback()),
-      ),
-    );
+    // One source, every platform: the proof's bytes travel on the record, so
+    // there is no https-versus-local-file branch here any more and no way for
+    // a proof to render on the workshop's phone but not on the customer's.
+    return AttachmentThumb(attachment: media);
   }
-}
-
-class _ProofTileFallback extends StatelessWidget {
-  const _ProofTileFallback();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    color: AppColors.field,
-    alignment: Alignment.center,
-    child: const Icon(
-      LucideIcons.imageOff,
-      size: 22,
-      color: AppColors.ink3,
-    ),
-  );
 }
 
 class _IssueSheet extends StatefulWidget {

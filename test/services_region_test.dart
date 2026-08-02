@@ -11,6 +11,7 @@ import 'package:ak_cars_mobil_app/features/services/services_screen.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 /// The region chip used to only *sort* results, so workshops from other
 /// governorates were listed under "Popular near you" whenever the selected
@@ -143,23 +144,23 @@ void main() {
 
     // "Full Service": sold in every governorate, but the card above a Muscat
     // list must quote the cheapest *Muscat* price, not the national one.
-    expect(marketplace.providerCountFor('full', region: 'Muscat'), 2);
+    expect(marketplace.providerCountFor(mockIdFull, region: 'Muscat'), 2);
     // Liwa, at 27. Sohar publishes 26 and is cheaper, but it is an unapproved
     // application — so it is not bookable, and a "from" price has to quote
     // something the tap can actually reach.
-    expect(marketplace.fromPriceFor('full'), 27);
-    expect(marketplace.fromPriceFor('full', region: 'Muscat'), 30);
+    expect(marketplace.fromPriceFor(mockIdFull), 27);
+    expect(marketplace.fromPriceFor(mockIdFull, region: 'Muscat'), 30);
     expect(find.textContaining('from OMR 30 · 2 workshops'), findsOneWidget);
 
     // Tyres used to exist only in Sohar and Salalah, so a Muscat user tapping
     // the tile got a sheet of out-of-region workshops. It is now sold locally.
-    expect(marketplace.providerCountFor('tyres', region: 'Muscat'), 2);
+    expect(marketplace.providerCountFor(mockIdTyres, region: 'Muscat'), 2);
     // Qurum publishes 6 and is running a validated offer at 4.5, so "from" is
     // 4.5: the card must quote the price the tap actually leads to, not the
     // pre-discount one. The struck-through 6 is on the offer record.
-    expect(marketplace.fromPriceFor('tyres', region: 'Muscat'), 4.5);
-    expect(marketplace.offeringById('o-p4-tyres')!.price, 6);
-    expect(marketplace.offerFor('o-p4-tyres')!.referencePrice, 6);
+    expect(marketplace.fromPriceFor(mockIdTyres, region: 'Muscat'), 4.5);
+    expect(marketplace.offeringById(mockOfferingId(mockIdP4, mockIdTyres))!.price, 6);
+    expect(marketplace.offerFor(mockOfferingId(mockIdP4, mockIdTyres))!.referencePrice, 6);
   });
 
   test('Arabic counted nouns inflect by the number in front of them', () {

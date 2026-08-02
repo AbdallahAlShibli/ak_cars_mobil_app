@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 /// Maintenance is per car.
 ///
@@ -570,7 +571,7 @@ void main() {
         final request = await _book(
           container,
           car: _camry,
-          offeringId: 'o-p1-express',
+          offeringId: mockOfferingId(mockIdP1, mockIdExpress),
           maintenanceItemKey: MaintenanceType.oil.key,
         );
 
@@ -610,7 +611,7 @@ void main() {
       final request = await _book(
         container,
         car: _camry,
-        offeringId: 'o-p1-express',
+        offeringId: mockOfferingId(mockIdP1, mockIdExpress),
         maintenanceItemKey: MaintenanceType.oil.key,
       );
       await _complete(container, request.id);
@@ -639,7 +640,7 @@ void main() {
         final request = await _book(
           container,
           car: _camry,
-          offeringId: 'o-p1-express',
+          offeringId: mockOfferingId(mockIdP1, mockIdExpress),
         );
         await _complete(container, request.id);
 
@@ -663,7 +664,7 @@ void main() {
         final request = await _book(
           container,
           car: _tesla,
-          offeringId: 'o-p1-express',
+          offeringId: mockOfferingId(mockIdP1, mockIdExpress),
         );
         await _complete(container, request.id);
 
@@ -679,7 +680,7 @@ void main() {
       final request = await _book(
         container,
         car: _camry,
-        offeringId: 'o-p1-express',
+        offeringId: mockOfferingId(mockIdP1, mockIdExpress),
         maintenanceItemKey: MaintenanceType.oil.key,
       );
 
@@ -709,7 +710,7 @@ void main() {
       final request = await _book(
         container,
         car: _camry,
-        offeringId: 'o-p1-express',
+        offeringId: mockOfferingId(mockIdP1, mockIdExpress),
         maintenanceItemKey: MaintenanceType.oil.key,
       );
       final requests = container.read(requestsProvider.notifier);
@@ -741,7 +742,7 @@ void main() {
       final request = await _book(
         container,
         car: _camry,
-        offeringId: 'o-p1-express',
+        offeringId: mockOfferingId(mockIdP1, mockIdExpress),
         maintenanceItemKey: MaintenanceType.oil.key,
       );
       final requests = container.read(requestsProvider.notifier);
@@ -797,7 +798,7 @@ void main() {
       final request = await _book(
         container,
         car: _camry,
-        offeringId: 'o-p1-express',
+        offeringId: mockOfferingId(mockIdP1, mockIdExpress),
         maintenanceItemKey: MaintenanceType.oil.key,
       );
       final requests = container.read(requestsProvider.notifier);
@@ -853,7 +854,7 @@ void main() {
       final request = await _book(
         container,
         car: adhoc,
-        offeringId: 'o-p1-express',
+        offeringId: mockOfferingId(mockIdP1, mockIdExpress),
       );
       await _complete(container, request.id);
 

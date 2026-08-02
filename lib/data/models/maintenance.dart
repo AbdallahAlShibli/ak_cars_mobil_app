@@ -141,11 +141,16 @@ extension MaintenanceTypeX on MaintenanceType {
   /// The built-in item a booked service category resets, or null when the
   /// category maps to no schedule line the app tracks.
   ///
+  /// Takes the category's **slug**, not its id. Ids are GUIDs and say only
+  /// which row; the slug is what says the booking was an oil change. See
+  /// `ServiceCategory.slug`.
+  ///
   /// Deliberately conservative: a category is mapped only where the work it
   /// names *is* the maintenance item. A body-repair or detailing booking
   /// resets nothing, and pretending otherwise would silently push a real oil
   /// change further away.
-  static MaintenanceType? forCategory(String categoryId) => switch (categoryId) {
+  static MaintenanceType? forCategory(String categorySlug) =>
+      switch (categorySlug) {
         'express' || 'full' || 'major' => MaintenanceType.oil,
         'tyres' => MaintenanceType.tyres,
         'battery' => MaintenanceType.battery12v,

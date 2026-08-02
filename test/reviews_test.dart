@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 /// Verified reviews (spec §8). The claim being tested is narrow and total:
 /// **a review cannot exist without a booking that completed and paid out.**
@@ -229,7 +230,7 @@ void main() {
     test('a workshop nobody has rated has no rating, not a zero', () async {
       final container = await _container();
       // p10 is absent from the marketplace's own aggregates.
-      expect(container.read(providerRatingProvider('p10')), isNull);
+      expect(container.read(providerRatingProvider(mockIdP10)), isNull);
     });
 
     test('a written review moves the workshop rating', () async {

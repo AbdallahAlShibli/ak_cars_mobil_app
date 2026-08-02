@@ -494,7 +494,7 @@ class MockServiceMarketplaceService
       verified: false,
       stage: ProviderOnboardingStage.documentsSubmitted,
       stageSince: now,
-      crDocumentUrl: application.crDocumentUrl,
+      crDocument: application.crDocument,
       ownerUserId: ownerUserId,
       fulfillments: application.fulfillments,
       crNumber: application.crNumber,

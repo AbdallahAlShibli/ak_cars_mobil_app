@@ -7,6 +7,7 @@ import 'package:ak_cars_mobil_app/state/app_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 /// The home page's offer governance and its two workshop boards
 /// (AK_Cars_تعليمات_الصفحة_الرئيسية §§2–5).
@@ -87,13 +88,13 @@ void main() {
         for (final row in marketplace.auditOffers()) row.offer.id: row.rejection,
       };
 
-      expect(byId['of-p3-express-unapproved'],
+      expect(byId[mockIdOfP3ExpressUnapproved],
           OfferRejection.workshopNotApproved);
-      expect(byId['of-p2-full-inflated'], OfferRejection.referencePriceMismatch);
-      expect(byId['of-p5-contracts-expired'], OfferRejection.outsideItsDates);
-      expect(byId['of-p1-express-draft'], OfferRejection.notApprovedByFounder);
+      expect(byId[mockIdOfP2FullInflated], OfferRejection.referencePriceMismatch);
+      expect(byId[mockIdOfP5ContractsExpired], OfferRejection.outsideItsDates);
+      expect(byId[mockIdOfP1ExpressDraft], OfferRejection.notApprovedByFounder);
       // …and the valid ones carry no reason at all.
-      expect(byId['of-p1-major'], isNull);
+      expect(byId[mockIdOfP1Major], isNull);
     });
 
     test('an inflated reference price cannot manufacture a discount',
@@ -103,13 +104,13 @@ void main() {
 
       // Gulf Auto Care publishes 32 for a full service; the offer claims 45
       // was struck through, which would read as a 36% saving.
-      expect(marketplace.offeringById('o-p2-full')!.price, 32);
-      expect(marketplace.offerFor('o-p2-full'), isNull);
+      expect(marketplace.offeringById(mockOfferingId(mockIdP2, mockIdFull))!.price, 32);
+      expect(marketplace.offerFor(mockOfferingId(mockIdP2, mockIdFull)), isNull);
       expect(marketplace.liveOffers().map((e) => e.offer.id),
-          isNot(contains('of-p2-full-inflated')));
+          isNot(contains(mockIdOfP2FullInflated)));
       // The service is still sold, at its published price. Only the false
       // discount disappeared.
-      expect(marketplace.pricedOffering('o-p2-full')!.price, 32);
+      expect(marketplace.pricedOffering(mockOfferingId(mockIdP2, mockIdFull))!.price, 32);
     });
 
     test('an unapproved workshop cannot run an offer', () async {
@@ -117,11 +118,11 @@ void main() {
       final marketplace = container.read(serviceMarketplaceRepositoryProvider);
 
       final sohar =
-          marketplace.providers.firstWhere((p) => p.id == 'p3');
+          marketplace.providers.firstWhere((p) => p.id == mockIdP3);
       expect(sohar.isApproved, isFalse);
-      expect(marketplace.offerFor('o-p3-express'), isNull);
-      expect(marketplace.pricedOffering('o-p3-express')!.price,
-          marketplace.offeringById('o-p3-express')!.price);
+      expect(marketplace.offerFor(mockOfferingId(mockIdP3, mockIdExpress)), isNull);
+      expect(marketplace.pricedOffering(mockOfferingId(mockIdP3, mockIdExpress))!.price,
+          marketplace.offeringById(mockOfferingId(mockIdP3, mockIdExpress))!.price);
     });
 
     test('offers are ordered by the saving, and by nothing else', () async {
@@ -141,11 +142,11 @@ void main() {
       final marketplace = container.read(serviceMarketplaceRepositoryProvider);
 
       final muscat = marketplace.liveOffers(region: 'Muscat');
-      expect(muscat.map((e) => e.offer.id), contains('of-p1-major'));
-      expect(muscat.map((e) => e.offer.id), isNot(contains('of-p6-ac')));
+      expect(muscat.map((e) => e.offer.id), contains(mockIdOfP1Major));
+      expect(muscat.map((e) => e.offer.id), isNot(contains(mockIdOfP6Ac)));
 
       final dhofar = marketplace.liveOffers(region: 'Dhofar');
-      expect(dhofar.map((e) => e.offer.id), contains('of-p6-ac'));
+      expect(dhofar.map((e) => e.offer.id), contains(mockIdOfP6Ac));
     });
 
     test('an engine-oil discount is not advertised to an electric car',
@@ -158,10 +159,10 @@ void main() {
       final electric = marketplace.liveOffers(
           region: 'Muscat', powertrain: Powertrain.electric);
 
-      expect(petrol.map((e) => e.offer.id), contains('of-p1-major'));
-      expect(electric.map((e) => e.offer.id), isNot(contains('of-p1-major')));
+      expect(petrol.map((e) => e.offer.id), contains(mockIdOfP1Major));
+      expect(electric.map((e) => e.offer.id), isNot(contains(mockIdOfP1Major)));
       // Tyres fit any car.
-      expect(electric.map((e) => e.offer.id), contains('of-p4-tyres'));
+      expect(electric.map((e) => e.offer.id), contains(mockIdOfP4Tyres));
     });
 
     test('the offers section is empty, not padded, when nothing is discounted',
@@ -184,32 +185,32 @@ void main() {
         () async {
       final container = await createDataContainer();
       final marketplace = container.read(serviceMarketplaceRepositoryProvider);
-      final offer = marketplace.offerFor('o-p4-tyres')!;
+      final offer = marketplace.offerFor(mockOfferingId(mockIdP4, mockIdTyres))!;
 
       // The published price is untouched — it is what the offer is validated
       // against and what the card strikes through.
-      expect(marketplace.offeringById('o-p4-tyres')!.price, 6);
+      expect(marketplace.offeringById(mockOfferingId(mockIdP4, mockIdTyres))!.price, 6);
       expect(offer.referencePrice, 6);
       expect(offer.discountedPrice, 4.5);
 
       // …and every screen that quotes a payable price quotes the discount.
-      expect(marketplace.pricedOffering('o-p4-tyres')!.price, 4.5);
+      expect(marketplace.pricedOffering(mockOfferingId(mockIdP4, mockIdTyres))!.price, 4.5);
       expect(
         marketplace.pricedOfferings
-            .firstWhere((o) => o.id == 'o-p4-tyres')
+            .firstWhere((o) => o.id == mockOfferingId(mockIdP4, mockIdTyres))
             .price,
         4.5,
       );
       expect(
         marketplace
-            .offeringsFor('tyres', region: 'Muscat')
-            .firstWhere((o) => o.id == 'o-p4-tyres')
+            .offeringsFor(mockIdTyres, region: 'Muscat')
+            .firstWhere((o) => o.id == mockOfferingId(mockIdP4, mockIdTyres))
             .price,
         4.5,
       );
-      expect(marketplace.fromPriceFor('tyres', region: 'Muscat'), 4.5);
-      expect(marketplace.cheapestOfferingFor('tyres', region: 'Muscat')!.id,
-          'o-p4-tyres');
+      expect(marketplace.fromPriceFor(mockIdTyres, region: 'Muscat'), 4.5);
+      expect(marketplace.cheapestOfferingFor(mockIdTyres, region: 'Muscat')!.id,
+          mockOfferingId(mockIdP4, mockIdTyres));
     });
 
     test('the cheapest offering is the one the customer would actually pay '
@@ -220,8 +221,8 @@ void main() {
       // Gulf Auto Care publishes 7 for tyres, Qurum publishes 6 and discounts
       // to 4.5 — so the "best price" row must be Qurum's, at 4.5.
       final cheapest =
-          marketplace.cheapestOfferingFor('tyres', region: 'Muscat')!;
-      for (final o in marketplace.offeringsFor('tyres', region: 'Muscat')) {
+          marketplace.cheapestOfferingFor(mockIdTyres, region: 'Muscat')!;
+      for (final o in marketplace.offeringsFor(mockIdTyres, region: 'Muscat')) {
         if (o.price == null) continue;
         expect(cheapest.price!, lessThanOrEqualTo(o.price!));
       }
@@ -250,27 +251,27 @@ void main() {
 
       // A submitted-but-not-enabled offer is invisible.
       expect(container.read(homeOffersProvider).map((e) => e.offer.id),
-          isNot(contains('of-p1-express-draft')));
+          isNot(contains(mockIdOfP1ExpressDraft)));
 
-      await admin.setActive('of-p1-express-draft', active: true);
+      await admin.setActive(mockIdOfP1ExpressDraft, active: true);
       expect(container.read(homeOffersProvider).map((e) => e.offer.id),
-          contains('of-p1-express-draft'));
+          contains(mockIdOfP1ExpressDraft));
       // And the discount is live everywhere at once.
       expect(
         container
             .read(serviceMarketplaceRepositoryProvider)
-            .pricedOffering('o-p1-express')!
+            .pricedOffering(mockOfferingId(mockIdP1, mockIdExpress))!
             .price,
         9,
       );
 
-      await admin.setActive('of-p1-major', active: false);
+      await admin.setActive(mockIdOfP1Major, active: false);
       expect(container.read(homeOffersProvider).map((e) => e.offer.id),
-          isNot(contains('of-p1-major')));
+          isNot(contains(mockIdOfP1Major)));
       expect(
         container
             .read(serviceMarketplaceRepositoryProvider)
-            .pricedOffering('o-p1-major')!
+            .pricedOffering(mockOfferingId(mockIdP1, mockIdMajor))!
             .price,
         45,
       );
@@ -285,15 +286,15 @@ void main() {
       // price, and no amount of approving fixes that.
       await container
           .read(offersAdminProvider)
-          .setActive('of-p2-full-inflated', active: true);
+          .setActive(mockIdOfP2FullInflated, active: true);
 
       final audit = container.read(offersAuditProvider);
       final row =
-          audit.firstWhere((r) => r.offer.id == 'of-p2-full-inflated');
+          audit.firstWhere((r) => r.offer.id == mockIdOfP2FullInflated);
       expect(row.offer.activeByFounder, isTrue);
       expect(row.rejection, OfferRejection.referencePriceMismatch);
       expect(container.read(homeOffersProvider).map((e) => e.offer.id),
-          isNot(contains('of-p2-full-inflated')));
+          isNot(contains(mockIdOfP2FullInflated)));
     });
   });
 
@@ -341,18 +342,18 @@ void main() {
       // p10 is in the aggregate with zero; p11 is not in it at all.
       expect(
         marketplace.workshopDemand
-            .firstWhere((d) => d.providerId == 'p10')
+            .firstWhere((d) => d.providerId == mockIdP10)
             .completedBookings,
         0,
       );
       expect(marketplace.workshopDemand.map((d) => d.providerId),
-          isNot(contains('p11')));
+          isNot(contains(mockIdP11)));
 
       final ids = marketplace.mostRequestedWorkshops(limit: 20).map(
             (e) => e.provider.id,
           );
-      expect(ids, isNot(contains('p10')));
-      expect(ids, isNot(contains('p11')));
+      expect(ids, isNot(contains(mockIdP10)));
+      expect(ids, isNot(contains(mockIdP11)));
     });
 
     test('the demand board says when it widened past the governorate',

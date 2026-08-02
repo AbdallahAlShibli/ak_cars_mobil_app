@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/i18n/strings.dart';
 import '../../models/powertrain.dart';
 import '../../models/product.dart';
+import 'mock_ids.dart';
 
 /// Demo catalogue for the parts shop. Read only by `MockShopService`.
 ///
@@ -26,11 +27,11 @@ abstract final class MockShopData {
 
   static const products = <Product>[
     Product(
-      id: 'pr1',
+      id: mockIdPr1,
       name: L('فلتر زيت أصلي', 'Genuine oil filter'),
       price: 3.5,
       categoryId: 'filters',
-      providerId: 'p1',
+      providerId: mockIdP1,
       region: 'Muscat',
       icon: LucideIcons.funnel,
       fits: {'Toyota Camry'},
@@ -59,11 +60,11 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr2',
+      id: mockIdPr2,
       name: L('بطارية 70 أمبير AGM', 'Battery 70Ah AGM'),
       price: 28,
       categoryId: 'batteries',
-      providerId: 'p2',
+      providerId: mockIdP2,
       region: 'Muscat',
       icon: LucideIcons.batteryMedium,
       fits: {'any'},
@@ -94,11 +95,11 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr3',
+      id: mockIdPr3,
       name: L('فحمات فرامل — أمامية', 'Brake pads — front'),
       price: 18,
       categoryId: 'brakes',
-      providerId: 'p1',
+      providerId: mockIdP1,
       region: 'Muscat',
       icon: LucideIcons.disc,
       fits: {'Toyota Camry', 'Nissan Patrol'},
@@ -127,11 +128,11 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr4',
+      id: mockIdPr4,
       name: L('طقم إضاءة LED أمامية', 'LED headlight kit'),
       price: 9.5,
       categoryId: 'lights',
-      providerId: 'p2',
+      providerId: mockIdP2,
       region: 'Muscat',
       icon: LucideIcons.lightbulb,
       fits: {'any'},
@@ -158,11 +159,11 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr5',
+      id: mockIdPr5,
       name: L('إطار جميع التضاريس 265/60R18', 'All-terrain tyre 265/60R18'),
       price: 38,
       categoryId: 'tyres',
-      providerId: 'p3',
+      providerId: mockIdP3,
       region: 'North Al Batinah',
       icon: LucideIcons.circleDot,
       fits: {'Nissan Patrol'},
@@ -191,11 +192,11 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr6',
+      id: mockIdPr6,
       name: L('فلتر هواء المقصورة', 'Cabin air filter'),
       price: 4,
       categoryId: 'filters',
-      providerId: 'p2',
+      providerId: mockIdP2,
       region: 'Muscat',
       icon: LucideIcons.wind,
       fits: {'any'},
@@ -228,11 +229,11 @@ abstract final class MockShopData {
     // walks away from, because the wrong one either will not fit the car or
     // will trip the socket.
     Product(
-      id: 'pr7',
+      id: mockIdPr7,
       name: L('كيبل شحن Type 2 — ٧.٤ كيلوواط', 'Type 2 charging cable — 7.4 kW'),
       price: 34,
       categoryId: 'charging',
-      providerId: 'p2',
+      providerId: mockIdP2,
       region: 'Muscat',
       icon: LucideIcons.cable,
       fits: {'any'},
@@ -264,11 +265,11 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr8',
+      id: mockIdPr8,
       name: L('شاحن محمول ٢.٣ كيلوواط', 'Portable charger 2.3 kW'),
       price: 46,
       categoryId: 'charging',
-      providerId: 'p8',
+      providerId: mockIdP8,
       region: 'North Al Batinah',
       icon: LucideIcons.power,
       fits: {'any'},
@@ -302,11 +303,11 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr9',
+      id: mockIdPr9,
       name: L('محول شحن Type 1 إلى Type 2', 'Charging adapter Type 1 to Type 2'),
       price: 18,
       categoryId: 'charging',
-      providerId: 'p5',
+      providerId: mockIdP5,
       region: 'Ad Dakhiliyah',
       icon: LucideIcons.plug,
       fits: {'any'},
@@ -334,11 +335,11 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr10',
+      id: mockIdPr10,
       name: L('إطار للسيارات الكهربائية 235/55R19', 'EV-rated tyre 235/55R19'),
       price: 44,
       categoryId: 'tyres',
-      providerId: 'p1',
+      providerId: mockIdP1,
       region: 'Muscat',
       icon: LucideIcons.circleDot,
       fits: {'any'},
@@ -370,12 +371,12 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr11',
+      id: mockIdPr11,
       name: L('بطارية ١٢ فولت مساعدة للسيارات الكهربائية',
           '12V auxiliary battery for EVs'),
       price: 31,
       categoryId: 'batteries',
-      providerId: 'p6',
+      providerId: mockIdP6,
       region: 'Dhofar',
       icon: LucideIcons.batteryMedium,
       fits: {'any'},
@@ -407,11 +408,11 @@ abstract final class MockShopData {
       ],
     ),
     Product(
-      id: 'pr12',
+      id: mockIdPr12,
       name: L('فلتر مقصورة للسيارات الكهربائية', 'Cabin filter for EVs'),
       price: 6,
       categoryId: 'filters',
-      providerId: 'p2',
+      providerId: mockIdP2,
       region: 'Muscat',
       icon: LucideIcons.wind,
       fits: {'any'},

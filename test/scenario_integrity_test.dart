@@ -2,6 +2,7 @@ import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/config/app_environment.dart';
 import 'package:ak_cars_mobil_app/core/error/app_exception.dart';
 import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
+import 'package:ak_cars_mobil_app/core/utils/guid.dart';
 import 'package:ak_cars_mobil_app/core/widgets/status_indicator.dart';
 import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
@@ -13,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 /// Scenario integrity (§13).
 ///
@@ -65,7 +67,7 @@ ServiceOffering _offeringOf(ProviderContainer c, String providerId) =>
 
 Future<ServiceRequest> _book(
   ProviderContainer c, {
-  String providerId = 'p1',
+  String providerId = mockIdP1,
   String? maintenanceItemKey,
 }) =>
     c.read(requestsProvider.notifier).place(
@@ -98,10 +100,19 @@ Future<void> _driveToApproval(ProviderContainer c, String id) async {
 ServiceRequest _byId(ProviderContainer c, String id) =>
     c.read(requestsProvider).firstWhere((r) => r.id == id);
 
+/// The certificate a registration carries — real PNG bytes, as the picker
+/// would produce.
+MediaAttachment _crAttachment(String fileName) => MediaAttachment(
+      id: derivedGuid('test-cr', fileName),
+      base64Data: testPngBase64,
+      mimeType: 'image/png',
+      fileName: fileName,
+    );
+
 /// Files a workshop registration the way `register_screen.dart` does.
 Future<UserProfile> _registerWorkshop(
   ProviderContainer c, {
-  String crDocument = 'file:///cr.jpg',
+  String crDocumentName = 'cr.png',
 }) async {
   final profile = UserProfile(
     id: 'u-applicant',
@@ -116,7 +127,7 @@ Future<UserProfile> _registerWorkshop(
       businessNameAr: 'ورشة سالم',
       businessNameEn: 'Salim Workshop',
       crNumber: '1450998',
-      crDocumentUrl: crDocument,
+      crDocument: _crAttachment(crDocumentName),
       area: 'Seeb',
       fulfillments: const {Fulfillment.workshop},
       submittedAt: DateTime.now(),
@@ -173,7 +184,7 @@ void main() {
     final c = await _container();
     final request = await c.read(requestsProvider.notifier).placePartRequest(
           const CreatePartRequestDraft(
-            providerId: 'p1',
+            providerId: mockIdP1,
             carId: 'sc-test-1',
             plate: '1234 AB',
             part: PartRequest(description: 'فلتر زيت'),
@@ -188,7 +199,7 @@ void main() {
           Quote(
             id: 'q1',
             requestId: request.id,
-            workshopId: 'p1',
+            workshopId: mockIdP1,
             partDescription: 'فلتر زيت أصلي',
             partPrice: 4,
             laborPrice: 3,
@@ -417,33 +428,33 @@ void main() {
       final c = await createDataContainer();
       final marketplace = c.read(serviceMarketplaceRepositoryProvider);
       // The workshop publishes 32; the offer claims 45 was struck through.
-      expect(marketplace.offeringById('o-p2-full')!.price, 32);
-      expect(marketplace.offerFor('o-p2-full'), isNull);
-      expect(marketplace.pricedOffering('o-p2-full')!.price, 32);
+      expect(marketplace.offeringById(mockOfferingId(mockIdP2, mockIdFull))!.price, 32);
+      expect(marketplace.offerFor(mockOfferingId(mockIdP2, mockIdFull)), isNull);
+      expect(marketplace.pricedOffering(mockOfferingId(mockIdP2, mockIdFull))!.price, 32);
     });
 
     test('an unapproved workshop is invisible and unbookable', () async {
       final c = await createDataContainer();
       final marketplace = c.read(serviceMarketplaceRepositoryProvider);
-      final sohar = marketplace.providerById('p3')!;
+      final sohar = marketplace.providerById(mockIdP3)!;
       expect(sohar.isApproved, isFalse);
 
       // Not on any customer-facing list…
       expect(marketplace.visibleProviders.map((p) => p.id),
-          isNot(contains('p3')));
+          isNot(contains(mockIdP3)));
       expect(marketplace.pricedOfferings.map((o) => o.provider.id),
-          isNot(contains('p3')));
-      expect(marketplace.offeringsFor('express').map((o) => o.provider.id),
-          isNot(contains('p3')));
+          isNot(contains(mockIdP3)));
+      expect(marketplace.offeringsFor(mockIdExpress).map((o) => o.provider.id),
+          isNot(contains(mockIdP3)));
       // …and not on a leaderboard or an offer rail.
-      expect(marketplace.offerFor('o-p3-express'), isNull);
+      expect(marketplace.offerFor(mockOfferingId(mockIdP3, mockIdExpress)), isNull);
 
       // …and it refuses a booking even when one is aimed straight at it,
       // because hiding a button is not a rule.
       await expectLater(
         c.read(serviceMarketplaceRepositoryProvider).createRequest(
               CreateServiceRequestDraft(
-                offering: marketplace.offeringById('o-p3-express')!,
+                offering: marketplace.offeringById(mockOfferingId(mockIdP3, mockIdExpress))!,
                 car: _car,
                 plate: '1234 AB',
                 fulfillment: Fulfillment.workshop,
@@ -488,7 +499,9 @@ void main() {
     // Filed at documentsSubmitted, not applied: the certificate came with it.
     expect(workshop.stage, ProviderOnboardingStage.documentsSubmitted);
     expect(workshop.isApproved, isFalse);
-    expect(workshop.crDocumentUrl, 'file:///cr.jpg');
+    expect(workshop.crDocument?.fileName, 'cr.png');
+    // The bytes travelled with the application, not a link to them.
+    expect(workshop.crDocument?.hasBytes, isTrue);
 
     final marketplace = c.read(serviceMarketplaceRepositoryProvider);
     // Invisible to customers on every surface.
@@ -575,14 +588,14 @@ void main() {
     final profile = c.read(authProvider).profile!;
     await c.read(authProvider.notifier).resubmitWorkshopApplication(
           profile.workshop!.copyWith(
-            crDocumentUrl: 'file:///cr-clear.jpg',
+            crDocument: _crAttachment('cr-clear.png'),
             submittedAt: DateTime.now(),
           ),
         );
 
     final resubmitted = _applicantWorkshop(c);
     expect(resubmitted.stage, ProviderOnboardingStage.documentsSubmitted);
-    expect(resubmitted.crDocumentUrl, 'file:///cr-clear.jpg');
+    expect(resubmitted.crDocument?.fileName, 'cr-clear.png');
     // Re-filed, not duplicated — one workshop per owner.
     expect(
       c.read(rosterProvider).where((p) => p.ownerUserId == 'u-applicant').length,
@@ -712,24 +725,24 @@ void main() {
     final queue = c.read(operatorQueueProvider);
     final reviews = c.read(reviewsProvider);
 
-    final metrics = marketplace.metricsFor('p1', queue, reviews);
+    final metrics = marketplace.metricsFor(mockIdP1, queue, reviews);
     expect(metrics.received, greaterThan(0));
     expect(metrics.accepted, lessThanOrEqualTo(metrics.received));
     expect(metrics.completed, lessThanOrEqualTo(metrics.accepted));
     // The rating is the mean of real reviews, and matches counting them by
     // hand — there is no stored rating field anywhere to drift from.
-    final mine = reviews.about('p1',
+    final mine = reviews.about(mockIdP1,
         direction: ReviewDirection.customerToWorkshop);
     expect(metrics.reviewCount, mine.length);
     expect(metrics.avgRating, mine.averageRating);
     expect(metrics.recentReviews.length, lessThanOrEqualTo(5));
 
     // A workshop nobody has sent a job to has *no* rate, not a zero one.
-    final untouched = marketplace.metricsFor('p15', queue, reviews);
+    final untouched = marketplace.metricsFor(mockIdP15, queue, reviews);
     expect(untouched.acceptanceRate, isNull);
     expect(untouched.avgRating, isNull);
 
-    final earnings = marketplace.earningsFor('p1', queue);
+    final earnings = marketplace.earningsFor(mockIdP1, queue);
     expect(earnings.releasedNet,
         closeTo(earnings.releasedGross - earnings.releasedCommission, 0.001));
     final commission = c.read(appConfigProvider).platformCommission;

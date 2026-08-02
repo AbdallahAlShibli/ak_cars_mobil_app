@@ -163,7 +163,7 @@ List<Recommendation> buildRecommendations({
       if (!categoryServes(category, car.powertrain)) continue;
 
       // The schedule line this category is *about*, if any.
-      final type = MaintenanceTypeX.forCategory(category.id);
+      final type = MaintenanceTypeX.forCategory(category.slug);
 
       final scope = market(category.id);
       // Nothing in scope sells it: recommending it would send the user to an
@@ -237,7 +237,7 @@ List<Recommendation> buildRecommendations({
 /// most booked services in Oman from most of the country.
 bool categoryServes(ServiceCategory category, Powertrain? powertrain) {
   if (!category.appliesTo(powertrain)) return false;
-  if (MaintenanceTypeX.forCategory(category.id) != MaintenanceType.oil) {
+  if (MaintenanceTypeX.forCategory(category.slug) != MaintenanceType.oil) {
     return true;
   }
   // Unrecorded powertrain behaves like a combustion car, as everywhere else.

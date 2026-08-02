@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 
 const lri = '\u2066';
 const pdi = '\u2069';
@@ -77,7 +78,7 @@ void main() {
   group('shop details card', () {
     testWidgets('prints the phone with its dial code first in Arabic',
         (tester) async {
-      await pumpScreen(tester, const ProductDetailScreen(productId: 'pr1'),
+      await pumpScreen(tester, const ProductDetailScreen(productId: mockIdPr1),
           locale: 'ar');
       await tester.scrollUntilVisible(find.text('بيانات المتجر'), 300,
           scrollable: find.byType(Scrollable).first);
@@ -87,7 +88,7 @@ void main() {
     });
 
     testWidgets('leaves the numbers as data in English', (tester) async {
-      await pumpScreen(tester, const ProductDetailScreen(productId: 'pr1'),
+      await pumpScreen(tester, const ProductDetailScreen(productId: mockIdPr1),
           locale: 'en');
       await tester.scrollUntilVisible(find.text('Shop details'), 300,
           scrollable: find.byType(Scrollable).first);

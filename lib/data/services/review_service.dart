@@ -1,3 +1,4 @@
+import '../../core/utils/guid.dart';
 import '../../config/app_config.dart';
 import '../../core/error/app_exception.dart';
 import '../datasources/mock/mock_seed.dart';
@@ -45,10 +46,6 @@ class MockReviewService with MockServiceBase implements ReviewService {
 
   final List<Review> _reviews = [...MockSeed.reviews];
 
-  /// Starts above the seeded ids so a review written this session cannot
-  /// collide with one from the demo world.
-  int _nextId = 500;
-
   @override
   Future<List<Review>> fetchReviews() =>
       respond(List<Review>.unmodifiable(_reviews));
@@ -69,7 +66,10 @@ class MockReviewService with MockServiceBase implements ReviewService {
         code: 'review_rating_out_of_range',
       );
     }
-    final stored = review.copyWith(id: 'rev-${_nextId++}');
+    // A GUID, so a review written on this device cannot collide with one
+    // from the demo world or from another device — which a counter starting
+    // at 500 only avoided by being seeded higher than the last mock id.
+    final stored = review.copyWith(id: newGuid());
     _reviews.insert(0, stored);
     return respond(stored);
   }

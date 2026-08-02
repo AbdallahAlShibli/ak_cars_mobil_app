@@ -52,7 +52,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   BookingAvailability get _availability =>
       _marketplace.availabilityFor(_offering.provider.id);
 
-  bool get _isEmergency => _offering.categoryId == 'sos';
+  bool get _isEmergency => _offering.categorySlug == 'sos';
 
   bool get _needsSlot => _fulfillment != Fulfillment.roadside;
 

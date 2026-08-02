@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/utils/guid.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../di/providers.dart';
@@ -132,7 +133,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
     if (!_canPublish) return;
     final profile = ref.read(authProvider).profile;
     final ad = GalleryListing(
-      id: 'my-${DateTime.now().millisecondsSinceEpoch}',
+      id: newGuid(),
       make: _make!.name,
       model: _model!,
       trim: _trim ?? '',

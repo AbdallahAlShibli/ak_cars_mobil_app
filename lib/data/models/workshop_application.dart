@@ -1,4 +1,5 @@
 import '../../core/json/json_utils.dart';
+import 'media_attachment.dart';
 import 'service_provider.dart';
 
 /// What a workshop owner filled in when they registered (spec §8, §10).
@@ -18,7 +19,7 @@ class WorkshopApplication {
   const WorkshopApplication({
     required this.businessNameAr,
     required this.crNumber,
-    required this.crDocumentUrl,
+    required this.crDocument,
     required this.area,
     required this.submittedAt,
     this.businessNameEn,
@@ -44,9 +45,16 @@ class WorkshopApplication {
   /// required field would be answered with a made-up number.
   final String? vatNumber;
 
-  /// The uploaded CR certificate — image or PDF. Required: the founder is
-  /// asked to verify a business, and there is nothing to verify without it.
-  final String crDocumentUrl;
+  /// The uploaded CR certificate — image or PDF, held as base64 bytes on the
+  /// application itself. Required: the founder is asked to verify a business,
+  /// and there is nothing to verify without it.
+  ///
+  /// Carrying the bytes rather than a URL is what makes "required" mean
+  /// something here. A URL can be stored while the file behind it never
+  /// finished uploading, and the reviewer would be looking at a broken frame
+  /// on the screen where they approve a business; bytes on the record either
+  /// arrived or the application did not.
+  final MediaAttachment crDocument;
 
   /// Canonical English area key, from `LocationCatalog`.
   final String area;
@@ -72,7 +80,7 @@ class WorkshopApplication {
         businessNameEn: json.stringOrNull('businessNameEn'),
         crNumber: json.stringOr('crNumber', ''),
         vatNumber: json.stringOrNull('vatNumber'),
-        crDocumentUrl: json.stringOr('crDocumentUrl', ''),
+        crDocument: MediaAttachment.fromJson(json.requireObject('crDocument')),
         area: json.stringOr('area', ''),
         fulfillments:
             json.stringList('fulfillments').map(FulfillmentX.fromKey).toSet(),
@@ -84,7 +92,7 @@ class WorkshopApplication {
         'businessNameEn': businessNameEn,
         'crNumber': crNumber,
         'vatNumber': vatNumber,
-        'crDocumentUrl': crDocumentUrl,
+        'crDocument': crDocument.toJson(),
         'area': area,
         'fulfillments': [for (final f in fulfillments) f.key],
         'submittedAt': submittedAt.toIso8601String(),
@@ -95,7 +103,7 @@ class WorkshopApplication {
     String? businessNameEn,
     String? crNumber,
     String? vatNumber,
-    String? crDocumentUrl,
+    MediaAttachment? crDocument,
     String? area,
     Set<Fulfillment>? fulfillments,
     DateTime? submittedAt,
@@ -105,7 +113,7 @@ class WorkshopApplication {
         businessNameEn: businessNameEn ?? this.businessNameEn,
         crNumber: crNumber ?? this.crNumber,
         vatNumber: vatNumber ?? this.vatNumber,
-        crDocumentUrl: crDocumentUrl ?? this.crDocumentUrl,
+        crDocument: crDocument ?? this.crDocument,
         area: area ?? this.area,
         fulfillments: fulfillments ?? this.fulfillments,
         submittedAt: submittedAt ?? this.submittedAt,
@@ -118,7 +126,7 @@ class WorkshopApplication {
       other.businessNameEn == businessNameEn &&
       other.crNumber == crNumber &&
       other.vatNumber == vatNumber &&
-      other.crDocumentUrl == crDocumentUrl &&
+      other.crDocument == crDocument &&
       other.area == area &&
       other.submittedAt == submittedAt &&
       other.fulfillments.length == fulfillments.length &&
@@ -130,7 +138,7 @@ class WorkshopApplication {
         businessNameEn,
         crNumber,
         vatNumber,
-        crDocumentUrl,
+        crDocument,
         area,
         submittedAt,
         Object.hashAllUnordered(fulfillments),

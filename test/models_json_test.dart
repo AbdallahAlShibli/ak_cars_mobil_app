@@ -11,6 +11,9 @@ import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'helpers/test_harness.dart';
+import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+
 /// Proves the models are genuinely wire-ready: every one survives a trip
 /// through `toJson` → `jsonEncode` → `jsonDecode` → `fromJson` unchanged.
 ///
@@ -124,7 +127,7 @@ void main() {
         expect(decoded.powertrains, product.powertrains);
       }
       final cable =
-          MockShopData.products.firstWhere((p) => p.id == 'pr7');
+          MockShopData.products.firstWhere((p) => p.id == mockIdPr7);
       expect(cable.powertrains, isNotEmpty);
       expect(roundTrip(cable.toJson(), Product.fromJson).evOnly, isTrue);
     });
@@ -178,7 +181,7 @@ void main() {
         plate: '1234 AB',
         fulfillment: Fulfillment.pickup,
         slot: 'Mon 3 Aug · 10:30',
-        addOns: MockServiceData.addOnsByProvider['p1']!,
+        addOns: MockServiceData.addOnsByProvider[mockIdP1]!,
         total: 27.5,
         escrow: EscrowState.awaitingApproval,
         createdAt: DateTime.utc(2026, 7, 21, 9),
@@ -193,9 +196,11 @@ void main() {
           notes: 'Oil and filter replaced.',
           submittedAt: DateTime.utc(2026, 7, 21, 15),
           media: const [
-            ProofMedia(
-              id: 'm1',
-              uri: 'https://cdn.example.com/proof/1042-1.jpg',
+            MediaAttachment(
+              id: 'ef0b2f2c-6c1e-4a9b-9a1e-0c5f4b2d7a10',
+              base64Data: testPngBase64,
+              mimeType: 'image/png',
+              fileName: '1042-1.png',
               caption: 'Old filter',
             ),
           ],
