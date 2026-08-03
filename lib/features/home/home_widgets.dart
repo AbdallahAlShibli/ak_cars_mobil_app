@@ -104,9 +104,9 @@ class _HomeOffersRailState extends ConsumerState<HomeOffersRail> {
                 padding: const EdgeInsetsDirectional.only(end: 11),
                 child: Transform.scale(
                   scale: 1 - distance * 0.05,
-                  child: Opacity(
-                    opacity: 1 - distance * 0.25,
-                    child: _DiscountCard(live: offers[i]),
+                  child: _DiscountCard(
+                    live: offers[i],
+                    fade: 1 - distance * 0.25,
                   ),
                 ),
               );
@@ -125,9 +125,14 @@ class _HomeOffersRailState extends ConsumerState<HomeOffersRail> {
 /// One discount: what it is, whose it is, what it costs now instead of before,
 /// and when it stops.
 class _DiscountCard extends StatelessWidget {
-  const _DiscountCard({required this.live});
+  const _DiscountCard({required this.live, this.fade = 1});
 
   final LiveOffer live;
+
+  /// Carousel neighbour fade, applied straight to the background colours
+  /// below instead of wrapping this (composited) card in an [Opacity] —
+  /// cheaper every frame of the drag, since there's no image to fade here.
+  final double fade;
 
   @override
   Widget build(BuildContext context) {
@@ -147,9 +152,12 @@ class _DiscountCard extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [ak.promoBgA, ak.promoBgB],
+            colors: [
+              ak.promoBgA.withValues(alpha: fade),
+              ak.promoBgB.withValues(alpha: fade),
+            ],
           ),
-          border: Border.all(color: ak.promoBorder),
+          border: Border.all(color: ak.promoBorder.withValues(alpha: fade)),
           borderRadius: BorderRadius.circular(22),
         ),
         child: Column(
@@ -318,9 +326,9 @@ class _HomeAnnouncementsRailState
                 padding: const EdgeInsetsDirectional.only(end: 11),
                 child: Transform.scale(
                   scale: 1 - distance * 0.05,
-                  child: Opacity(
-                    opacity: 1 - distance * 0.25,
-                    child: _AnnouncementCard(offer: items[i]),
+                  child: _AnnouncementCard(
+                    offer: items[i],
+                    fade: 1 - distance * 0.25,
                   ),
                 ),
               );
@@ -337,9 +345,12 @@ class _HomeAnnouncementsRailState
 }
 
 class _AnnouncementCard extends ConsumerWidget {
-  const _AnnouncementCard({required this.offer});
+  const _AnnouncementCard({required this.offer, this.fade = 1});
 
   final Promotion offer;
+
+  /// Carousel neighbour fade — see [_DiscountCard.fade].
+  final double fade;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -369,9 +380,12 @@ class _AnnouncementCard extends ConsumerWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [ak.promoBgA, ak.promoBgB],
+            colors: [
+              ak.promoBgA.withValues(alpha: fade),
+              ak.promoBgB.withValues(alpha: fade),
+            ],
           ),
-          border: Border.all(color: ak.promoBorder),
+          border: Border.all(color: ak.promoBorder.withValues(alpha: fade)),
           borderRadius: BorderRadius.circular(22),
         ),
         child: Column(

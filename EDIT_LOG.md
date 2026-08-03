@@ -17,6 +17,93 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-08-03 · Performance review — carousel opacity and image caching
+
+**Baseline:** `00df6e1`. Follows the static-only review in
+`AK_Cars_تعليمات_مراجعة_الأداء.md` (checked against
+[docs.flutter.dev/perf/best-practices](https://docs.flutter.dev/perf/best-practices)),
+not a DevTools/Performance-view session — that's a separate, later step.
+
+### §1 — animated `Opacity` on scroll-linked carousels
+
+Three call sites recomputed `Opacity` every frame of a drag, each wrapping a
+composited, multi-widget subtree (so every frame paid for a `saveLayer`):
+
+- `HomeOffersRail`'s `_DiscountCard` (`lib/features/home/home_widgets.dart`,
+  the "this week's offers" carousel).
+- `HomeAnnouncementsRail`'s `_AnnouncementCard` (same file — same pattern,
+  found during the §4 sweep, not named in the brief but matching it exactly).
+- `_SlideView` on the onboarding tour (`lib/features/onboarding/onboarding_screen.dart`).
+
+None of the three have a transparent image layered over other content, so
+none needed `Opacity`/`ColorFiltered` at all — the fade now applies straight
+to each leaf's own colour (`Color.withValues(alpha: ...)`):
+
+- The two carousel cards are a gradient-background `Container` + opaque text/
+  pills with no image; `fade` is now a parameter threaded into the gradient
+  colours and the border colour instead of wrapping the card.
+- The onboarding slide is a `Column` of three independent widgets (icon tile,
+  title, body) with no single background to fade; `opacity` is now applied to
+  each one directly — the icon tile's surface/border/shadow/icon colours, and
+  the two `Text` colours — rather than to the `Column` as a whole.
+
+Visual result is unchanged (same interpolation curve, same 0–1 range); the
+difference is zero `saveLayer` calls during the drag instead of one per frame
+per visible card.
+
+**Left alone, per the brief:** `Opacity` in `booking_screen.dart:475`,
+`shop_screen.dart:871`, `shop_filter_sheet.dart:452`, `register_screen.dart:1448`,
+`post_ad_screen.dart:289`, `add_car_screen.dart:783`, and
+`cars_filter_screen.dart:1043,1135` — all fixed `enabled ? 1 : 0.4x` values,
+not tied to scroll/animation state.
+
+### §2 — image caching
+
+`lib/core/widgets/car_media.dart` was the only file using `Image.network`
+(confirmed by project-wide search — nothing else to extend this to). Both call
+sites (`MakeLogo`, `CarImage`) now use `CachedNetworkImage` from the newly
+added `cached_network_image: ^3.4.1` (`pubspec.yaml`), with the same
+placeholder/error fallback behaviour as before (`_Monogram` / `_artwork` show
+while loading and on failure) — Flutter's default cache is memory-only and
+never survives an app restart, so every car/logo image was refetched from the
+network on every cold start.
+
+### §3 — technical debt noted, not fixed (as instructed)
+
+> تبويبا "دفتر المستحقات" و"سجل التدقيق" في `admin_screen.dart` يبنيان
+> قوائمهما بشكل غير كسول (`for` داخل `Column`). مقبول بحجم بيانات التجريبي
+> الحالي؛ يجب التحويل إلى `ListView.builder` قبل الانتقال للإنتاج الفعلي،
+> لأن هذين التبويبين تحديداً يتراكمان بلا حد أقصى مع الوقت (كل معاملة، كل
+> قرار اعتماد). طابور الورشة النشط أقل إلحاحاً (محدود بالطلبات الجارية).
+
+No code touched for this item.
+
+### §4 — supplementary sweep
+
+- Searched for other `Opacity(` sites reading a drag/animation-derived
+  variable (`_page`, `.value`, scroll offset) — found the announcements-rail
+  carousel above; everything else is the static list in §1.
+- Searched for `Image.network` outside `car_media.dart` — none found.
+
+### Files
+| File | Change |
+|---|---|
+| `pubspec.yaml` | added `cached_network_image: ^3.4.1` |
+| `lib/core/widgets/car_media.dart` | `Image.network` → `CachedNetworkImage` in `MakeLogo`/`CarImage` |
+| `lib/features/home/home_widgets.dart` | `_DiscountCard`/`_AnnouncementCard` take a `fade` param applied to gradient/border colours; carousels no longer wrap cards in `Opacity` |
+| `lib/features/onboarding/onboarding_screen.dart` | `_SlideView`/`_IconTile` apply `opacity` per-colour instead of wrapping the slide in `Opacity` |
+| `EDIT_LOG.md` | this entry, plus the §3 technical-debt note |
+
+### Verified
+- `flutter analyze lib test` — clean (the one pre-existing info,
+  `use_null_aware_elements` in `lib/core/utils/contact.dart:23`, is unrelated).
+- `flutter test` — 450 passed.
+- **Not** run through DevTools/Performance view — this pass is static-code-only,
+  per the brief. Field verification (frame-timeline capture on the offers rail
+  during a drag) is a separate follow-up.
+
+---
+
 ## 2026-08-03 · GUID primary keys everywhere, and attachments stored as base64
 
 **Baseline:** `dd6253e` ("Fix splash-screen hang, add API data-source layer…").

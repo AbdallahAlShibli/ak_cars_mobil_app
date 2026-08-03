@@ -251,51 +251,55 @@ class _SlideView extends StatelessWidget {
           child: child,
         );
 
-    return Opacity(
-      opacity: opacity,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          layer(
-            40,
-            Transform.rotate(
-              // A few degrees of tilt as it travels — reads as depth, not as
-              // a spin.
-              angle: delta * 0.06 * math.pi / 4,
-              child: Transform.scale(
-                scale: 1 - distance * 0.16,
-                child: _IconTile(icon: slide.icon),
-              ),
+    // Applied straight to each leaf's own colour below, rather than wrapping
+    // this whole multi-widget column in an `Opacity` — no image here either,
+    // just tinted shapes and text, so there's nothing a saveLayer buys us.
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        layer(
+          40,
+          Transform.rotate(
+            // A few degrees of tilt as it travels — reads as depth, not as
+            // a spin.
+            angle: delta * 0.06 * math.pi / 4,
+            child: Transform.scale(
+              scale: 1 - distance * 0.16,
+              child: _IconTile(icon: slide.icon, fade: opacity),
             ),
           ),
-          const SizedBox(height: 28),
-          layer(
-            110,
-            Text(
-              slide.title.of(s),
+        ),
+        const SizedBox(height: 28),
+        layer(
+          110,
+          Text(
+            slide.title.of(s),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+              color: ak.ink.withValues(alpha: opacity),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        layer(
+          170,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              slide.body.of(s),
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                height: 1.3,
-                color: ak.ink,
+                fontSize: 13,
+                color: ak.inkSub.withValues(alpha: opacity),
+                height: 1.7,
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          layer(
-            170,
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                slide.body.of(s),
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: ak.inkSub, height: 1.7),
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -303,9 +307,13 @@ class _SlideView extends StatelessWidget {
 /// The slide's icon on a card, with the amber accent ring the rest of the app
 /// uses for "this is the thing to look at".
 class _IconTile extends StatelessWidget {
-  const _IconTile({required this.icon});
+  const _IconTile({required this.icon, this.fade = 1});
 
   final IconData icon;
+
+  /// Slide-transition fade, applied to each colour directly — see
+  /// [_SlideView]'s build for why this isn't an [Opacity] wrapper.
+  final double fade;
 
   @override
   Widget build(BuildContext context) {
@@ -314,12 +322,12 @@ class _IconTile extends StatelessWidget {
       width: 170,
       height: 170,
       decoration: BoxDecoration(
-        color: ak.surface,
+        color: ak.surface.withValues(alpha: fade),
         borderRadius: BorderRadius.circular(48),
-        border: Border.all(color: ak.border),
+        border: Border.all(color: ak.border.withValues(alpha: fade)),
         boxShadow: [
           BoxShadow(
-            color: ak.ink.withValues(alpha: 0.06),
+            color: ak.ink.withValues(alpha: 0.06 * fade),
             blurRadius: 30,
             offset: const Offset(0, 14),
           ),
@@ -332,11 +340,11 @@ class _IconTile extends StatelessWidget {
             width: 104,
             height: 104,
             decoration: BoxDecoration(
-              color: ak.amberBgSoft,
+              color: ak.amberBgSoft.withValues(alpha: fade),
               shape: BoxShape.circle,
             ),
           ),
-          Icon(icon, size: 60, color: ak.ink),
+          Icon(icon, size: 60, color: ak.ink.withValues(alpha: fade)),
         ],
       ),
     );

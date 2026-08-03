@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -43,12 +44,11 @@ class MakeLogo extends StatelessWidget {
       );
     }
     if (AppConfig.useRemoteVehicleImages) {
-      return Image.network(
-        make.logoUrl,
+      return CachedNetworkImage(
+        imageUrl: make.logoUrl,
         fit: BoxFit.contain,
-        errorBuilder: (context, _, _) => _Monogram(mark: make.mark),
-        loadingBuilder: (context, child, progress) =>
-            progress == null ? child : _Monogram(mark: make.mark),
+        errorWidget: (context, _, _) => _Monogram(mark: make.mark),
+        placeholder: (context, _) => _Monogram(mark: make.mark),
       );
     }
     return _Monogram(mark: make.mark);
@@ -140,16 +140,15 @@ class CarImage extends StatelessWidget {
       );
     }
     if (AppConfig.useRemoteVehicleImages) {
-      return Image.network(
+      return CachedNetworkImage(
         // Variant 0 keeps the CDN's default angle — the exact pose the web app
         // shows. Later carousel pages rotate around the car.
-        variant == 0
+        imageUrl: variant == 0
             ? carImageUrl(make, model)
             : carImageUrl(make, model, angle: 20 + (variant % 8) * 5),
         fit: expand ? BoxFit.cover : BoxFit.contain,
-        errorBuilder: (context, _, _) => _artwork(),
-        loadingBuilder: (context, child, progress) =>
-            progress == null ? child : _artwork(),
+        errorWidget: (context, _, _) => _artwork(),
+        placeholder: (context, _) => _artwork(),
       );
     }
     return _artwork();
