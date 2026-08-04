@@ -17,6 +17,148 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-08-04 · Login flow — the app previously had registration only
+
+**Baseline:** `1e17d34`. User request: the app had one screen
+(`register_screen.dart`) that doubled as both sign-up and "my details", and
+no way back into an account once signed out — a returning user had to
+register again. Added a proper login flow and a welcome gate that lets a
+guest choose between the two instead of always landing on the registration
+form.
+
+### What changed
+
+- **`AuthService`/`AuthRepository`/`AuthNotifier`** gained `findAccount(
+  identifier)` (looks an account up by phone or email, null if none) and
+  `login(identifier, code)` (verifies the OTP and starts the session).
+  `MockAuthService` had to stop treating "sign out" as "delete the account" —
+  it previously called `prefs.remove(prefsProfile)` on sign-out, which meant
+  there was nothing left to log back into. Sign-out now only flips a new
+  `prefsSessionActive` flag off; the account record survives, the same way a
+  real backend keeps it in its database (`lib/data/services/auth_service.dart`,
+  `lib/core/constants/app_constants.dart`).
+- **`ApiAuthService`** grew matching `POST /auth/login` (send code) /
+  `POST /auth/login/verify` (verify + start session) calls; documented in
+  `docs/api_contract.md`. Still unimplemented behind `UnconfiguredApiClient`,
+  same as the rest of the `Api*` layer — this is the REST contract, not a
+  working backend call.
+- **`lib/features/auth/login_screen.dart`** (new) — phone-or-email field →
+  OTP (reusing the same staging code `7391` the register screen shows) →
+  session starts with the profile exactly as it was registered, `kind` and
+  all, so what the rest of the app shows a workshop vs. a customer account
+  is unchanged by this work.
+- **`lib/features/auth/auth_gate_screen.dart`** (new) — "I have an account"
+  / "New here" choice screen. Every entry point that used to jump straight
+  to `/register` for a guest (`ensureRegistered` in `app_router.dart`, the
+  profile hub's identity card, "Complete your details" row, and the amber
+  registration prompt) now opens this instead; an *already-registered*
+  account editing its own details still goes straight to `/register` as
+  before — the gate is only for guests.
+- **`lib/features/auth/auth_form_widgets.dart`** (new) — extracted
+  `register_screen.dart`'s field/notice/OTP widgets (`_FieldRow`,
+  `_NoticeCard`, `_FieldShell`, `_SectionLabel`, `_OtpBlock`) into shared
+  `Auth*` widgets so login, register, and the gate render as one visual
+  family instead of three independently-styled forms. `register_screen.dart`
+  now imports these instead of defining its own copies, and gained an
+  "Already have an account? Log in" link at the top (new-registration mode
+  only — hidden while editing an existing profile).
+
+**Left alone:** the OTP itself is still a client-side staging comparison
+(`_stagingCode`), same weakness `register_screen.dart` already had — `login`
+threads a `code` parameter through to the service layer so a real backend has
+somewhere to verify it, but neither mock implementation actually checks it
+server-side. Not this pass's scope to fix.
+
+**Verified:** `flutter analyze` (0 issues), `flutter test` (450/450 passing,
+including the pre-existing register-screen and profile-screen suites, which
+would have caught a routing regression).
+
+### 2026-08-04 follow-up — on-device test on a real Android phone (adb)
+
+The Chrome-based visual check above never actually ran (screenshots
+wouldn't composite). Ran the app for real via `flutter run -d <deviceId>`
+on a connected Samsung S918B and drove it end-to-end with `adb shell input`
++ `adb exec-out screencap`, in Arabic/RTL, since that's the device's
+configured language: signed out → gate screen → registered a fresh account
+("Test User", Muscat, phone OTP) → signed out → logged back in with the
+same phone number → OTP `7391` → landed back on the profile with the same
+name, region, and verified badge intact. The account-persistence rework
+above ([`prefsSessionActive`] surviving sign-out) is what made this loop
+possible at all — confirmed working, not just compiling.
+
+Found and fixed two real issues surfaced by that run:
+
+- **Phone number reordered under RTL on the profile identity card** —
+  "+968 9200 1234" rendered as "1234 9200 968+". `profile_screen.dart`'s `_IdentityCard`
+  rendered `profile.phone` as plain RTL-context text with no direction
+  override, same class of bug the register form already guards against on
+  its own phone field (`forceLtr`) — this one card was missed. Wrapped it in
+  `Directionality(textDirection: TextDirection.ltr, ...)`, matching that
+  existing fix.
+- **`AuthGateScreen` centered its content in the remaining vertical space**,
+  which on a tall phone (3088px) left a wall of empty space above the back
+  button before anything else appeared — read as a broken/half-loaded
+  screen on first look. Changed from `Center` to anchoring the column a
+  fixed distance below the back button (`AppSpacing.xxl`), same top-loaded
+  pattern `start_choice_screen.dart` already uses elsewhere in onboarding.
+
+Considered and rejected as a fix: a suspected duplicate "Send the code"
+button on the login screen (inline OTP-block button + bottom primary
+button both reading "إرسال الرمز"). Checked the actual code —
+`login_screen.dart` only renders `AuthOtpBlock` once `_otpSent` is already
+true, so the inline button never coexists with the bottom one; the
+duplication that's visible in screenshots is on `register_screen.dart`
+(pre-existing app behavior, `_submitLabel`'s workshop-path branch), not
+something this change touched or introduced.
+
+**Verified:** `flutter analyze` (0 issues) and `flutter test` (450/450) again
+after the two fixes; re-ran the same sign-out → gate → login sequence on the
+device to confirm the phone number and gate-screen layout render correctly
+post-fix.
+
+### 2026-08-04 second follow-up — explicit phone/email choice on login
+
+User request: the login identifier field guessed phone vs. email from an
+`@` in what was typed, with no real validation of either shape — a
+half-typed phone number just looked like neither until enough digits went
+in. Replaced the single guessing field with the same explicit picker the
+register screen already uses for its OTP channel (`_ChannelCard`,
+`AuthChannel.phone`/`.email`): two cards, one active field with the shape
+and validation that matches whichever is selected.
+
+Extracted `register_screen.dart`'s private `_ChannelCard` and
+`_OmanMobileFormatter` into `auth_form_widgets.dart` as public
+`AuthChannelCard` and `OmanMobileFormatter`, plus a new `AuthPhone` helper
+(`digits`/`local`/`grouped`/`full`) replacing the register screen's private
+`_digits`/`_local`/`_grouped` statics — same rationale as the first pass's
+`AuthFieldRow`/`AuthOtpBlock` extraction: login now needs the identical
+Oman-phone formatting and channel-card UI, and duplicating ~120 lines of
+near-identical formatter/widget code across two files was the wrong call.
+`register_screen.dart`'s own `OtpChannel` enum was replaced by the shared
+`AuthChannel` throughout (`sed`-style token rename), its behavior
+unchanged — verified by the full test suite before and after.
+
+`login_screen.dart`: added `_phone`/`_email` controllers (phone using
+`OmanMobileFormatter` + `+968` prefix, matching the register screen's field
+exactly), a `_channel` selector defaulting to phone, and real validation —
+`_phoneError` (8 Oman-local digits, must start with 7/9) and `_emailError`
+(regex shape check) — surfaced inline under the active field, same as
+every other form in this app. Switching channels clears the other
+channel's error and voids any OTP already sent (a code proves the address
+it was sent to, not the other one) — mirrors `register_screen.dart`'s
+`_switchChannel`.
+
+**Verified on-device (adb, same S918B):** typed `123` on the phone channel
+→ "رقم عُماني من 8 أرقام" inline error; switched to email, typed
+`notanemail` → "صيغة بريد غير صحيحة"; switched back to phone (value
+persisted, as it should — only the OTP state resets on switch, not the
+other channel's typed value), entered the real registered number, code
+sent to the correctly-formatted "+968 9200 1234", verified with `7391`,
+landed back on the profile. `flutter analyze` (0 issues) and
+`flutter test` (450/450) both clean after the refactor.
+
+---
+
 ## 2026-08-03 · Performance review — carousel opacity and image caching
 
 **Baseline:** `00df6e1`. Follows the static-only review in

@@ -40,6 +40,12 @@ abstract final class AppConstants {
   /// will restore from [prefsAuthToken].
   static const prefsProfile = 'akcars_profile';
 
+  /// Whether [prefsProfile] is an *active session* rather than just an
+  /// account on file. Signing out clears this and keeps the profile —
+  /// otherwise nobody could ever log back in, since the mock has nowhere
+  /// else to remember the account existed.
+  static const prefsSessionActive = 'akcars_session_active';
+
   /// The user's own records, stored on the device until the backend owns them.
   /// Registering a car is the app's first real piece of data entry — losing it
   /// on the next launch reads as the Save button never having worked.

@@ -131,6 +131,35 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  /// Locates an existing account for the login screen. Null when nothing
+  /// matches — the screen offers registration instead.
+  Future<UserProfile?> findAccount(String identifier) =>
+      ref.read(authRepositoryProvider).findAccount(identifier);
+
+  /// Starts the session once the login screen has verified its OTP.
+  ///
+  /// Mirrors [register]'s optimism/rollback shape: the caller pops back to
+  /// wherever login was reached from as soon as this returns, so the state
+  /// is set before the round-trip settles, not after.
+  Future<void> login(String identifier, String code) async {
+    final previous = state;
+    try {
+      final stored =
+          await ref.read(authRepositoryProvider).login(identifier, code);
+      state = state.copyWith(
+        profile: stored,
+        onboardingSeen: true,
+        startChoiceMade: true,
+      );
+      // A returning user has, by definition, finished the intro — same
+      // reasoning as [register].
+      _markFirstRunDone();
+    } catch (_) {
+      state = previous;
+      rethrow;
+    }
+  }
+
   /// Re-files a rejected workshop application after the owner corrected it
   /// (§11 step 5).
   ///

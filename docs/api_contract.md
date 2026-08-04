@@ -150,6 +150,33 @@ application off this body instead.
 `GET` returns `401` when nobody is signed in; the client reads that as "no
 session" rather than as an error.
 
+### `POST /auth/login` · `POST /auth/login/verify`
+
+Two-step OTP login, for a returning user who does not want to re-type their
+registration. `identifier` is whatever the account was registered with — a
+phone number or an email, in any of the formats the register screen accepts
+(`+968 9200 1234`, `96892001234`, `9200 1234`).
+
+```jsonc
+// POST /auth/login
+{ "identifier": "+968 9200 1234" }
+```
+
+→ `200` and the server sends the OTP to that phone/email, or `404` when no
+account matches — the client shows "no account found" rather than an error,
+same as `GET /user/profile`'s `401`.
+
+```jsonc
+// POST /auth/login/verify
+{ "identifier": "+968 9200 1234", "code": "7391" }
+```
+
+→ `200` with the stored `UserProfile` (same shape as registration's `201`)
+and starts the session. `kind` — and, for a workshop account, `workshop` —
+come back exactly as they were registered; nothing about login changes what
+the account *is*, only that its session is active again. A wrong or expired
+code answers `401`.
+
 ---
 
 ## Workshop onboarding

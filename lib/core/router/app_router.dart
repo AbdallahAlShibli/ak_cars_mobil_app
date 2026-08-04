@@ -8,6 +8,8 @@ import '../../data/models/review.dart';
 import '../../data/models/service_provider.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
+import '../../features/auth/auth_gate_screen.dart';
+import '../../features/auth/login_screen.dart';
 import '../../features/auth/register_screen.dart';
 import '../../features/auth/workshop_application_received_screen.dart';
 import '../../features/cars/listing_detail_screen.dart';
@@ -63,6 +65,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/start-choice',
         builder: (context, state) => const StartChoiceScreen(),
+      ),
+      // Presents the login/register choice — where a guest lands before
+      // either form, so returning users are never funnelled straight into
+      // registration (see [ensureRegistered] below).
+      GoRoute(
+        path: '/auth',
+        builder: (context, state) => const AuthGateScreen(),
+      ),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
       ),
       GoRoute(
         path: '/register',
@@ -303,10 +316,14 @@ String? _guardOperatorPanels(Ref ref, GoRouterState state) {
 
 /// Registration gate — rule 4/5/6: no service requests, parts orders, or
 /// car ads until the user has completed their details. Browsing stays free.
+///
+/// Opens [AuthGateScreen] rather than jumping straight to `/register`: a
+/// guest here might be someone who signed out of an existing account, not
+/// only a first-time visitor, and only they know which of the two they are.
 bool ensureRegistered(BuildContext context, WidgetRef ref) {
   final registered = ref.read(authProvider).isRegistered;
   if (!registered) {
-    context.push('/register');
+    context.push('/auth');
   }
   return registered;
 }

@@ -8,6 +8,7 @@ import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/bidi_text.dart';
 import '../../core/utils/contact.dart';
 import '../../di/providers.dart';
 import '../../core/theme/app_spacing.dart';
@@ -69,7 +70,7 @@ class ProfileScreen extends ConsumerWidget {
             _IdentityCard(auth: auth),
             if (!auth.isRegistered) ...[
               const SizedBox(height: 10),
-              _RegisterPrompt(onTap: () => context.push('/register')),
+              _RegisterPrompt(onTap: () => context.push('/auth')),
             ],
             // §11 step 5. A workshop applicant's only window onto their own
             // application — they have no access to the panel, so without this
@@ -192,7 +193,8 @@ class ProfileScreen extends ConsumerWidget {
                       ? s.t('بياناتي', 'My details')
                       : s.t('أكمل بياناتك', 'Complete your details'),
                   gray: true,
-                  onTap: () => context.push('/register'),
+                  onTap: () =>
+                      context.push(auth.isRegistered ? '/register' : '/auth'),
                 ),
                 _MenuRow(
                   icon: LucideIcons.languages,
@@ -245,28 +247,65 @@ class ProfileScreen extends ConsumerWidget {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: ak.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xl, AppSpacing.sm, AppSpacing.xl, AppSpacing.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                s.t('كيف نساعدك؟', 'How can we help?'),
-                style: const TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.w800),
+              // Drag handle — signals "this sheet can be swiped away" before
+              // the user reads a word of it.
+              Align(
+                alignment: Alignment.center,
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+                  decoration: BoxDecoration(
+                    color: ak.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                s.t('فريق دعم AK Cars متاح من 8 صباحاً حتى 8 مساءً.',
-                    'AK Cars support is available 8am – 8pm.'),
-                style: TextStyle(fontSize: 12.5, color: ak.inkSub),
+              Row(
+                children: [
+                  IconTile(
+                    LucideIcons.headset,
+                    size: 44,
+                    radius: 14,
+                    background: ak.amberSoft,
+                    foreground: ak.amberText,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          s.t('كيف نساعدك؟', 'How can we help?'),
+                          style: context.text.cardTitle
+                              .copyWith(fontSize: 17, fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          isolateNumbers(
+                              s.t('فريق دعم AK Cars متاح من 8 صباحاً حتى 8 مساءً.',
+                                  'AK Cars support is available 8am – 8pm.'),
+                              rtl: s.isAr),
+                          style: context.text.bodySecondary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpacing.xl),
               _SupportOption(
                 icon: LucideIcons.messageCircle,
                 color: const Color(0xFF25A55A),
@@ -279,7 +318,7 @@ class ProfileScreen extends ConsumerWidget {
                           'Hi, I need help with the AK Cars app.'));
                 },
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpacing.sm),
               _SupportOption(
                 icon: LucideIcons.phone,
                 color: ak.ink,
@@ -380,7 +419,7 @@ class _IdentityCard extends ConsumerWidget {
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
-        context.push('/register');
+        context.push(auth.isRegistered ? '/register' : '/auth');
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -468,10 +507,17 @@ class _IdentityCard extends ConsumerWidget {
                     ),
                     if (profile.phone.trim().isNotEmpty) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        profile.phone,
-                        style: AppTheme.numeric(
-                            size: 11, weight: FontWeight.w600, color: fgSub),
+                      // A bare "+968 9200 1234" reads left-to-right in both
+                      // languages — under RTL it otherwise bidi-reorders to
+                      // "1234 9200 968+", same fix as the register form's
+                      // phone field (register_screen.dart's `forceLtr`).
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(
+                          profile.phone,
+                          style: AppTheme.numeric(
+                              size: 11, weight: FontWeight.w600, color: fgSub),
+                        ),
                       ),
                     ],
                   ] else
@@ -801,7 +847,16 @@ class _MenuRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             trailing ??
-                Icon(LucideIcons.chevronRight, size: 20, color: ak.inkFaint),
+                Icon(
+                  // Lucide icons carry no `matchTextDirection`, so the
+                  // "go on" chevron is chosen by direction rather than
+                  // flipped by the framework.
+                  Directionality.of(context) == TextDirection.rtl
+                      ? LucideIcons.chevronLeft
+                      : LucideIcons.chevronRight,
+                  size: 20,
+                  color: ak.inkFaint,
+                ),
           ],
         ),
       ),
@@ -846,13 +901,27 @@ class _SupportOption extends StatelessWidget {
                 Text(label,
                     style: const TextStyle(
                         fontSize: 13.5, fontWeight: FontWeight.w700)),
-                Text(subtitle,
-                    style: AppTheme.numeric(
-                        size: 11, weight: FontWeight.w600, color: ak.inkSub)),
+                // A bare phone number is entirely Latin — pin it to LTR
+                // rather than isolate-wrapping it, so the leading "+" can
+                // never bidi-jump to the wrong end under an RTL ancestor.
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Text(subtitle,
+                      style: AppTheme.numeric(
+                          size: 11,
+                          weight: FontWeight.w600,
+                          color: ak.inkSub)),
+                ),
               ],
             ),
           ),
-          Icon(LucideIcons.chevronRight, size: 20, color: ak.inkFaint),
+          Icon(
+            Directionality.of(context) == TextDirection.rtl
+                ? LucideIcons.chevronLeft
+                : LucideIcons.chevronRight,
+            size: 20,
+            color: ak.inkFaint,
+          ),
         ],
       ),
     );

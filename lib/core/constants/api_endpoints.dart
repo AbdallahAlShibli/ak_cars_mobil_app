@@ -6,7 +6,13 @@
 /// Bookings, Payments) so Phase 2 wiring is a lookup, not a guess.
 abstract final class ApiEndpoints {
   // ------------------------------------------------------------------ auth
+  /// Looks up an account by phone or email and, when one exists, sends the
+  /// OTP. Answers `404` for no match — the client reads that as "no account",
+  /// not as a transport error.
   static const login = '/auth/login';
+
+  /// Verifies the code sent by [login] and starts the session.
+  static const loginVerify = '/auth/login/verify';
   static const register = '/auth/register';
   static const refreshToken = '/auth/refresh';
   static const logout = '/auth/logout';

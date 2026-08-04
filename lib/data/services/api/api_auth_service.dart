@@ -40,5 +40,30 @@ class ApiAuthService implements AuthService {
       );
 
   @override
+  Future<UserProfile?> findAccount(String identifier) async {
+    try {
+      // Also the call that triggers the server to send the OTP — a bare
+      // existence check with no side effect would need a second round-trip
+      // the login screen has no use for.
+      return UserProfile.fromJson(
+        await _client.post(ApiEndpoints.login, body: {
+          'identifier': identifier,
+        }),
+      );
+    } on NotFoundException {
+      return null;
+    }
+  }
+
+  @override
+  Future<UserProfile> login(String identifier, String code) async =>
+      UserProfile.fromJson(
+        await _client.post(ApiEndpoints.loginVerify, body: {
+          'identifier': identifier,
+          'code': code,
+        }),
+      );
+
+  @override
   Future<void> signOut() => _client.post(ApiEndpoints.logout);
 }
