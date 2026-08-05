@@ -9,6 +9,7 @@ import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/utils/guid.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/escrow_timeline.dart';
 import '../../core/widgets/status_indicator.dart';
@@ -159,8 +160,8 @@ class _ReviewPrompt extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.xs / 2),
                 Text(
-                  s.t('تقييمك يظهر موثّقاً لأنه عن الطلب #${request.id} المكتمل.',
-                      'Your review shows as verified because it is about completed booking #${request.id}.'),
+                  s.t('تقييمك يظهر موثّقاً لأنه عن الطلب #${shortRef(request.id)} المكتمل.',
+                      'Your review shows as verified because it is about completed booking #${shortRef(request.id)}.'),
                   style: context.text.bodySecondary,
                 ),
               ],

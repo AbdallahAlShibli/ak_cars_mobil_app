@@ -19,11 +19,18 @@
 /// when the number is embedded in Arabic text that must stay right-to-left.
 library;
 
-/// Number runs, including a leading `+` and any internal `: . , / - –`
-/// separators, so a phone number or a time range is one run rather than
+/// Number runs, including a leading `+`, a Latin prefix bound straight to the
+/// digits, and any internal `: . , / - –` separators — so a phone number, a
+/// time range or an identifier like `OM1100047382` is one run rather than
 /// several.
+///
+/// The Latin prefix is the third case found: an Oman VATIN rendered as
+/// `1100047382OM`, because isolating only the digits left `OM` as a run of its
+/// own, which the paragraph then placed on the far side of them. A prefix is
+/// only swallowed when it touches the digits — `OMR 36.00` keeps its currency
+/// word outside the isolate, where it belongs.
 final _numberRun = RegExp(
-  r'\+?[0-9٠-٩]+(?:[:.,/–—-][0-9٠-٩]+)*',
+  r'\+?[A-Za-z]{0,4}[0-9٠-٩]+(?:[:.,/–—-][0-9٠-٩]+)*',
 );
 
 const _lri = '\u2066';

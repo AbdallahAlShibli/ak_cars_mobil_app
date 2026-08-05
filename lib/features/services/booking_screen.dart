@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
 import '../../core/widgets/oman_plate_input.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/repositories/service_marketplace_repository.dart';
@@ -15,6 +16,7 @@ import '../../data/services/service_marketplace_service.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
+import 'platform_trust_widgets.dart';
 import 'service_detail_screen.dart';
 
 /// Time & place:
@@ -410,6 +412,11 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       ],
                     ),
                   ),
+                  // Sits between the total and the confirm button, where the
+                  // decision is actually made — and stays a quiet dim card so
+                  // the button below it keeps the screen's only emphasis.
+                  const SizedBox(height: AppSpacing.md),
+                  const BookingValueCard(),
                 ],
               ),
             ),

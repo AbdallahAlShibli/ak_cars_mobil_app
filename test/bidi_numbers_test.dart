@@ -61,9 +61,19 @@ void main() {
           rtl: true), 'السبت–الخميس $lri٨:٠٠–٢٠:٠٠$pdi · الجمعة مغلق');
     });
 
-    test('isolates each number separately', () {
+    // Fixed 2026-08-05, found on a device: this previously isolated only the
+    // digits and left `OM` as a run of its own, which Arabic then placed on
+    // the far side of them — the VAT number rendered `1100047382OM`.
+    test('keeps a Latin prefix bound to its digits', () {
       expect(isolateNumbers('OM1100047382', rtl: true),
-          'OM${lri}1100047382$pdi');
+          '${lri}OM1100047382$pdi');
+    });
+
+    test('a currency word standing apart is not swallowed', () {
+      expect(isolateNumbers('OMR 36.00', rtl: true), 'OMR ${lri}36.00$pdi');
+    });
+
+    test('isolates each number separately', () {
       expect(isolateNumbers('2.4 كم · 5 دقائق', rtl: true),
           '${lri}2.4$pdi كم · ${lri}5$pdi دقائق');
     });

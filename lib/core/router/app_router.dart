@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../config/app_flags.dart';
 import '../../data/models/app_role.dart';
+import '../../data/models/chat_message.dart';
 import '../../data/models/review.dart';
 import '../../data/models/service_provider.dart';
 import '../../di/providers.dart';
@@ -128,6 +129,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/chat/:id',
         builder: (context, state) =>
             ChatScreen(requestId: state.pathParameters['id']!),
+      ),
+      // The pre-booking enquiry thread. Contact details are gated on escrow
+      // (`core/utils/provider_contact.dart`), so a customer still deciding has
+      // to be able to *ask* the workshop something — this is that channel, and
+      // it is keyed by workshop rather than by a booking that does not exist
+      // yet. Three segments, so it can never be matched by `/chat/:id`.
+      GoRoute(
+        path: '/chat/provider/:providerId',
+        builder: (context, state) => ChatScreen(
+          requestId: providerThreadId(state.pathParameters['providerId']!),
+          providerId: state.pathParameters['providerId']!,
+        ),
       ),
       GoRoute(
         path: '/service/:id',

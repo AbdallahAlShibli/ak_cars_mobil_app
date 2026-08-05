@@ -9,6 +9,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/contact.dart';
+import '../../core/utils/guid.dart';
+import '../../core/utils/provider_contact.dart';
 import '../../core/widgets/escrow_timeline.dart';
 import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/status_indicator.dart';
@@ -16,6 +18,7 @@ import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
+import 'platform_trust_widgets.dart';
 
 /// The customer's view of the escrow machine.
 ///
@@ -100,7 +103,12 @@ class TrackingScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         leading: const _TrackingExit(),
-        title: Text(s.t('الطلب #${request.id}', 'Request #${request.id}')),
+        title: Text(
+          s.t('الطلب #${shortRef(request.id)}',
+              'Request #${shortRef(request.id)}'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           Padding(
             padding:
@@ -108,10 +116,18 @@ class TrackingScreen extends ConsumerWidget {
             // Same urgency mapping as the escrow card below, so the badge in
             // the bar and the card in the page can never disagree about how
             // worried the customer should be.
+            //
+            // Bounded: `AppBar` hands its actions unbounded width, so the
+            // pill's own ellipsis never engages there and a long state name
+            // ("Funds held — waiting for the workshop") ran off the edge.
             child: Center(
-              child: UrgencyLabel(
-                escrow.label(s),
-                level: _EscrowCard.levelFor(escrow),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width * 0.5),
+                child: UrgencyLabel(
+                  escrow.label(s),
+                  level: _EscrowCard.levelFor(escrow),
+                ),
               ),
             ),
           ),
@@ -247,42 +263,56 @@ class TrackingScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: AppSpacing.sm),
                   ],
-                  Row(
-                    children: [
-                      Expanded(
-                        // Disabled rather than dialling a stand-in number when
-                        // the workshop has not given one: a call button that
-                        // reaches someone else is worse than no call button.
-                        child: OutlinedButton.icon(
-                          onPressed: switch (request.offering.provider.phone) {
-                            final String phone when phone.isNotEmpty => () =>
-                                Contact.call(context, phone),
-                            _ => null,
-                          },
-                          icon: const Icon(LucideIcons.phone, size: 17),
-                          label: Text(s.t('اتصال', 'Call')),
+                  // Until the money is actually held — a booking still waiting
+                  // on payment confirmation, or on a price — the thread is the
+                  // whole channel, and the card above it says why rather than
+                  // leaving a gap where a call button used to be.
+                  if (!canContactProviderDirectly(escrow)) ...[
+                    const ContactLockedCard(),
+                    const SizedBox(height: AppSpacing.sm),
+                    FilledButton.icon(
+                      onPressed: () => context.push('/chat/${request.id}'),
+                      icon: const Icon(LucideIcons.messageCircle, size: 17),
+                      label: Text(s.t('محادثة', 'Chat')),
+                    ),
+                  ] else
+                    Row(
+                      children: [
+                        Expanded(
+                          // Disabled rather than dialling a stand-in number
+                          // when the workshop has not given one: a call button
+                          // that reaches someone else is worse than none.
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                switch (request.offering.provider.phone) {
+                              final String phone when phone.isNotEmpty => () =>
+                                  Contact.call(context, phone),
+                              _ => null,
+                            },
+                            icon: const Icon(LucideIcons.phone, size: 17),
+                            label: Text(s.t('اتصال', 'Call')),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: escrow == EscrowState.awaitingApproval
-                            ? OutlinedButton.icon(
-                                onPressed: () =>
-                                    context.push('/chat/${request.id}'),
-                                icon: const Icon(LucideIcons.messageCircle,
-                                    size: 17),
-                                label: Text(s.t('محادثة', 'Chat')),
-                              )
-                            : FilledButton.icon(
-                                onPressed: () =>
-                                    context.push('/chat/${request.id}'),
-                                icon: const Icon(LucideIcons.messageCircle,
-                                    size: 17),
-                                label: Text(s.t('محادثة', 'Chat')),
-                              ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: escrow == EscrowState.awaitingApproval
+                              ? OutlinedButton.icon(
+                                  onPressed: () =>
+                                      context.push('/chat/${request.id}'),
+                                  icon: const Icon(LucideIcons.messageCircle,
+                                      size: 17),
+                                  label: Text(s.t('محادثة', 'Chat')),
+                                )
+                              : FilledButton.icon(
+                                  onPressed: () =>
+                                      context.push('/chat/${request.id}'),
+                                  icon: const Icon(LucideIcons.messageCircle,
+                                      size: 17),
+                                  label: Text(s.t('محادثة', 'Chat')),
+                                ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),

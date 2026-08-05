@@ -114,6 +114,20 @@ String derivedGuid(String namespace, [Object? a, Object? b]) {
   return out.toString();
 }
 
+/// The customer-facing reference for a record: the last six hex digits of
+/// [id], upper-cased — `4A93`-style, six characters instead of thirty-six.
+///
+/// A GUID is the right *key* and a hopeless *reference number*: nobody reads
+/// `3f2a7c1e-8b4d-4e9a-a5f0-2c6d1b7e4a93` down a phone line, and printing it
+/// into a title bar pushed the booking's status pill off the edge of the
+/// screen. The full id stays the id everywhere it matters — routes, storage,
+/// the API — and this is only how it is shown.
+String shortRef(String id) {
+  final hex = id.replaceAll('-', '');
+  final tail = hex.length <= 6 ? hex : hex.substring(hex.length - 6);
+  return tail.toUpperCase();
+}
+
 /// [value] when it is a GUID, otherwise a fresh one.
 ///
 /// The seam for data that predates this scheme: a persisted record from an

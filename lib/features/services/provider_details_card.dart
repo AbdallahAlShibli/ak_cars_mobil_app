@@ -7,9 +7,11 @@ import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/bidi_text.dart';
 import '../../core/utils/contact.dart';
+import '../../core/utils/provider_contact.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../state/app_state.dart';
+import 'platform_trust_widgets.dart';
 
 /// The workshop's own record — identity, contact and registration.
 ///
@@ -22,6 +24,9 @@ class ProviderDetailsCard extends ConsumerWidget {
     super.key,
     required this.provider,
     required this.whatsappMessage,
+    required this.escrow,
+    this.onMessageProvider,
+    this.gateContact = true,
     this.showFulfillments = false,
     this.footer,
   });
@@ -30,6 +35,22 @@ class ProviderDetailsCard extends ConsumerWidget {
 
   /// Prefilled WhatsApp text — the caller knows what is being asked about.
   final String whatsappMessage;
+
+  /// The booking this card is being shown for, or null when there is none yet
+  /// (a service the customer is only reading about). Decides — through
+  /// [canContactProviderDirectly], never through a condition written here —
+  /// whether the phone number and its two buttons appear at all.
+  final EscrowState? escrow;
+
+  /// Opens the in-app thread with this workshop. Shown on the card that stands
+  /// in for the number while contact is still locked.
+  final VoidCallback? onMessageProvider;
+
+  /// Whether the escrow gate applies. False only where the card is used
+  /// outside the service-booking path: the parts store sells a catalogue item
+  /// over a counter rather than commissioning a job, and has no booking, no
+  /// escrow state and no thread to fall back to.
+  final bool gateContact;
 
   /// Show how the workshop can take the car (visit / pickup / roadside).
   /// Meaningful for a service, not for a part sold over the counter.
@@ -50,6 +71,8 @@ class ProviderDetailsCard extends ConsumerWidget {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final locations = ref.watch(locationCatalogProvider);
+    final contactUnlocked =
+        !gateContact || canContactProviderDirectly(escrow);
     final area = locations.localized(provider.area, s.isAr);
     final region = locations.localized(provider.region, s.isAr);
 
@@ -143,13 +166,16 @@ class ProviderDetailsCard extends ConsumerWidget {
             s.t('ساعات العمل', 'Opening hours'),
             provider.hours?.of(s) ?? s.t('غير محددة', 'Not published'),
           ),
-          if (provider.phone case final phone?) ...[
-            const SizedBox(height: 9),
-            _row(context, ak, LucideIcons.phone, s.t('الهاتف', 'Phone'),
-                phone,
-                onCopy: () => _copy(
-                    context, phone, s.t('تم نسخ الرقم', 'Number copied'))),
-          ],
+          // The number itself is as much a leak as the call button — a
+          // copyable row hands it over just the same.
+          if (contactUnlocked)
+            if (provider.phone case final phone?) ...[
+              const SizedBox(height: 9),
+              _row(context, ak, LucideIcons.phone, s.t('الهاتف', 'Phone'),
+                  phone,
+                  onCopy: () => _copy(
+                      context, phone, s.t('تم نسخ الرقم', 'Number copied'))),
+            ],
           const SizedBox(height: 9),
           // An Oman VATIN is `OM` + 10 digits and only VAT-registered
           // businesses have one, so the unregistered case says so rather than
@@ -194,39 +220,42 @@ class ProviderDetailsCard extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: 13),
-          Row(
-            children: [
-              if (provider.phone case final phone?)
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
-                      backgroundColor: ak.surface,
+          if (!contactUnlocked)
+            ContactLockedCard(onMessageProvider: onMessageProvider)
+          else
+            Row(
+              children: [
+                if (provider.phone case final phone?)
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                        backgroundColor: ak.surface,
+                      ),
+                      onPressed: () => Contact.call(context, phone),
+                      icon: const Icon(LucideIcons.phone, size: 15),
+                      label: Text(s.t('اتصل', 'Call'),
+                          style: const TextStyle(fontSize: 12.5)),
                     ),
-                    onPressed: () => Contact.call(context, phone),
-                    icon: const Icon(LucideIcons.phone, size: 15),
-                    label: Text(s.t('اتصل', 'Call'),
-                        style: const TextStyle(fontSize: 12.5)),
                   ),
-                ),
-              if (provider.phone != null && provider.whatsapp != null)
-                const SizedBox(width: 8),
-              if (provider.whatsapp case final whatsapp?)
-                Expanded(
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
-                      backgroundColor: const Color(0xFF25A55A),
+                if (provider.phone != null && provider.whatsapp != null)
+                  const SizedBox(width: 8),
+                if (provider.whatsapp case final whatsapp?)
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                        backgroundColor: const Color(0xFF25A55A),
+                      ),
+                      onPressed: () => Contact.whatsapp(context, whatsapp,
+                          message: whatsappMessage),
+                      icon: const Icon(LucideIcons.messageCircle, size: 15),
+                      label: Text(s.t('واتساب', 'WhatsApp'),
+                          style: const TextStyle(fontSize: 12.5)),
                     ),
-                    onPressed: () => Contact.whatsapp(context, whatsapp,
-                        message: whatsappMessage),
-                    icon: const Icon(LucideIcons.messageCircle, size: 15),
-                    label: Text(s.t('واتساب', 'WhatsApp'),
-                        style: const TextStyle(fontSize: 12.5)),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
           if (footer != null) ...[
             const SizedBox(height: 8),
             footer!,

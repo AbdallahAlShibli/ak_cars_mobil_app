@@ -8,15 +8,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/guid.dart';
+import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
 
 /// Per-request chat with the provider (simulated replies until the
 /// real-time backend lands in Phase 2).
+///
+/// Also serves the pre-booking enquiry: with [providerId] set, the thread
+/// belongs to a workshop rather than to a booking. That thread is what stands
+/// in for the workshop's phone number before the money is held — see
+/// `core/utils/provider_contact.dart`.
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key, required this.requestId});
+  const ChatScreen({super.key, required this.requestId, this.providerId});
 
   final String requestId;
+
+  /// Set only on the pre-booking enquiry thread.
+  final String? providerId;
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -76,21 +86,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .firstWhereOrNull((r) => r.id == widget.requestId);
     final messages =
         ref.watch(chatProvider)[widget.requestId] ?? const <ChatMessage>[];
+    // On the enquiry thread there is no booking to read the name from, so the
+    // workshop is looked up directly.
+    final enquiryProvider = widget.providerId == null
+        ? null
+        : ref
+            .watch(serviceMarketplaceRepositoryProvider)
+            .providerById(widget.providerId!);
 
     return Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(request?.offering.provider.name.of(s) ??
+            Text(
+                request?.offering.provider.name.of(s) ??
+                    enquiryProvider?.name.of(s) ??
                     s.t('محادثة', 'Chat'),
                 style: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w800)),
             Text(
               _typing
                   ? s.t('يكتب…', 'typing…')
-                  : s.t('الطلب #${widget.requestId}',
-                      'Request #${widget.requestId}'),
+                  : widget.providerId != null
+                      ? s.t('استفسار قبل الحجز', 'Enquiry before booking')
+                      : s.t('الطلب #${shortRef(widget.requestId)}',
+                          'Request #${shortRef(widget.requestId)}'),
               style: TextStyle(
                 fontSize: 11,
                 color: _typing ? AppColors.good : AppColors.ink3,

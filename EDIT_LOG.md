@@ -17,6 +17,151 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-08-05 · Workshop phone numbers were public before any booking existed
+
+**Baseline:** `238a93d`. Request: implement
+`MobileApp-Design/AK_Cars_تعليمات_منع_التسرب.md` — two layers against platform
+leakage (disintermediation), then run it on a device and fix what turns up.
+
+### The problem
+Every workshop's phone and WhatsApp number were printed on the service detail
+page, to anyone, before a booking existed. The whole transaction could be
+agreed on WhatsApp — no escrow, no proof of work, no service record, and no
+commission, which is the only revenue the pilot has. Both sides have an
+incentive to do it, so it happens without anyone acting in bad faith.
+
+The instruction file is explicit that the answer is **not** to block contact:
+staying inside the app has to be *better* than leaving, and hard walls read as
+a platform that distrusts its users.
+
+### Section 1 — where contact was actually reachable (the audit)
+Searched `lib/` for `tel:` / `wa.me` / `url_launcher` / any "call"/"WhatsApp"
+affordance. Six sites, of which **three** are on the service path:
+
+| # | Site | Verdict |
+|---|---|---|
+| 1 | `provider_details_card.dart` — the copyable **Phone** row | leaked; now gated |
+| 2 | `provider_details_card.dart` — **Call** + **WhatsApp** buttons | leaked; now gated |
+| 3 | `tracking_screen.dart:257` — **Call** button on a live booking | leaked while the booking was still pre-payment; now gated |
+| 4 | `shop/product_detail_screen.dart` — seller card + "Ask the shop" | parts store, `AppFlags.partsStoreEnabled = false`; **out of scope**, see below |
+| 5 | `cars/*` (listing card, listing detail, cars screen) | car marketplace, hidden behind `AppFlags`; explicitly untouched per the instruction file |
+| 6 | `profile_screen.dart:312/329` | AK Cars' own support line, not a provider; untouched |
+
+### Section 2 — the gate
+- **New** `lib/core/utils/provider_contact.dart` —
+  `canContactProviderDirectly(EscrowState?)`, the single authority. `null`
+  (no booking yet) is false; `fundsHeld` → `releasedToWorkshop` are true;
+  `disputed` is **deliberately true** — a customer with a problem needs the
+  workshop more than anyone, and cutting them off there is where trust breaks.
+  Exhaustive `switch`, so a new escrow state forces the decision here rather
+  than silently defaulting.
+- **New** `lib/features/services/platform_trust_widgets.dart` —
+  `ContactLockedCard`, what stands in the number's place: says *why* (nothing
+  agreed outside the app is covered) and opens the in-app thread.
+- `ProviderDetailsCard` takes `escrow` + `onMessageProvider`; no screen
+  re-derives the rule. The provider's contact fields are untouched in the
+  model — only their display is governed.
+- The service detail page unlocks contact when the viewer already has a
+  *live booking with that same workshop* — someone whose car is on the ramp is
+  not a browsing stranger. It asks the same helper for that answer.
+- **New route** `/chat/provider/:providerId` + `providerThreadId()` — the
+  pre-booking enquiry thread. Contact being gated is only fair if asking a
+  question still works, and `ChatScreen` was per-request only, so a customer
+  who had not booked had no channel at all. Same screen, keyed by workshop,
+  titled "Enquiry before booking".
+
+### Section 3 — the value reminder
+`BookingValueCard` on the booking screen, between the total and the confirm
+button: money held until you approve · photo proof · logged to your service
+history · your review is verified. Four things the app actually does. Quiet dim
+surface, no filled colour, so it never competes with the confirm button. Framed
+"Why book through the app?" — never "don't deal outside it", which would put an
+idea in the reader's head that was not there.
+
+### Four bugs found while testing this
+1. **The tracking screen's app bar overflowed.** Surfaced by the new test the
+   moment a booking reached `fundsHeld`: `AppBar` hands its `actions` unbounded
+   width, so `UrgencyLabel`'s own ellipsis never engaged and the longer state
+   names ("Funds held — waiting for the workshop") ran off the edge. Bounded to
+   50% of the screen; the title ellipsizes. Confirmed fixed on the device.
+2. **Request ids were printed raw into customer-facing text** — the tracking
+   title, the chat subtitle, the review screen, the bookings list and six
+   notifications. Harmless today (`MockServiceMarketplaceService` numbers
+   requests `3001`, `3002`, …) but the id is whatever the source hands over,
+   and the `Api*` layer will hand over the GUIDs everything else moved to on
+   2026-08-03 — at which point every one of those strings becomes
+   "Request #3f2a7c1e-8b4d-4e9a-a5f0-2c6d1b7e4a93". Added `shortRef()`
+   (`lib/core/utils/guid.dart`): last six hex digits, upper-cased, and a no-op
+   on a short id, so it changes nothing today and cannot break tomorrow. The
+   full id stays the id in routes, storage and the API.
+   *This is prevention, not a live defect — recorded honestly as such.*
+3. **The Oman VAT number rendered backwards in Arabic** — `OM1100047382`
+   displayed as `1100047382OM` on the workshop card (seen on the device).
+   `isolateNumbers` isolated only the digit run, leaving `OM` as a run of its
+   own that the RTL paragraph then placed on the far side of it. The regex now
+   binds a Latin prefix that *touches* the digits into the same isolate;
+   `OMR 36.00` keeps its currency word outside, where it belongs. The existing
+   `bidi_numbers_test` case pinned the wrong behaviour under the name "isolates
+   each number separately" — it was corrected and split in two.
+4. **The new enquiry thread answered as if a job were under way** — the first
+   canned reply is "your car is with us — work is going well", which is fine on
+   a booking's thread and nonsense to someone who has not booked. Split
+   `MockChatData.enquiryReplies` out, selected by `isProviderThread()`; the
+   thread-key helpers moved to `data/models/chat_message.dart` so the data
+   layer can tell the two kinds of thread apart. Confirmed on the device: the
+   enquiry now opens with "Welcome! Go ahead — what does your car need?".
+
+### Files
+| File | Change |
+|---|---|
+| `lib/core/utils/provider_contact.dart` | **new** — the one gate |
+| `lib/features/services/platform_trust_widgets.dart` | **new** — `ContactLockedCard`, `BookingValueCard` |
+| `lib/features/services/provider_details_card.dart` | phone row + buttons behind the gate; `escrow`/`onMessageProvider`/`gateContact` |
+| `lib/features/services/service_detail_screen.dart` | passes the live booking's state; enquiry-thread action |
+| `lib/features/services/tracking_screen.dart` | Call gated; locked card + full-width Chat below it; app-bar overflow + short ref |
+| `lib/features/services/booking_screen.dart` | `BookingValueCard` above the confirm button |
+| `lib/features/services/chat_screen.dart` | optional `providerId` — the pre-booking thread; short ref |
+| `lib/core/router/app_router.dart` | `/chat/provider/:providerId` |
+| `lib/core/utils/guid.dart` | `shortRef()` |
+| `lib/core/utils/bidi_text.dart` | Latin prefix bound to its digits (VAT bug) |
+| `lib/data/models/chat_message.dart` | `providerThreadPrefix` / `providerThreadId` / `isProviderThread` |
+| `lib/data/datasources/mock/mock_chat_data.dart`, `lib/data/services/chat_service.dart` | enquiry-thread replies |
+| `lib/features/services/{requests,review}_screen.dart`, `lib/data/repositories/notification_repository.dart` | short ref in customer-facing text |
+| `lib/features/shop/product_detail_screen.dart` | explicit `gateContact: false` + why |
+| `test/contact_gating_test.dart` | **new** — 8 tests |
+| `test/bidi_numbers_test.dart` | VAT case corrected + currency-word case added |
+
+### Verified
+- `flutter analyze lib test` — clean (the one remaining info,
+  `use_null_aware_elements` in `contact.dart:23`, is pre-existing).
+- `flutter test` — 460 passed (450 before; 8 new + 2 from the split bidi case).
+- **On the device** — Galaxy S23 (`R5CWA25GD7N`), Arabic, debug build,
+  walked by hand over adb: services → صيانة شاملة → ورشة النور. The workshop
+  card shows hours, VAT and CR and **no phone row, no Call, no WhatsApp**; the
+  explainer card and "راسل الورشة" sit in their place. The enquiry thread opens
+  titled "ورشة النور / استفسار قبل الحجز" and a sent message gets an
+  enquiry-appropriate reply. The booking screen shows the value card as a quiet
+  block above the confirm button. Confirming the booking lands on tracking,
+  where the staging lifecycle takes it to `fundsHeld` and **Call appears** —
+  the unlock side of the gate, on real hardware, with no app-bar overflow.
+- **Not** verified on the device: the *locked* state of the tracking screen
+  (the build's `simulateProviderLifecycle` advances past it too quickly to
+  catch by hand) — that path is covered by
+  `test/contact_gating_test.dart`. Nothing was checked in English or in dark
+  mode on hardware; both are covered only by widget tests.
+
+### Deliberately not done
+- **The parts store keeps its contact buttons.** The instruction file scopes
+  this to the services/booking path, and a catalogue purchase has no booking,
+  no escrow state and no thread to fall back to — gating it would leave a
+  hidden phase-2 flow with no way to ask a question at all. It is marked at the
+  call site. Worth knowing that it *is* a hole if the store ever ships: the
+  same workshops sell parts, so their numbers would be reachable from there.
+- No leakage *detection*, no automatic penalties, no suspensions — the
+  instruction file forbids all three, and they are the wrong instrument anyway.
+
+---
+
 ## 2026-08-04 · Login flow — the app previously had registration only
 
 **Baseline:** `1e17d34`. User request: the app had one screen

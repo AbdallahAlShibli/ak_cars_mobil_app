@@ -1,6 +1,25 @@
 import '../../core/json/json_utils.dart';
 
-/// One message in the per-request customer ↔ provider thread.
+/// A thread can hang off two things, and the key says which.
+///
+/// Normally it is a booking, and the key is the request id. But contact
+/// details are gated on escrow (`core/utils/provider_contact.dart`), so a
+/// customer who has not booked yet still needs somewhere to ask — that thread
+/// belongs to a *workshop*, and is keyed by this prefix so a provider id can
+/// never be mistaken for a request id in the same store. Anything answering a
+/// thread has to know which of the two it is: "your car is with us" is a fine
+/// reply on a booking and nonsense on an enquiry.
+const String providerThreadPrefix = 'provider:';
+
+/// The thread key for a pre-booking enquiry with [providerId].
+String providerThreadId(String providerId) =>
+    '$providerThreadPrefix$providerId';
+
+/// Whether [threadId] is a pre-booking enquiry rather than a booking's thread.
+bool isProviderThread(String threadId) =>
+    threadId.startsWith(providerThreadPrefix);
+
+/// One message in the customer ↔ provider thread.
 class ChatMessage {
   const ChatMessage({
     required this.id,

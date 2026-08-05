@@ -642,6 +642,12 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     final part = product.partNumber == null ? '' : ' (${product.partNumber})';
     return ProviderDetailsCard(
       provider: seller,
+      // The parts store (phase 2, behind `AppFlags.partsStoreEnabled`) sells a
+      // catalogue item over a counter — there is no booking, no escrow state
+      // and no per-request thread to fall back to, so the escrow contact gate
+      // does not apply here. It governs the service-booking path.
+      escrow: null,
+      gateContact: false,
       whatsappMessage: s.t(
           'مرحباً، أستفسر عن "${product.name.ar}"$part في متجر AK Cars.',
           'Hi, I am asking about "${product.name.en}"$part on AK Cars.'),

@@ -10,6 +10,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/provider_contact.dart';
 import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
@@ -82,6 +83,16 @@ class ServiceDetailScreen extends ConsumerWidget {
           region: provider.region))
         if (o.provider.id != provider.id) marketplace.pricedOffering(o.id)!,
     ];
+
+    // A booking with *this* workshop that already holds the customer's money
+    // unlocks its contact details here too: someone with a car on the ramp is
+    // not a browsing stranger, and telling them the number is locked while
+    // their job is in progress would be plainly wrong. The rule itself lives in
+    // `canContactProviderDirectly`; this only picks which booking to ask about.
+    final liveRequest = ref.watch(requestsProvider).firstWhereOrNull(
+        (r) =>
+            r.offering.provider.id == provider.id &&
+            canContactProviderDirectly(r.escrow));
 
     // Everything else this workshop sells.
     final alsoHere = [
@@ -204,6 +215,9 @@ class ServiceDetailScreen extends ConsumerWidget {
                   ProviderDetailsCard(
                     provider: provider,
                     showFulfillments: true,
+                    escrow: liveRequest?.escrow,
+                    onMessageProvider: () => context.push(
+                        '/chat/provider/${provider.id}'),
                     whatsappMessage: s.t(
                         'مرحباً، أستفسر عن خدمة "${offering.name.ar}" عبر تطبيق AK Cars.',
                         'Hi, I am asking about your "${offering.name.en}" service on AK Cars.'),

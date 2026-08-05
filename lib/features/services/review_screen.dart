@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/guid.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../di/providers.dart';
@@ -78,7 +79,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       ReviewDirection.customerToWorkshop =>
         request.offering.provider.name.of(s),
       ReviewDirection.workshopToCustomer =>
-        s.t('عميل الطلب #${request.id}', 'Customer of #${request.id}'),
+        s.t('عميل الطلب #${shortRef(request.id)}',
+            'Customer of #${shortRef(request.id)}'),
     };
 
     return Scaffold(

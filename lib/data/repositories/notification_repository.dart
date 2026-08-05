@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
+import '../../core/utils/guid.dart';
 import '../models/app_notification.dart';
 import '../models/escrow.dart';
 import '../models/gallery_listing.dart';
@@ -97,8 +98,8 @@ class NotificationRepositoryImpl implements NotificationRepository {
   // claiming a transfer that has not happened.
   @override
   Future<AppNotification> notifyRequestPlaced(ServiceRequest request) => push(
-        title: L('تم إرسال الطلب #${request.id}',
-            'Request #${request.id} sent'),
+        title: L('تم إرسال الطلب #${shortRef(request.id)}',
+            'Request #${shortRef(request.id)} sent'),
         body: L(
             'المبلغ ${request.total.toStringAsFixed(2)} ر.ع بانتظار التأكيد، ثم يُعرض الطلب على ${request.offering.provider.name.ar}.',
             'OMR ${request.total.toStringAsFixed(2)} is awaiting confirmation, then the job goes to ${request.offering.provider.name.en}.'),
@@ -151,7 +152,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
   Future<AppNotification> notifyReviewUnlocked(ServiceRequest request) => push(
         title: const L('كيف كانت التجربة؟', 'How was it?'),
         body: L(
-            'قيّم ${request.offering.provider.name.ar} عن الطلب #${request.id}. تقييمك يظهر لأنه عن حجز مكتمل فعلاً.',
+            'قيّم ${request.offering.provider.name.ar} عن الطلب #${shortRef(request.id)}. تقييمك يظهر لأنه عن حجز مكتمل فعلاً.',
             'Rate ${request.offering.provider.name.en} for #${request.id}. Your review shows because it comes from a booking that actually completed.'),
         icon: LucideIcons.star,
         route: '/review/${request.id}',
@@ -185,8 +186,8 @@ class NotificationRepositoryImpl implements NotificationRepository {
           route: '/track/${request.id}',
         ),
       EscrowState.acceptedByWorkshop => push(
-          title: L('تم قبول الطلب #${request.id}',
-              'Request #${request.id} accepted'),
+          title: L('تم قبول الطلب #${shortRef(request.id)}',
+              'Request #${shortRef(request.id)} accepted'),
           body: L(
               'قبلت ${provider.ar} حجزك في ${request.slot}.',
               '${provider.en} accepted your booking for ${request.slot}.'),
@@ -214,13 +215,13 @@ class NotificationRepositoryImpl implements NotificationRepository {
       EscrowState.releasedToWorkshop => push(
           title: const L('تم تحرير الدفعة', 'Payment released'),
           body: L(
-              'تم تحرير $amount ر.ع إلى ${provider.ar} عن الطلب #${request.id}.',
+              'تم تحرير $amount ر.ع إلى ${provider.ar} عن الطلب #${shortRef(request.id)}.',
               'OMR $amount released to ${provider.en} for #${request.id}.'),
           icon: LucideIcons.lockOpen,
           route: '/payments',
         ),
       EscrowState.disputed => push(
-          title: L('فُتح نزاع على الطلب #${request.id}',
+          title: L('فُتح نزاع على الطلب #${shortRef(request.id)}',
               'Dispute opened on #${request.id}'),
           body: const L(
               'المبلغ ما زال محجوزاً. سنراجع الطرفين ونعود إليك.',
@@ -249,7 +250,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
   ) {
     final hours = deadline.difference(DateTime.now()).inHours.clamp(1, 999);
     return push(
-      title: L('راجع الطلب #${request.id} قبل التحرير التلقائي',
+      title: L('راجع الطلب #${shortRef(request.id)} قبل التحرير التلقائي',
           'Review #${request.id} before it auto-releases'),
       body: L(
           'إن لم ترد خلال $hours ساعة، سيُحرَّر ${request.total.toStringAsFixed(2)} ر.ع تلقائياً إلى ${request.offering.provider.name.ar}.',

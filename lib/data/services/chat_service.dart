@@ -3,6 +3,8 @@ import '../datasources/mock/mock_chat_data.dart';
 import '../models/chat_message.dart';
 import 'mock_service_base.dart';
 
+// `providerThreadId` / `isProviderThread` come from `chat_message.dart`.
+
 /// The customer ↔ provider thread attached to a service request.
 ///
 /// Phase 2: implement `RestChatService` against `/chat/requests/{id}`, backed
@@ -53,8 +55,12 @@ class MockChatService with MockServiceBase implements ChatService {
 
     final cursor = _replyCursors[requestId] ?? 0;
     _replyCursors[requestId] = cursor + 1;
-    final reply = MockChatData.providerReplies[
-        cursor % MockChatData.providerReplies.length];
+    // An enquiry thread has no booking behind it, so it gets answers that do
+    // not claim one.
+    final replies = isProviderThread(requestId)
+        ? MockChatData.enquiryReplies
+        : MockChatData.providerReplies;
+    final reply = replies[cursor % replies.length];
 
     return _append(
       requestId,
