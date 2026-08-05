@@ -46,3 +46,28 @@ app.*.map.json
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Local working documents — conversation archives, planning notes, drafts.
+# Private and/or large, and not part of the shipped app.
+#
+# `docs/*` rather than `docs/`: git never descends into an excluded *directory*,
+# so the two exceptions below would be unreachable if the folder itself were the
+# pattern. Excluding its contents keeps the directory itself traversable.
+docs/*
+!docs/api_contract.md
+!docs/screenshots/
+
+# The same working material, loose at the repo root: design mockups and their
+# viewer scripts, planning notes, the investor deck, and stray screenshots.
+#
+# Each pattern is anchored with a leading `/` so it matches the root only —
+# an unanchored `*.png` would swallow `assets/` images and `web/index.html`.
+/*.png
+/*.jpg
+/*.html
+/*.pptx
+/*.patch
+/*.jsx
+/image-slot.js
+/PROJECT_PLAN.md
+/AK_Cars_*.md

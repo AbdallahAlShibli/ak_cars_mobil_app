@@ -1,117 +1,87 @@
-<div align="center">
+# Handoff: AK Cars — "Sand & Ink" Theme Rebuild (Flutter)
 
-# 🚗 AK Cars — Customer Mobile App
+## Overview
+**الثيم المعتمد النهائي = دمج الجولتين 3 و 4 في هوية واحدة**: المظهر البصري من الجولة 3 (Sand & Ink — كريمي دافئ، بطاقات بيضاء، أزرار سوداء pill، لمسة كهرمانية) + قدرات الجولة 4 (تبديل اللغة عربي/إنجليزي، تبديل المظهر كريمي/داكن، وميزة تحدي الأسبوع). الافتراض عند أول تشغيل: **العربية + الثيم الكريمي**. يُستبدل أي "مؤشر صحة" وهمي بـ**متابعة صيانة** محسوبة من بيانات يدخلها المستخدم. التطبيق: AK Cars (عميل عُمان — خدمات، قطع غيار، سوق سيارات، مرآب).
 
-**Car services, parts, and a cars marketplace for the Sultanate of Oman.**
+## About the Design Files
+`AK Cars — GTD Mockups.dc.html` (مع `ios-frame.jsx` و `image-slot.js`) هي **مراجع تصميم بصيغة HTML** — نماذج تعرض الشكل والسلوك المقصود، وليست كوداً جاهزاً للنسخ. المطلوب **إعادة بنائها داخل مشروع Flutter الحالي** (`ak_cars_mobil_app`) باتباع أنماطه القائمة: Riverpod للحالة، go_router للتنقل، الثيم في `lib/core/theme/`، والشاشات في `lib/features/`. لا تكسر Clean Architecture ولا DI ولا الـ Routing، ولا تغيّر Business Logic إلا للضرورة.
 
-Built with Flutter · Riverpod · go_router — RTL-first, Arabic-native UI.
+الصفحة تحتوي 4 جولات تصميم. **المعتمد هو الجولتان 3 و 4 معاً كثيم واحد مدموج** (الأحدث، أعلى الصفحة) — لا تعاملهما كخيارين منفصلين:
+- الجولة 4: الإعدادات (لغة + مظهر) `#4a`، الرئيسية إنجليزي LTR `#4b`، الرئيسية بالثيم الداكن `#4c`، تحدي الأسبوع `#4d`.
+- الجولة 3: Splash `#3a`، الرئيسية `#3b`، متابعة الصيانة `#3c`، سوق السيارات `#3d`.
+- الجولتان 1 و 2 (الداكن الأزرق/الكربوني) **مرفوضتان** — للتاريخ فقط. الشاشات غير المعاد تصميمها (الحجز، التتبع، المتجر، البروفايل…) يعاد صياغتها بنفس لغة الجولة 3/4، ويمكن الاستئناس ببنيتها المحتوائية في الجولة 2.
 
-[![Flutter](https://img.shields.io/badge/Flutter-3.12+-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
-[![Dart](https://img.shields.io/badge/Dart-3.12+-0175C2?logo=dart&logoColor=white)](https://dart.dev)
-[![Riverpod](https://img.shields.io/badge/State-Riverpod-4c51bf)](https://riverpod.dev)
-[![go_router](https://img.shields.io/badge/Routing-go__router-1D4ED8)](https://pub.dev/packages/go_router)
-[![Platform](https://img.shields.io/badge/Platform-iOS%20%7C%20Android%20%7C%20Web-333)](#)
-[![License](https://img.shields.io/badge/License-Private-critical)](#)
+## Fidelity
+**High-fidelity** للشاشات الموجودة في الجولتين 3–4: طابق الألوان والمسافات والخطوط والزوايا بدقة. الشاشات غير الممثلة: طبّق نفس نظام التصميم (lofi by extension).
 
-</div>
+## Design Tokens
 
----
+### Light — "Sand" (الافتراضي)
+| Token | Hex | الاستخدام |
+|---|---|---|
+| bg | `#F6F3EE` | خلفية الشاشات |
+| surface | `#FFFFFF` | البطاقات |
+| border | `#ECE7DE` | حدود البطاقات (1px) |
+| surfaceDim | `#F0EBE1` | خلفيات صور/أشرطة تقدم فارغة |
+| ink | `#1D1B17` | نص أساسي + الأزرار السوداء pill |
+| inkSub | `#8B857A` | نص ثانوي |
+| inkFaint | `#B0A996` | تلميحات/توضيحات |
+| accentAmber | `#E9A23B` | تقدّم "قريب"، نجوم النقاط |
+| amberSoft | `#F3D9A4` | بانر العروض، شارات التحدي |
+| amberText | `#B07818` / `#7A6534` | نص فوق الكهرمائي |
+| success | `#3E9B6E` + soft `#EAF5EF` | حالة جيدة، واتساب |
+| danger | `#D96A64` + soft `#FBEBE9` + text `#C05650` | مساعدة الطريق SOS فقط |
 
-## 📸 Screenshots
-
-<!-- <div align="center">
-
-| Home / Marketplace | Search Results | Listing Detail | Full Specs |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/screenshots/01-home.png" width="200"/> | <img src="docs/screenshots/02-results.png" width="200"/> | <img src="docs/screenshots/03-listing-detail.png" width="200"/> | <img src="docs/screenshots/04-specs.png" width="200"/> |
-
-</div> -->
-
----
-
-## ✨ Features
-
-- 🏁 **Onboarding** — splash, first-launch guide, and a "car now / car later" start choice.
-- 🔐 **Registration gate** — phone or email OTP (phone always required) enforced before any transaction.
-- 🛠️ **Service marketplace** — browse services by region and car, add-ons, provider capacity, mandatory Oman plate entry.
-- 📦 **Escrow state machine** — ten states, one explicit transition table, three roles (customer, workshop, founder); proof → approve → release, with a 72-hour auto-release window, live tracking, call, and chat.
-- 🧰 **Operator panels** — a workshop panel (accept, start, submit proof) and a founder panel (confirm funds held, resolve disputes), reachable after switching role in Settings.
-- 🚙 **Cars marketplace** *(phase 2 — hidden behind `AppFlags.carMarketplaceEnabled`)* — browse, filter by make/model, view detailed listings and specs, post an ad.
-- 🛒 **Parts shop** *(phase 2 — hidden behind `AppFlags.partsStoreEnabled`)* — free filters (car, category, provider, price, region), cart, and orders.
-- 🚗 **My Garage** — save cars (petrol, diesel, hybrid, plug-in or electric), manage favorites.
-- ⚡ **Built for EV owners too** — record a car's powertrain and the app follows it: EV maintenance without oil reminders, EV-certified workshops, charging parts, and an EV weekly challenge.
-- 👤 **Profile hub** — requests, payments, and account.
-
----
-
-## 🚀 Getting Started
-
-**Prerequisites:** [Flutter SDK](https://docs.flutter.dev/get-started/install) `^3.12.2`.
-
-```bash
-flutter pub get      # install dependencies
-flutter run          # launch on a connected device / emulator
-```
-
-> **Demo tip:** during registration, any 4-digit OTP works (e.g. `7391`).
-
----
-
-## 🏗️ Architecture
-
-| Concern | Approach |
+### Dark — "Ink" (اختياري)
+| Token | Hex |
 |---|---|
-| **State** | Riverpod — `lib/data/app_state.dart` (auth/registration gate, garage, service requests, cart, shop filters, favorites) |
-| **Navigation** | go_router — `lib/core/router/app_router.dart` — `StatefulShellRoute` bottom-nav shell + pushed detail routes; `ensureRegistered()` enforces the transaction gate |
-| **Design system** | `lib/core/theme/` — tokens from the approved HTML designs (brand `#1D4ED8`, ink `#0F172A`, 20px cards, Plus Jakarta Sans) |
-| **Data** | `lib/data/mock_data.dart` — a stand-in for the AK Cars API; models mirror backend concepts (ServiceRequest lifecycle, escrow states, provider fulfillment capacity) |
+| bg | `#171613` |
+| surface | `#211F1B` (حد `rgba(255,255,255,.07)`) |
+| surfaceDim | `#2A2822` |
+| text | `#F2EFE8` · sub `#A29B8D` · faint `#6B6558` / `#847E71` |
+| زر أساسي | معكوس: خلفية `#F6F3EE` نص `#1D1B17` |
+| promo | تدرج `#3B3122→#2A2419` بحد `rgba(233,162,59,.25)`، عناوين `#F0D9A8` |
+| success | `#6FBE95` · danger `#E28B86` (bg `rgba(217,106,100,.1)`) |
+| nav bar | `#1D1B17` |
 
-### Project layout
+### Shape & Spacing
+- Radius: بطاقات كبيرة 22–24، بطاقات 18–20، صور داخلية 12–16، أزرار وحقول بحث وchips **pill (999)**. لا زوايا حادة ولا clip-path.
+- Padding شاشة: 20px أفقي. فجوات المكدس الرأسي 14–15px. داخل البطاقات 14–16px.
+- ظلال: خفيفة جداً `0 10px 30px rgba(0,0,0,.25)` للبطاقات البارزة فقط (بالداكن)، `0 16px 36px rgba(29,27,23,.22)` لبطاقة التحدي السوداء.
+- Bottom nav: ارتفاع ~80، خلفية surface، زوايا علوية 24، العنصر النشط = أيقونة داخل pill بلون ink (فاتح) / `#F6F3EE` (داكن) + التسمية bold.
 
-```
-lib/
-├── core/
-│   ├── router/      # go_router configuration
-│   ├── theme/       # colors, theme, design tokens
-│   ├── utils/       # contact helpers
-│   └── widgets/     # shared widgets (car media, Oman plate input)
-├── data/            # app state, models, mock data, catalogs, locations
-├── features/
-│   ├── onboarding/  # splash, guide, start choice
-│   ├── auth/        # registration + OTP gate
-│   ├── home/        # home + notifications
-│   ├── services/    # detail, booking, tracking, escrow approval, chat
-│   ├── cars/        # marketplace, filters, results, listing detail, post ad
-│   ├── garage/      # my cars, add car
-│   ├── shop/        # shop, filters, cart, orders
-│   ├── profile/     # profile hub, payments
-│   └── shell/       # bottom-nav shell
-└── main.dart
-```
+### Typography
+- عربي/أساسي: **IBM Plex Sans Arabic** (400/500/600/700) — google_fonts.
+- الأرقام والقيم (أسعار، ممشى، عدادات): **Chakra Petch** (500–700).
+- أحجام مرجعية: عنوان شاشة 19–20، عنوان بطاقة 13–14.5 w700، نص 11–12، ثانوي 10–10.5، توضيح 9.5.
+- أيقونات بأسلوب Lucide، stroke 1.8، أحجام 15–19.
 
----
+## Screens / Views (المرجع بين الأقواس)
 
-## 🗺️ Roadmap
+1. **Splash (`#3a`)** — كريمي، دوائر زخرفية ناعمة، شعار AK داخل مربع أسود radius 28، صورة سيارة، مؤشر صفحات، زر أسود pill «ابدأ الرحلة»، رابط تسجيل الدخول. انتقالات هادئة (fade/slide 250–350ms, easeOut).
+2. **Home (`#3b` عربي / `#4b` إنجليزي / `#4c` داكن)** — ترحيب + جرس بنقطة حمراء، بحث pill، بانر عرض كهرمائي (نص يمين/صورة يسار — ينعكس مع LTR)، بطاقة «متابعة الصيانة» المصغرة (بندان بأشرطة تقدم + سطر مصدر الحساب)، شبكة 4 إجراءات (حجز/SOS/قطع/بيع — SOS وحده بالأحمر)، «الأكثر بحثاً» شبكة 2×n، bottom nav.
+3. **متابعة الصيانة (`#3c`)** — **يستبدل مؤشر الصحة**. بطاقة السيارة + خانة «الممشى الحالي — تدخله بنفسك» بقيمة Chakra Petch وزر «حدّث الممشى». تنبيه كهرمائي: «تُحسب من الممشى الذي تدخله وسجل خدماتك — التطبيق لا يقرأ بيانات من السيارة». بنود قادمة: زيت (باقي X كم، حالة "قريب")، إطارات ("بوضع جيد")، بند بلا سجل → زر outline «أضف سجلاً يدوياً». سجل الخدمات من حجوزات التطبيق.
+   - المنطق: `remaining = interval − (currentOdometer − lastServiceOdometer)`؛ الفواصل الافتراضية قابلة للتعديل (زيت 5,000 كم / إطارات 6 أشهر…). بلا سجل ⇒ لا تُعرض نسبة أبداً.
+4. **سوق السيارات (`#3d`)** — بحث، chips فئات (الكل نشط = أسود pill)، صف ماركات (بطاقات بيضاء صغيرة + بطاقة «+18 المزيد» كهرمانية)، شبكة إعلانات 2×n (صورة، شارة «مميز»، اسم، ممشى·منطقة، سعر، زر واتساب دائري أخضر).
+5. **الإعدادات (`#4a`)** — Segmented pill للغة (العربية | English)، بطاقتا معاينة مظهر (كريمي محدد بحد أسود + علامة صح / داكن) + toggle «تلقائي حسب النظام»، صفوف: إشعارات (switch)، المنطقة، عن التطبيق.
+6. **تحدي الأسبوع (`#4d`)** — شارة سلسلة «3 أسابيع متتالية» بلهب كهرمائي؛ بطاقة سوداء: شارة الأسبوع، مهلة، عنوان، وصف، 3 خطوات (مكتملة = دائرة خضراء)، شريط تقدم 1/3، زر «أكمل التحدي»، سطر مكافأة «+150 نقطة + وسام»؛ إحصاءات (تحديات/نقاط/أوسمة)؛ «الأسبوع القادم» مقفل بحد dashed؛ قائمة تحديات مكتملة بنقاطها.
+   - المنطق: تحدٍّ أسبوعي واحد بخطوات checkable، إكمال الخطوات كلها ⇒ نقاط + badge + تحديث streak؛ إكمال التحدي قد يُغذّي سجل الصيانة (مثال: تسجيل قراءة الضغط).
 
-- **Phase 1 — booking → escrow → approval** (current): four tabs
-  (الخدمات · حجوزاتي · سيارتي · حسابي), the escrow state machine, maintenance
-  follow-up, mock data. The parts store and the cars marketplace are hidden
-  behind feature flags, not removed — `lib/config/app_flags.dart`.
-- **Phase 2 — API integration:** wire screens to the AK Cars ASP.NET API (OTP, capacity, add-ons, chat, FCM).
-- **Phase 3 — Real escrow:** Thawani-backed payment escrow.
+## Interactions & Behavior
+- اللغة: `Locale('ar')` افتراضياً؛ التبديل يقلب `Directionality` فوراً عبر MaterialApp locale (intl + flutter_localizations). كل الشاشات تعمل RTL وLTR.
+- الثيم: `ThemeMode.light` افتراضياً + خيار system؛ ThemeExtension يحمل التوكنز أعلاه للوضعين. حفظ الاختيارين (shared_preferences أو ما يعادله) عبر Riverpod provider.
+- أزرار: pressed = تعتيم خفيف (opacity .85)؛ حركات انتقال الشاشات الافتراضية سريعة وهادئة (fade-through ~250ms). لا اهتزازات ولا توهج نيون.
+- SOS الأحمر يظهر فقط في: زر مساعدة الطريق، نقاط الإشعارات، الإلغاء/الخروج.
 
-See `MobileApp-Design/PROJECT_PLAN.md` §8 for the full plan.
+## State Management
+- providers جديدة: `settingsProvider` (locale, themeMode)، `maintenanceProvider` (odometer entries, service records, computed due items)، `challengeProvider` (current challenge, steps, streak, history, points).
+- النقاط تتكامل مع نظام الولاء الحالي في `app_state.dart`.
 
----
+## Assets
+- الصور في التصميم placeholders (`<image-slot>`) — استخدم صور المشروع الحقيقية (`car_media.dart` / روابط الإعلانات).
+- خطوط عبر google_fonts: IBM Plex Sans Arabic، Chakra Petch.
+- أيقونات: lucide_icons (أو ما يطابقها) بدل Material rounded الحالية.
 
-## 🧰 Tech Stack
-
-`flutter_riverpod` · `go_router` · `google_fonts` · `intl` · `url_launcher` · `collection`
-
----
-
-<div align="center">
-
-**AK Cars** · Oman 🇴🇲 · Private repository
-
-</div>
+## Files
+- `AK Cars — GTD Mockups.dc.html` — كل الشاشات (افتحه بالمتصفح؛ الجولات 3–4 أعلى الصفحة هي المعتمدة، والمعرّفات `#3a…#4d` روابط داخلية).
+- `ios-frame.jsx`، `image-slot.js` — مكوّنات عرض للنموذج فقط، لا تُنقل للتطبيق.
