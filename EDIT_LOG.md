@@ -17,6 +17,39 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-08-18 · README rewritten as a real project README; the old design-handoff content moved to DESIGN_HANDOFF.md
+
+**Baseline:** `62ad8e0` (HEAD). Request: rewrite `README.md` and
+`AKCarsMobileAPI/README.md` with modern, useful project info and a
+hand-written project-structure map, for both repos.
+
+`README.md` had been repurposed on 2026-07-20 to hold the "Sand & Ink"
+visual design handoff (design tokens, per-screen mockup references, in
+Arabic) — useful, but not what a README is for, and it referenced local
+working files (`AK Cars — GTD Mockups.dc.html`, `ios-frame.jsx`,
+`image-slot.js`) that are gitignored and don't exist in a fresh clone.
+
+Moved that content verbatim to the new `DESIGN_HANDOFF.md` (tracked; doesn't
+match any `.gitignore` pattern) and wrote a standard README in its place:
+overview, feature list, tech stack, `flutter run` + `--dart-define` config
+table, a hand-drawn `lib/`/`test/` structure tree cross-checked against the
+actual directory listing, and a short architecture summary linking to
+`ARCHITECTURE.md`. `AKCarsMobileAPI/README.md` (previously just a title) got
+the same treatment — architecture (Clean Architecture, CQRS/MediatR vertical
+slices), tech stack, `dotnet run` / `AKCARS_USE_INMEMORY_DB` /
+`AKCARS_SEED_DEMO_DATA` getting-started steps, an endpoint-group table, and a
+structure tree, built by reading `Program.cs`, the four `.csproj` files, and
+`src/`/`tests/` on disk rather than guessed.
+
+No code changed. Docs only, both repos.
+
+**Verified:** read both project trees, `Program.cs`, `pubspec.yaml`, and all
+four backend `.csproj` files to keep the structure trees and tech-stack
+tables accurate; confirmed `DESIGN_HANDOFF.md` isn't caught by any
+`.gitignore` rule before relying on it as the new home for that content.
+
+---
+
 ## 2026-08-17 (2) · The services section had no offerings because of a bad migration default on the API, and a sign-out that failed its own logout call skipped every clear
 
 **Baseline:** `7cf6a5f` (HEAD). Request, verbatim: "the services section not

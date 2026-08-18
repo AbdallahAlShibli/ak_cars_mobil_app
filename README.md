@@ -1,87 +1,170 @@
-# Handoff: AK Cars — "Sand & Ink" Theme Rebuild (Flutter)
+# AK Cars — Mobile App
 
-## Overview
-**الثيم المعتمد النهائي = دمج الجولتين 3 و 4 في هوية واحدة**: المظهر البصري من الجولة 3 (Sand & Ink — كريمي دافئ، بطاقات بيضاء، أزرار سوداء pill، لمسة كهرمانية) + قدرات الجولة 4 (تبديل اللغة عربي/إنجليزي، تبديل المظهر كريمي/داكن، وميزة تحدي الأسبوع). الافتراض عند أول تشغيل: **العربية + الثيم الكريمي**. يُستبدل أي "مؤشر صحة" وهمي بـ**متابعة صيانة** محسوبة من بيانات يدخلها المستخدم. التطبيق: AK Cars (عميل عُمان — خدمات، قطع غيار، سوق سيارات، مرآب).
+A Flutter client for **AK Cars**, a car-services and marketplace platform for
+Oman: book maintenance with a workshop, track the job through an escrow-backed
+lifecycle, browse a cars marketplace and a parts shop, and run a workshop's
+own back office from the same app.
 
-## About the Design Files
-`AK Cars — GTD Mockups.dc.html` (مع `ios-frame.jsx` و `image-slot.js`) هي **مراجع تصميم بصيغة HTML** — نماذج تعرض الشكل والسلوك المقصود، وليست كوداً جاهزاً للنسخ. المطلوب **إعادة بنائها داخل مشروع Flutter الحالي** (`ak_cars_mobil_app`) باتباع أنماطه القائمة: Riverpod للحالة، go_router للتنقل، الثيم في `lib/core/theme/`، والشاشات في `lib/features/`. لا تكسر Clean Architecture ولا DI ولا الـ Routing، ولا تغيّر Business Logic إلا للضرورة.
+Talks to [`AKCarsMobileAPI`](../AKCarsMobileAPI) — a separate .NET 8 backend —
+over REST and one SignalR hub for chat. There is no offline/mock data path in
+the shipped app; see [Architecture](#architecture) below.
 
-الصفحة تحتوي 4 جولات تصميم. **المعتمد هو الجولتان 3 و 4 معاً كثيم واحد مدموج** (الأحدث، أعلى الصفحة) — لا تعاملهما كخيارين منفصلين:
-- الجولة 4: الإعدادات (لغة + مظهر) `#4a`، الرئيسية إنجليزي LTR `#4b`، الرئيسية بالثيم الداكن `#4c`، تحدي الأسبوع `#4d`.
-- الجولة 3: Splash `#3a`، الرئيسية `#3b`، متابعة الصيانة `#3c`، سوق السيارات `#3d`.
-- الجولتان 1 و 2 (الداكن الأزرق/الكربوني) **مرفوضتان** — للتاريخ فقط. الشاشات غير المعاد تصميمها (الحجز، التتبع، المتجر، البروفايل…) يعاد صياغتها بنفس لغة الجولة 3/4، ويمكن الاستئناس ببنيتها المحتوائية في الجولة 2.
+## Features
 
-## Fidelity
-**High-fidelity** للشاشات الموجودة في الجولتين 3–4: طابق الألوان والمسافات والخطوط والزوايا بدقة. الشاشات غير الممثلة: طبّق نفس نظام التصميم (lofi by extension).
+- **Booking → escrow → approval** — a customer books a service, funds are
+  held in escrow, the workshop does the work and submits proof, the customer
+  approves (or a 72-hour timer auto-releases), funds are released.
+- **Maintenance follow-up** — per-car service schedule computed only from
+  odometer readings and service records the owner actually entered; no
+  invented "health score".
+- **Request a part + fitting** — a customer describes a part/fault, a
+  workshop answers with an itemised quote, and it rides the same escrow
+  machine as a catalogue booking.
+- **Verified reviews** — a review can only be filed from a booking that
+  actually completed; nothing is seeded or fabricated.
+- **Workshop dashboard** — a workshop's own CRUD for offerings, add-ons,
+  inventory, staff, schedule, customers, and server-computed earnings/metrics.
+- **Founder/admin console** — provider approvals, dispute resolution, offer
+  governance, platform-wide money audit.
+- **Cars marketplace & parts shop** — feature-flagged pillars (see
+  `lib/config/app_flags.dart`), hidden rather than deleted when out of scope.
+- Bilingual **Arabic (default, RTL) / English**, light **"Sand"** and dark
+  **"Ink"** themes, both fully token-driven.
 
-## Design Tokens
+## Tech stack
 
-### Light — "Sand" (الافتراضي)
-| Token | Hex | الاستخدام |
-|---|---|---|
-| bg | `#F6F3EE` | خلفية الشاشات |
-| surface | `#FFFFFF` | البطاقات |
-| border | `#ECE7DE` | حدود البطاقات (1px) |
-| surfaceDim | `#F0EBE1` | خلفيات صور/أشرطة تقدم فارغة |
-| ink | `#1D1B17` | نص أساسي + الأزرار السوداء pill |
-| inkSub | `#8B857A` | نص ثانوي |
-| inkFaint | `#B0A996` | تلميحات/توضيحات |
-| accentAmber | `#E9A23B` | تقدّم "قريب"، نجوم النقاط |
-| amberSoft | `#F3D9A4` | بانر العروض، شارات التحدي |
-| amberText | `#B07818` / `#7A6534` | نص فوق الكهرمائي |
-| success | `#3E9B6E` + soft `#EAF5EF` | حالة جيدة، واتساب |
-| danger | `#D96A64` + soft `#FBEBE9` + text `#C05650` | مساعدة الطريق SOS فقط |
-
-### Dark — "Ink" (اختياري)
-| Token | Hex |
+| Concern | Choice |
 |---|---|
-| bg | `#171613` |
-| surface | `#211F1B` (حد `rgba(255,255,255,.07)`) |
-| surfaceDim | `#2A2822` |
-| text | `#F2EFE8` · sub `#A29B8D` · faint `#6B6558` / `#847E71` |
-| زر أساسي | معكوس: خلفية `#F6F3EE` نص `#1D1B17` |
-| promo | تدرج `#3B3122→#2A2419` بحد `rgba(233,162,59,.25)`، عناوين `#F0D9A8` |
-| success | `#6FBE95` · danger `#E28B86` (bg `rgba(217,106,100,.1)`) |
-| nav bar | `#1D1B17` |
+| Framework | Flutter (Dart SDK `^3.12.2`) |
+| State management | [Riverpod](https://riverpod.dev) (`flutter_riverpod`) — notifiers + derived providers, no NgRx-style store |
+| Routing | [`go_router`](https://pub.dev/packages/go_router), one shell route per bottom-nav tab |
+| HTTP | [`dio`](https://pub.dev/packages/dio) behind an `ApiClient` contract |
+| Realtime | [`signalr_netcore`](https://pub.dev/packages/signalr_netcore) — chat hub |
+| Auth storage | [`flutter_secure_storage`](https://pub.dev/packages/flutter_secure_storage) (tokens) + `shared_preferences` (guest-local data, settings) |
+| Push | Firebase Cloud Messaging (`firebase_core`, `firebase_messaging`) |
+| i18n | Hand-rolled bilingual strings (`lib/core/i18n`) + bilingual `L(ar, en)` values on models — see [Architecture](#architecture) |
+| Fonts / icons | `google_fonts` (IBM Plex Sans Arabic, Chakra Petch for numerals), `lucide_icons_flutter` |
+| Charts | `fl_chart` (workshop statistics) |
+| Images | `cached_network_image`, `image_picker` |
+| Testing | `flutter_test` — 47 test files, incl. golden tests |
 
-### Shape & Spacing
-- Radius: بطاقات كبيرة 22–24، بطاقات 18–20، صور داخلية 12–16، أزرار وحقول بحث وchips **pill (999)**. لا زوايا حادة ولا clip-path.
-- Padding شاشة: 20px أفقي. فجوات المكدس الرأسي 14–15px. داخل البطاقات 14–16px.
-- ظلال: خفيفة جداً `0 10px 30px rgba(0,0,0,.25)` للبطاقات البارزة فقط (بالداكن)، `0 16px 36px rgba(29,27,23,.22)` لبطاقة التحدي السوداء.
-- Bottom nav: ارتفاع ~80، خلفية surface، زوايا علوية 24، العنصر النشط = أيقونة داخل pill بلون ink (فاتح) / `#F6F3EE` (داكن) + التسمية bold.
+## Getting started
 
-### Typography
-- عربي/أساسي: **IBM Plex Sans Arabic** (400/500/600/700) — google_fonts.
-- الأرقام والقيم (أسعار، ممشى، عدادات): **Chakra Petch** (500–700).
-- أحجام مرجعية: عنوان شاشة 19–20، عنوان بطاقة 13–14.5 w700، نص 11–12، ثانوي 10–10.5، توضيح 9.5.
-- أيقونات بأسلوب Lucide، stroke 1.8، أحجام 15–19.
+```bash
+flutter pub get
 
-## Screens / Views (المرجع بين الأقواس)
+# Point the app at a running AKCarsMobileAPI instance.
+# There is no default — an unset base URL fails loudly on first request
+# rather than silently serving fake data.
+flutter run --dart-define=AK_API_BASE_URL=http://127.0.0.1:5116/api/v1
+```
 
-1. **Splash (`#3a`)** — كريمي، دوائر زخرفية ناعمة، شعار AK داخل مربع أسود radius 28، صورة سيارة، مؤشر صفحات، زر أسود pill «ابدأ الرحلة»، رابط تسجيل الدخول. انتقالات هادئة (fade/slide 250–350ms, easeOut).
-2. **Home (`#3b` عربي / `#4b` إنجليزي / `#4c` داكن)** — ترحيب + جرس بنقطة حمراء، بحث pill، بانر عرض كهرمائي (نص يمين/صورة يسار — ينعكس مع LTR)، بطاقة «متابعة الصيانة» المصغرة (بندان بأشرطة تقدم + سطر مصدر الحساب)، شبكة 4 إجراءات (حجز/SOS/قطع/بيع — SOS وحده بالأحمر)، «الأكثر بحثاً» شبكة 2×n، bottom nav.
-3. **متابعة الصيانة (`#3c`)** — **يستبدل مؤشر الصحة**. بطاقة السيارة + خانة «الممشى الحالي — تدخله بنفسك» بقيمة Chakra Petch وزر «حدّث الممشى». تنبيه كهرمائي: «تُحسب من الممشى الذي تدخله وسجل خدماتك — التطبيق لا يقرأ بيانات من السيارة». بنود قادمة: زيت (باقي X كم، حالة "قريب")، إطارات ("بوضع جيد")، بند بلا سجل → زر outline «أضف سجلاً يدوياً». سجل الخدمات من حجوزات التطبيق.
-   - المنطق: `remaining = interval − (currentOdometer − lastServiceOdometer)`؛ الفواصل الافتراضية قابلة للتعديل (زيت 5,000 كم / إطارات 6 أشهر…). بلا سجل ⇒ لا تُعرض نسبة أبداً.
-4. **سوق السيارات (`#3d`)** — بحث، chips فئات (الكل نشط = أسود pill)، صف ماركات (بطاقات بيضاء صغيرة + بطاقة «+18 المزيد» كهرمانية)، شبكة إعلانات 2×n (صورة، شارة «مميز»، اسم، ممشى·منطقة، سعر، زر واتساب دائري أخضر).
-5. **الإعدادات (`#4a`)** — Segmented pill للغة (العربية | English)، بطاقتا معاينة مظهر (كريمي محدد بحد أسود + علامة صح / داكن) + toggle «تلقائي حسب النظام»، صفوف: إشعارات (switch)، المنطقة، عن التطبيق.
-6. **تحدي الأسبوع (`#4d`)** — شارة سلسلة «3 أسابيع متتالية» بلهب كهرمائي؛ بطاقة سوداء: شارة الأسبوع، مهلة، عنوان، وصف، 3 خطوات (مكتملة = دائرة خضراء)، شريط تقدم 1/3، زر «أكمل التحدي»، سطر مكافأة «+150 نقطة + وسام»؛ إحصاءات (تحديات/نقاط/أوسمة)؛ «الأسبوع القادم» مقفل بحد dashed؛ قائمة تحديات مكتملة بنقاطها.
-   - المنطق: تحدٍّ أسبوعي واحد بخطوات checkable، إكمال الخطوات كلها ⇒ نقاط + badge + تحديث streak؛ إكمال التحدي قد يُغذّي سجل الصيانة (مثال: تسجيل قراءة الضغط).
+### Configuration (`--dart-define`)
 
-## Interactions & Behavior
-- اللغة: `Locale('ar')` افتراضياً؛ التبديل يقلب `Directionality` فوراً عبر MaterialApp locale (intl + flutter_localizations). كل الشاشات تعمل RTL وLTR.
-- الثيم: `ThemeMode.light` افتراضياً + خيار system؛ ThemeExtension يحمل التوكنز أعلاه للوضعين. حفظ الاختيارين (shared_preferences أو ما يعادله) عبر Riverpod provider.
-- أزرار: pressed = تعتيم خفيف (opacity .85)؛ حركات انتقال الشاشات الافتراضية سريعة وهادئة (fade-through ~250ms). لا اهتزازات ولا توهج نيون.
-- SOS الأحمر يظهر فقط في: زر مساعدة الطريق، نقاط الإشعارات، الإلغاء/الخروج.
+Read once, in `lib/config/`, and nowhere else in the app:
 
-## State Management
-- providers جديدة: `settingsProvider` (locale, themeMode)، `maintenanceProvider` (odometer entries, service records, computed due items)، `challengeProvider` (current challenge, steps, streak, history, points).
-- النقاط تتكامل مع نظام الولاء الحالي في `app_state.dart`.
+| Define | Default | Purpose |
+|---|---|---|
+| `AK_ENV` | `development` | Selects `AppEnvironment` |
+| `AK_API_BASE_URL` | *(none — required)* | Root of the REST API, no trailing slash |
+| `AK_REMOTE_CAR_IMAGES` | `true` | Toggle CDN vehicle imagery vs. offline vector artwork |
+| `AK_PARTS_STORE` | `false` | Show the parts shop pillar |
+| `AK_CAR_MARKETPLACE` | `false` | Show the cars marketplace pillar |
+| `AK_HOME_TAB` | `true` | Show the home tab |
+| `AK_PART_INSTALL` | `true` | "Request a part + fitting" flow |
+| `AK_REVIEWS` | `true` | Verified reviews flow |
 
-## Assets
-- الصور في التصميم placeholders (`<image-slot>`) — استخدم صور المشروع الحقيقية (`car_media.dart` / روابط الإعلانات).
-- خطوط عبر google_fonts: IBM Plex Sans Arabic، Chakra Petch.
-- أيقونات: lucide_icons (أو ما يطابقها) بدل Material rounded الحالية.
+See `lib/config/app_flags.dart` for the full list of compile-time feature
+flags (they hide a pillar's routes and nav entry; they never delete its code
+or tests).
 
-## Files
-- `AK Cars — GTD Mockups.dc.html` — كل الشاشات (افتحه بالمتصفح؛ الجولات 3–4 أعلى الصفحة هي المعتمدة، والمعرّفات `#3a…#4d` روابط داخلية).
-- `ios-frame.jsx`، `image-slot.js` — مكوّنات عرض للنموذج فقط، لا تُنقل للتطبيق.
+### Testing
+
+```bash
+flutter analyze lib test
+flutter test
+```
+
+## Project structure
+
+```
+ak_cars_mobil_app/
+├── lib/
+│   ├── app/                     Composition root — AkCarsApp, AppBootstrap
+│   ├── config/                  AppEnvironment, AppConfig, AppFlags — the only readers of --dart-define
+│   ├── core/
+│   │   ├── constants/           API endpoint paths, app-wide constants
+│   │   ├── error/                AppException hierarchy (network/domain errors)
+│   │   ├── i18n/                  Bilingual strings — S.of(context).t(ar, en)
+│   │   ├── json/                   Null-safe JSON decode helpers
+│   │   ├── media/                   Attachment codec (files travel as base64, never a path)
+│   │   ├── network/                  ApiClient contract + DioApiClient, chat SignalR hub
+│   │   ├── push/                      Firebase push wiring
+│   │   ├── router/                     go_router routes, shell branches, auth/role guards
+│   │   ├── theme/                       Sand & Ink design tokens (AkColors, typography, shape)
+│   │   ├── utils/                        GUID/derived-GUID helpers, JWT claim decoding
+│   │   └── widgets/                       Shared UI kit — AppCard, StatusBadge, SelectChip, …
+│   ├── data/
+│   │   ├── models/                Immutable domain models (fromJson/toJson/copyWith, value equality)
+│   │   ├── repositories/          One per feature — caching, warm caches, domain rules
+│   │   └── services/
+│   │       ├── api/               ApiXService — the real REST implementations
+│   │       └── *Service.dart      Interfaces + session-routed / local-store variants
+│   ├── di/
+│   │   └── providers.dart         Every service/repository binding — the only file naming a concrete impl
+│   ├── features/                  One folder per screen/flow — reads providers, builds no data
+│   │   ├── auth/                  Login, register, phone/email choice
+│   │   ├── cars/                  Cars marketplace, listings, post-an-ad
+│   │   ├── challenge/             Weekly challenge / loyalty
+│   │   ├── garage/                Registered vehicles
+│   │   ├── home/                  The home feed (offers, workshops, suggestions)
+│   │   ├── onboarding/            First-run flow
+│   │   ├── operations/            Founder console + a workshop's own escrow queue
+│   │   ├── profile/                Account, payments, settings entry
+│   │   ├── search/                  Cross-catalogue search
+│   │   ├── services/                 Booking, tracking, quotes, reviews
+│   │   ├── settings/                  Language/theme/notifications
+│   │   ├── shell/                      Bottom-nav shell — single source of truth for tabs
+│   │   ├── shop/                        Parts shop, cart, checkout, orders
+│   │   └── workshop_dashboard/          A workshop's own CRUD: offerings, inventory, staff, schedule, stats
+│   └── state/                     Riverpod notifiers + derived providers (no data logic of its own)
+├── test/
+│   ├── fakes/                     Test doubles + the seeded demo world — never imported from lib/
+│   ├── goldens/                    Golden-image baselines
+│   ├── helpers/                     Test harness wiring fakes into the DI container
+│   └── web/                          Web-only test target (secure-storage race, etc.)
+├── android/ ios/ web/ windows/ linux/ macos/   Platform shells
+├── assets/                        Bundled fonts, currency glyphs, launcher icon sources
+├── ARCHITECTURE.md                Layering, data flow, and every non-obvious decision — read before changing lib/
+├── EDIT_LOG.md                    Chronological record of what changed and why, newest first
+├── DESIGN_HANDOFF.md              The "Sand & Ink" visual design spec (tokens, screens, mockup references)
+└── docs/
+    └── api_contract.md            The REST contract this app is written against
+```
+
+## Architecture
+
+Layering is strict and one-directional:
+
+```
+UI (features/) → State (state/) → Repositories (data/repositories/) → Services (data/services/) → ApiClient → REST API
+```
+
+There is no second, offline data source in `lib/` — every service binding in
+`lib/di/providers.dart` resolves to a real `Api*` implementation, and a build
+that cannot reach the configured API host fails loudly with a
+`NetworkException` rather than falling back to invented data. The full mock
+world used to live in `lib/`; since 2026-08-10 it exists only as test doubles
+under `test/fakes/`.
+
+For the full picture — the escrow state machine, warm caches, the
+maintenance-projection logic, the workshop dashboard, and the technical debt
+being carried on purpose — see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
+## Related docs
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — the authoritative architecture reference
+- [`EDIT_LOG.md`](EDIT_LOG.md) — running history of changes, newest first
+- [`DESIGN_HANDOFF.md`](DESIGN_HANDOFF.md) — visual design spec (colors, type, spacing, per-screen references)
+- [`docs/api_contract.md`](docs/api_contract.md) — the REST API contract
+- [`AKCarsMobileAPI`](../AKCarsMobileAPI) — the backend this app talks to
