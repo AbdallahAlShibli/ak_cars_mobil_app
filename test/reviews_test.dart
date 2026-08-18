@@ -1,6 +1,6 @@
 import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/config/app_environment.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
+import 'fakes/data/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
@@ -8,7 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+import 'fakes/data/mock_ids.dart';
 
 /// Verified reviews (spec §8). The claim being tested is narrow and total:
 /// **a review cannot exist without a booking that completed and paid out.**
@@ -29,7 +29,7 @@ Future<ProviderContainer> _container() => createTestContainer(
     appConfigProvider.overrideWithValue(
       AppConfig.forEnvironment(
         AppEnvironment.development,
-      ).copyWith(simulateProviderLifecycle: false),
+      ),
     ),
   ],
 );
@@ -171,7 +171,6 @@ void main() {
         overrides: [
           appConfigProvider.overrideWithValue(
             AppConfig.forEnvironment(AppEnvironment.development).copyWith(
-              simulateProviderLifecycle: false,
               approvalWindow: Duration.zero,
             ),
           ),

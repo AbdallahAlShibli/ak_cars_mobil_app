@@ -147,14 +147,14 @@ class _TodayTab extends ConsumerWidget {
           children: [
             Expanded(
               child: MetricTile(
-                value: '${s.omr} ${held.toStringAsFixed(2)}',
+                value: RialAmount(held),
                 label: s.t('محجوز في الضمان', 'Held in escrow'),
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: MetricTile(
-                value: '${running.length}',
+                value: Text('${running.length}'),
                 label: s.t('طلبات جارية', 'In flight'),
               ),
             ),
@@ -165,7 +165,7 @@ class _TodayTab extends ConsumerWidget {
           children: [
             Expanded(
               child: MetricTile(
-                value: '${disputes.length}',
+                value: Text('${disputes.length}'),
                 label: s.t('نزاعات مفتوحة', 'Open disputes'),
                 tone: disputes.isEmpty ? null : ak.danger,
               ),
@@ -173,10 +173,10 @@ class _TodayTab extends ConsumerWidget {
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: MetricTile(
-                value: '${completedThisMonth.length}',
+                value: Text('${completedThisMonth.length}'),
                 label: s.t(
-                  'اكتمل هذا الشهر · ${s.omr} ${completedValue.toStringAsFixed(0)}',
-                  'Completed this month · ${s.omr} ${completedValue.toStringAsFixed(0)}',
+                  'اكتمل هذا الشهر · ${completedValue.toStringAsFixed(0)} ر.ع',
+                  'Completed this month · OMR ${completedValue.toStringAsFixed(0)}',
                 ),
               ),
             ),
@@ -749,16 +749,24 @@ class _RosterRow extends ConsumerWidget {
                     .copyWith(height: 1.5, color: ak.inkSub)),
           ],
           const SizedBox(height: AppSpacing.md),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: InkPill(
-              label: approved
-                  ? s.t('إيقاف', 'Suspend')
-                  : s.t('إعادة الاعتماد', 'Re-approve'),
-              outlined: approved,
-              fontSize: 11,
-              onTap: () => _toggle(context, ref, approved: approved),
-            ),
+          Row(
+            children: [
+              InkPill(
+                label: approved
+                    ? s.t('إيقاف', 'Suspend')
+                    : s.t('إعادة الاعتماد', 'Re-approve'),
+                outlined: approved,
+                fontSize: 11,
+                onTap: () => _toggle(context, ref, approved: approved),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              InkPill(
+                label: s.t('إدارة', 'Manage'),
+                outlined: true,
+                fontSize: 11,
+                onTap: () => context.push('/admin/workshops/${provider.id}'),
+              ),
+            ],
           ),
         ],
       ),
@@ -863,7 +871,7 @@ class _MoneyTab extends ConsumerWidget {
         SectionHeader(s.t('دفتر الضمان', 'Escrow ledger')),
         const SizedBox(height: AppSpacing.headingGap),
         OperatorFigure(
-          value: '${s.omr} ${held.toStringAsFixed(2)}',
+          value: RialAmount(held),
           label: s.t('محجوز الآن', 'Held right now'),
           hint: s.t(
               'يشمل الطلبات المتنازع عليها — النزاع يجمّد المبلغ ولا يعيده.',
@@ -874,7 +882,7 @@ class _MoneyTab extends ConsumerWidget {
           children: [
             Expanded(
               child: OperatorFigure(
-                value: '${s.omr} ${released.toStringAsFixed(2)}',
+                value: RialAmount(released),
                 label: s.t('حُرِّر خلال ${s.days(config.earningsWindow.inDays)}',
                     'Released in ${config.earningsWindow.inDays} days'),
               ),
@@ -882,7 +890,7 @@ class _MoneyTab extends ConsumerWidget {
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: OperatorFigure(
-                value: '${s.omr} ${refunded.toStringAsFixed(2)}',
+                value: RialAmount(refunded),
                 label: s.t('مُعاد للعملاء', 'Refunded'),
               ),
             ),
@@ -954,8 +962,7 @@ class _OwedRow extends ConsumerWidget {
                     style: context.text.cardTitle),
               ),
               const SizedBox(width: AppSpacing.sm),
-              Text('${s.omr} ${amount.toStringAsFixed(2)}',
-                  style: context.text.price),
+              RialAmount(amount, style: context.text.price),
             ],
           ),
           const SizedBox(height: AppSpacing.xs / 2),
@@ -984,13 +991,19 @@ class _OwedRow extends ConsumerWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(s.t('تسجيل تحويل', 'Record a transfer')),
-        content: Text(
-          s.t(
-            'هذا تسجيل فقط: التطبيق لا يحوّل شيئاً. أكّد أنك حوّلت ${s.omr} ${amount.toStringAsFixed(2)} إلى ${provider.name.of(s)} فعلياً.',
-            'This only records it — the app transfers nothing. Confirm that you have actually sent ${s.omr} ${amount.toStringAsFixed(2)} to ${provider.name.of(s)}.',
-          ),
-          style: dialogContext.text.bodyPrimary.copyWith(height: 1.6),
-        ),
+        content: Builder(builder: (context) {
+          final style = dialogContext.text.bodyPrimary.copyWith(height: 1.6);
+          return Text.rich(TextSpan(style: style, children: [
+            TextSpan(
+                text: s.t(
+                    'هذا تسجيل فقط: التطبيق لا يحوّل شيئاً. أكّد أنك حوّلت ',
+                    'This only records it — the app transfers nothing. Confirm that you have actually sent ')),
+            rialAmountSpan(amount: amount, style: style),
+            TextSpan(
+                text: s.t(' إلى ${provider.name.of(s)} فعلياً.',
+                    ' to ${provider.name.of(s)}.')),
+          ]));
+        }),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -1046,8 +1059,7 @@ class _PayoutRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpacing.sm),
-          Text('${s.omr} ${record.amount.toStringAsFixed(2)}',
-              style: context.text.labelStrong),
+          RialAmount(record.amount, style: context.text.labelStrong),
         ],
       ),
     );
@@ -1298,12 +1310,12 @@ class _OfferRow extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('${s.omr} ${offer.discountedPrice.toStringAsFixed(2)}',
-                  style: context.text.price),
+              RialAmount(offer.discountedPrice, style: context.text.price),
               const SizedBox(width: AppSpacing.sm),
               Flexible(
-                child: Text(
-                  '${s.omr} ${offer.referencePrice.toStringAsFixed(2)} · ${offer.discountPercent.round()}%',
+                child: RialAmount(
+                  offer.referencePrice,
+                  suffix: ' · ${offer.discountPercent.round()}%',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: context.text.bodySecondary

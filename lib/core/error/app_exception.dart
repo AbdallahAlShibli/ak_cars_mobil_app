@@ -65,8 +65,33 @@ class ApiException extends AppException {
 }
 
 /// 401 — no valid session. The UI should route to registration/sign-in.
+///
+/// [code] is the API envelope's machine-readable reason, when it sent one.
+/// Not every `401` means the same thing to a user: an expired session is the
+/// app's problem to fix silently, while `otp_invalid_or_expired` from
+/// `/auth/login/verify` is a sentence the person at the keyboard needs to
+/// read. Without this the login screen could only say "could not log in" to
+/// both, which told someone who mistyped one digit nothing at all.
 class UnauthorizedException extends AppException {
   const UnauthorizedException(
+    super.message, {
+    this.code,
+    super.cause,
+    super.stackTrace,
+  });
+
+  final String? code;
+}
+
+/// 429 — the caller is being rate-limited.
+///
+/// Its own type rather than an `ApiException` with a magic status, because it
+/// is the one failure whose correct advice is "wait, then try the identical
+/// thing again". `/auth/login` and `/auth/login/verify` are both limited
+/// per-IP (see `IpRateLimiting` in the API's appsettings) precisely because
+/// they are anonymous and one of them spends money on SMS.
+class RateLimitedException extends AppException {
+  const RateLimitedException(
     super.message, {
     super.cause,
     super.stackTrace,

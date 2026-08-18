@@ -28,6 +28,7 @@ class OperatorShell extends StatelessWidget {
     required this.title,
     required this.tabs,
     this.banner,
+    this.actions,
   });
 
   final String title;
@@ -38,6 +39,10 @@ class OperatorShell extends StatelessWidget {
   /// to be true on whichever tab you happen to be looking at.
   final Widget? banner;
 
+  /// `AppBar.actions` — e.g. the workshop panel's link into the newer
+  /// `/workshop/dashboard` for accounts that actually own the workshop.
+  final List<Widget>? actions;
+
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
@@ -47,14 +52,16 @@ class OperatorShell extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: Text(title),
+          actions: actions,
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(46),
             child: Column(
               children: [
                 TabBar(
                   isScrollable: tabs.length > 3,
-                  tabAlignment:
-                      tabs.length > 3 ? TabAlignment.start : TabAlignment.fill,
+                  tabAlignment: tabs.length > 3
+                      ? TabAlignment.start
+                      : TabAlignment.fill,
                   labelStyle: context.text.labelStrong,
                   unselectedLabelStyle: context.text.bodySecondary,
                   labelColor: ak.ink,
@@ -75,13 +82,19 @@ class OperatorShell extends StatelessWidget {
             children: [
               if (banner != null)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin,
-                      AppSpacing.md, AppSpacing.screenMargin, 0),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenMargin,
+                    AppSpacing.md,
+                    AppSpacing.screenMargin,
+                    0,
+                  ),
                   child: banner,
                 ),
               Expanded(
                 child: TabBarView(
-                  children: [for (final tab in tabs) Builder(builder: tab.builder)],
+                  children: [
+                    for (final tab in tabs) Builder(builder: tab.builder),
+                  ],
                 ),
               ),
             ],
@@ -108,7 +121,9 @@ class OffAppTransferNotice extends StatelessWidget {
     final ak = AkColors.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm + 2,
+      ),
       decoration: BoxDecoration(
         color: ak.surfaceDim,
         borderRadius: BorderRadius.circular(12),
@@ -137,7 +152,7 @@ class OperatorFigure extends StatelessWidget {
     this.tone,
   });
 
-  final String value;
+  final Widget value;
   final String label;
 
   /// A third line, for the thing the number does not say on its own — what a
@@ -161,11 +176,11 @@ class OperatorFigure extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            value,
+          DefaultTextStyle.merge(
+            style: context.text.price.copyWith(color: tone),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: context.text.price.copyWith(color: tone),
+            child: value,
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(label, style: context.text.bodySecondary),
@@ -173,8 +188,10 @@ class OperatorFigure extends StatelessWidget {
             const SizedBox(height: AppSpacing.xs / 2),
             Text(
               hint!,
-              style: context.text.bodySecondary
-                  .copyWith(fontSize: 11, color: ak.inkSub),
+              style: context.text.bodySecondary.copyWith(
+                fontSize: 11,
+                color: ak.inkSub,
+              ),
             ),
           ],
         ],

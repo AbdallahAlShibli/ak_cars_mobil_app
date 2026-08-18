@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/config/app_environment.dart';
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
+import 'fakes/data/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/features/services/part_request_screen.dart';
@@ -25,7 +25,7 @@ const _car = Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2019);
 Future<ProviderContainer> _container() => createTestContainer(overrides: [
       appConfigProvider.overrideWithValue(
         AppConfig.forEnvironment(AppEnvironment.development)
-            .copyWith(simulateProviderLifecycle: false),
+            ,
       ),
     ]);
 
@@ -115,9 +115,11 @@ void main() {
     expect(find.text('Part'), findsOneWidget);
     expect(find.text('Fitting'), findsOneWidget);
     expect(find.text('Total'), findsOneWidget);
-    expect(find.text('OMR 24.00'), findsOneWidget);
-    expect(find.text('OMR 8.00'), findsOneWidget);
-    expect(find.text('OMR 32.00'), findsOneWidget);
+    expect(find.textContaining('24.00', findRichText: true), findsOneWidget);
+    expect(find.textContaining('8.00', findRichText: true), findsOneWidget);
+    // The total is printed twice — once on the quote card, once on the
+    // action bar that pays it.
+    expect(find.textContaining('32.00', findRichText: true), findsWidgets);
     expect(find.text('Accept the quote'), findsOneWidget);
   });
 

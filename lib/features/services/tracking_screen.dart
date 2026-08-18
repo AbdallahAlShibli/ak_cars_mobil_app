@@ -34,7 +34,6 @@ class TrackingScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = S.of(context);
-    final ak = AkColors.of(context);
     final request = ref
         .watch(requestsProvider)
         .where((r) => r.id == requestId)
@@ -179,7 +178,7 @@ class TrackingScreen extends ConsumerWidget {
                   _EscrowCard(
                     request: request,
                     amount: amount,
-                    line: _escrowLine(s, request, amount),
+                    line: _escrowLine(s, request),
                     window: config.approvalWindow,
                   ),
                   const SizedBox(height: AppSpacing.sectionGap),
@@ -215,29 +214,6 @@ class TrackingScreen extends ConsumerWidget {
                           .fire(request.id, EscrowEvent.cancelBooking,
                               actor: EscrowActor.customer),
                       child: Text(s.t('إلغاء الحجز', 'Cancel booking')),
-                    ),
-                  ],
-                  if (config.simulateProviderLifecycle &&
-                      escrow.happyPathNext != null) ...[
-                    const SizedBox(height: AppSpacing.md),
-                    Row(
-                      children: [
-                        Icon(LucideIcons.refreshCw, size: 14, color: ak.inkFaint),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            s.t('نسخة تجريبية — تتقدّم الحالة تلقائياً.',
-                                'Demo build — the state advances on its own.'),
-                            style: context.text.bodySecondary,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => ref
-                              .read(requestsProvider.notifier)
-                              .advance(request.id),
-                          child: Text(s.t('تخطَّ للأمام', 'Skip ahead')),
-                        ),
-                      ],
                     ),
                   ],
                 ],
@@ -350,33 +326,44 @@ class TrackingScreen extends ConsumerWidget {
           ),
       };
 
-  String _escrowLine(S s, ServiceRequest request, String amount) =>
-      switch (request.escrow) {
-        // Nothing is held, and no amount exists to name — saying "OMR 0.00 is
-        // held in escrow" would be false twice over.
-        EscrowState.requested => s.t(
-            'لا يُحجز أي مبلغ قبل أن تقبل عرض السعر.',
-            'Nothing is held until you accept a quote.'),
-        EscrowState.quoted => s.t(
-            'وصل عرض السعر. لا يُحجز شيء ما لم تقبله.',
-            'The quote has arrived. Nothing is held unless you accept it.'),
-        EscrowState.quoteAccepted => s.t(
-            'قبلت العرض — الخطوة التالية تأكيد حجز $amount ر.ع.',
-            'Quote accepted — next comes confirming OMR $amount into escrow.'),
-        EscrowState.createdPendingPayment => s.t(
-            'لم يُحجز المبلغ بعد — يبدأ الضمان فور تأكيد $amount ر.ع.',
-            'Nothing is held yet — escrow starts the moment OMR $amount is confirmed.'),
-        EscrowState.releasedToWorkshop => s.t(
-            'تم تحرير $amount ر.ع إلى الورشة.',
-            'OMR $amount was released to the workshop.'),
-        EscrowState.refunded => s.t('أُعيد $amount ر.ع إليك.',
-            'OMR $amount was returned to you.'),
-        EscrowState.cancelled =>
-          s.t('أُلغي الحجز ولم يُحجز أي مبلغ.',
-              'The booking was cancelled and nothing was held.'),
-        _ => s.t('$amount ر.ع محفوظة كضمان حتى موافقتك.',
-            'OMR $amount held in escrow until your approval.'),
-      };
+  Widget _escrowLine(S s, ServiceRequest request) {
+    final total = request.total;
+    return switch (request.escrow) {
+      // Nothing is held, and no amount exists to name — saying "OMR 0.00 is
+      // held in escrow" would be false twice over.
+      EscrowState.requested => Text(s.t(
+          'لا يُحجز أي مبلغ قبل أن تقبل عرض السعر.',
+          'Nothing is held until you accept a quote.')),
+      EscrowState.quoted => Text(s.t(
+          'وصل عرض السعر. لا يُحجز شيء ما لم تقبله.',
+          'The quote has arrived. Nothing is held unless you accept it.')),
+      EscrowState.quoteAccepted => RialAmount(
+          total,
+          prefix: s.t('قبلت العرض — الخطوة التالية تأكيد حجز ',
+              'Quote accepted — next comes confirming '),
+          suffix: s.t('.', ' into escrow.')),
+      EscrowState.createdPendingPayment => RialAmount(
+          total,
+          prefix: s.t('لم يُحجز المبلغ بعد — يبدأ الضمان فور تأكيد ',
+              'Nothing is held yet — escrow starts the moment '),
+          suffix: s.t('.', ' is confirmed.')),
+      EscrowState.releasedToWorkshop => RialAmount(
+          total,
+          prefix: s.t('تم تحرير ', ''),
+          suffix: s.t(' إلى الورشة.', ' was released to the workshop.')),
+      EscrowState.refunded => RialAmount(
+          total,
+          prefix: s.t('أُعيد ', ''),
+          suffix: s.t(' إليك.', ' was returned to you.')),
+      EscrowState.cancelled => Text(s.t(
+          'أُلغي الحجز ولم يُحجز أي مبلغ.',
+          'The booking was cancelled and nothing was held.')),
+      _ => RialAmount(
+          total,
+          suffix: s.t(' محفوظة كضمان حتى موافقتك.',
+              ' held in escrow until your approval.')),
+    };
+  }
 }
 
 /// The quote phase, for a "part + installation" booking (spec §6).
@@ -434,14 +421,17 @@ class _QuoteCard extends StatelessWidget {
             // §2 price rule: the total leads at price weight, the breakdown
             // that explains it follows in supporting text. The customer is
             // deciding on the number, not on the arithmetic.
-            Text('${s.omr} ${quote.total.toStringAsFixed(2)}',
-                style: context.text.price),
+            RialAmount(quote.total, style: context.text.price),
             const SizedBox(height: AppSpacing.xs),
-            Text(
-              s.t('القطعة ${quote.partPrice.toStringAsFixed(2)} + التركيب ${quote.laborPrice.toStringAsFixed(2)}',
-                  'Part ${quote.partPrice.toStringAsFixed(2)} + fitting ${quote.laborPrice.toStringAsFixed(2)}'),
-              style: context.text.bodySecondary,
-            ),
+            Builder(builder: (context) {
+              final style = context.text.bodySecondary;
+              return Text.rich(TextSpan(style: style, children: [
+                TextSpan(text: s.t('القطعة ', 'Part ')),
+                rialAmountSpan(amount: quote.partPrice, style: style),
+                TextSpan(text: s.t(' + التركيب ', ' + fitting ')),
+                rialAmountSpan(amount: quote.laborPrice, style: style),
+              ]));
+            }),
             if (decide) ...[
               const SizedBox(height: AppSpacing.lg),
               FilledButton(
@@ -474,7 +464,7 @@ class _EscrowCard extends StatelessWidget {
 
   final ServiceRequest request;
   final String amount;
-  final String line;
+  final Widget line;
   final Duration window;
 
   /// The one mapping. Amber means "you or your money are waiting on
@@ -527,7 +517,10 @@ class _EscrowCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           EscrowTimeline(state: escrow),
           const SizedBox(height: AppSpacing.lg),
-          Text(line, style: context.text.bodySecondary.copyWith(height: 1.6)),
+          DefaultTextStyle.merge(
+            style: context.text.bodySecondary.copyWith(height: 1.6),
+            child: line,
+          ),
           if (deadline != null) _deadlineLine(context, s, deadline),
         ],
       ),

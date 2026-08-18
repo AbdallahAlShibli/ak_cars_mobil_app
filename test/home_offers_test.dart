@@ -1,13 +1,13 @@
 import 'package:ak_cars_mobil_app/config/home_ranking_config.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
+import 'fakes/data/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
-import 'package:ak_cars_mobil_app/data/services/service_marketplace_service.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+import 'fakes/data/mock_ids.dart';
+import 'fakes/fakes.dart';
 
 /// The home page's offer governance and its two workshop boards
 /// (AK_Cars_تعليمات_الصفحة_الرئيسية §§2–5).
@@ -42,7 +42,6 @@ void restoreOffers() {
 /// The real mock service with the two aggregates emptied — a marketplace on
 /// its first week, which is the state §5 is about.
 class _NoEvidenceService extends MockServiceMarketplaceService {
-  _NoEvidenceService({required super.config});
 
   @override
   Future<List<WorkshopRating>> fetchWorkshopRatings() async => const [];
@@ -169,7 +168,7 @@ void main() {
         () async {
       final container = await createDataContainer(overrides: [
         serviceMarketplaceServiceProvider.overrideWith(
-          (ref) => _NoEvidenceService(config: ref.watch(appConfigProvider)),
+          (ref) => _NoEvidenceService(),
         ),
       ]);
       expect(container.read(homeOffersProvider), isEmpty);
@@ -378,7 +377,7 @@ void main() {
         '— under its own claim', () async {
       final container = await createDataContainer(overrides: [
         serviceMarketplaceServiceProvider.overrideWith(
-          (ref) => _NoEvidenceService(config: ref.watch(appConfigProvider)),
+          (ref) => _NoEvidenceService(),
         ),
       ]);
 

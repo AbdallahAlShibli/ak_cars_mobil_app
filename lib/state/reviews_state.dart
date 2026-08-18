@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/error/app_exception.dart';
 import '../data/models/review.dart';
 import '../data/models/service_request.dart';
 import '../data/models/service_stats.dart';
@@ -23,15 +24,48 @@ const localAuthorId = 'local-customer';
 /// released. There is no code path in the app that produces a review without a
 /// completed, paid-for job behind it.
 class ReviewsNotifier extends Notifier<List<Review>> {
+  /// Whether this notifier has been torn down. [load] is fire-and-forget from
+  /// [build] and touches `ref` after an `await`, so without this a container
+  /// disposed mid-load — a sign-out, a hot restart — makes it read a dead
+  /// container and throw a bare `StateError` into the zone.
+  bool _disposed = false;
+
   @override
   List<Review> build() {
+    ref.onDispose(() => _disposed = true);
     Future.microtask(load);
     return const [];
   }
 
+  /// `GET /reviews` is the signed-in user's own reviews, and it is
+  /// `[Authorize]`d — so for a guest it can only ever answer `401`.
+  ///
+  /// It used to ask anyway, from a bare `Future.microtask(load)` with nothing
+  /// catching it, so the `UnauthorizedException` escaped into the zone as an
+  /// uncaught error the moment a guest opened any screen that reads this
+  /// provider (a workshop's details page, for one). Same guard and same
+  /// swallow as `NotificationsNotifier._loadFromServer`, for the same reason:
+  /// "nobody is signed in" is an ordinary cold-start state, not a failure.
+  ///
+  /// A guest keeps the empty list they started with; [SessionRefresh] calls
+  /// this again the moment they sign in.
   Future<void> load() async {
-    state = await ref.read(reviewRepositoryProvider).fetchReviews();
+    if (_disposed) return;
+    if (!await ref.read(tokenStoreProvider).mayHaveSession()) return;
+    if (_disposed) return;
+    try {
+      final reviews = await ref.read(reviewRepositoryProvider).fetchReviews();
+      if (_disposed) return;
+      state = reviews;
+    } on UnauthorizedException {
+      // Still reachable above the guard on an expired token.
+    }
   }
+
+  /// Drops this account's reviews on sign-out — see
+  /// `RequestsNotifier.clear`'s doc comment for why this is a direct `state =`
+  /// write rather than `ref.invalidate(reviewsProvider)`.
+  void clear() => state = const [];
 
   String get _authorId =>
       ref.read(authProvider).profile?.id ?? localAuthorId;

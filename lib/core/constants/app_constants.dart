@@ -24,10 +24,6 @@ abstract final class AppConstants {
   static const prefsNotifications = 'akcars_notifications';
   static const prefsAuthToken = 'akcars_auth_token';
 
-  /// Which of the pilot's three roles this device is acting as. Local to the
-  /// installation until the backend puts the role on the session token.
-  static const prefsRole = 'akcars_role';
-
   /// First-run flags. These are what make the intro a *first launch* thing
   /// rather than something the user re-watches on every cold start, so they
   /// have to outlive the process — uninstalling the app is the only thing

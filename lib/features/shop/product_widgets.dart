@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/rial_symbol.dart';
 import '../../data/models/models.dart';
 
 /// Star + numeric rating, used by every product surface (grid card, best
@@ -54,8 +55,9 @@ class ProductPriceLine extends StatelessWidget {
       textBaseline: TextBaseline.alphabetic,
       children: [
         Flexible(
-          child: Text(
-            'OMR ${product.price.toStringAsFixed(2)}',
+          child: RialAmount(
+            product.price,
+            bold: true,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

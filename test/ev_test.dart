@@ -18,7 +18,7 @@ import 'package:ak_cars_mobil_app/features/shop/product_detail_screen.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 
 import 'helpers/test_harness.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+import 'fakes/data/mock_ids.dart';
 
 /// AK Cars serves petrol, diesel, hybrid and electric owners. These tests pin
 /// the behaviour that makes an EV owner a first-class user rather than a petrol
@@ -669,8 +669,16 @@ void main() {
           petrol.read(challengeProvider).badgeCount);
     });
 
-    test('completing the EV challenge logs what the owner actually did',
-        () async {
+    // The maintenance record this challenge feeds is written **server-side**,
+    // inside the same transaction as the award — see
+    // `CompleteChallengeCommand.FeedMaintenanceRecordAsync` in
+    // AKCarsMobileAPI. The client used to write its own copy as well, which
+    // was harmless only while the mock backend wrote none; against the real
+    // API it filed a second, duplicate record against the car's book. Removed
+    // 2026-08-10, so what is checked here is the award, and that the client
+    // does *not* write a record of its own.
+    test('completing the EV challenge awards, and leaves the record to the '
+        'server', () async {
       final container = await containerWith(const [_tesla]);
       final challenge = container.read(challengeProvider.notifier);
       final before = container.read(challengeProvider);
@@ -688,14 +696,12 @@ void main() {
       expect(after.streakWeeks, before.streakWeeks + 1);
       expect(after.current, isNull);
 
-      // The maintenance record says tyre pressures and cable, not the
-      // combustion challenge's wording.
-      final records =
-          container.read(maintenanceBookProvider(_tesla.id)).records;
-      expect(records.length, recordsBefore + 1);
-      expect(records.first.title.en,
-          'Tyre pressures set & cable checked (challenge)');
-      expect(records.first.type, MaintenanceType.tyres);
+      expect(
+        container.read(maintenanceBookProvider(_tesla.id)).records.length,
+        recordsBefore,
+        reason: 'the server owns this record; a client-side copy is a '
+            'duplicate in the car\'s history',
+      );
     });
 
     test('finishing one track leaves the other alone', () async {

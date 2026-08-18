@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ak_cars_mobil_app/app/app_launcher.dart';
 import 'package:ak_cars_mobil_app/app/bootstrap.dart';
 
+import 'fakes/fakes.dart';
+
 /// The bug: `main()` awaited the whole bootstrap before `runApp`, so anything
 /// that threw — or simply never completed — meant no frame was ever painted
 /// and the OS launch screen stayed up forever. Closing and reopening the app
@@ -59,7 +61,12 @@ void main() {
     var attempt = 0;
     Future<ProviderContainer> create() async {
       if (attempt++ == 0) throw StateError('warm-up exploded');
-      return AppBootstrap.createContainer();
+      // With the doubles: the app has no offline data source any more, so a
+      // bare container would try to reach the API and the "successful" retry
+      // this test is about would fail for an unrelated reason.
+      return AppBootstrap.createContainer(
+        overrides: fakeServiceOverrides(await SharedPreferences.getInstance()),
+      );
     }
 
     await AppLauncher.launch(createContainer: create);

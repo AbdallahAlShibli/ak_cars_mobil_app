@@ -39,9 +39,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  /// Matches the staging OTP the register screen displays — one demo code
-  /// for the whole pilot build, so a reviewer never needs a real inbox.
-  static const _stagingCode = '7391';
+  /// How long before "resend" becomes available again.
   static const _resendSeconds = 30;
 
   AuthChannel _channel = AuthChannel.phone;
@@ -179,24 +177,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_channel == AuthChannel.email
-              ? s.t('أُرسل الرمز إلى $identifier — رمز التجربة: $_stagingCode',
-                  'Code sent to $identifier — staging code: $_stagingCode')
-              : s.t(
-                  'أُرسل الرمز عبر SMS إلى $identifier — رمز التجربة: $_stagingCode',
-                  'Code sent by SMS to $identifier — staging code: $_stagingCode')),
+              ? s.t('أُرسل الرمز إلى $identifier', 'Code sent to $identifier')
+              : s.t('أُرسل الرمز عبر SMS إلى $identifier',
+                  'Code sent by SMS to $identifier')),
         ),
       );
-    } on AppException {
+    } on AppException catch (error) {
       if (!mounted) return;
-      setState(() => _errors[_channel == AuthChannel.phone
-              ? 'phone'
-              : 'email'] =
-          s.t('تعذّر إرسال الرمز — حاول مرة أخرى',
-              'Could not send the code — try again'));
+      setState(() =>
+          _errors[_channel == AuthChannel.phone ? 'phone' : 'email'] =
+              _sendMessage(s, error));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
+
+  /// What to put under the phone/email field when the code could not be sent.
+  ///
+  /// `POST /auth/login` is capped at five per minute per IP — it is anonymous
+  /// and it spends money on SMS — so "try again" is actively wrong advice
+  /// there: trying again immediately is the one thing guaranteed to fail.
+  String _sendMessage(S s, AppException error) => switch (error) {
+        RateLimitedException() => s.t(
+            'طلبات كثيرة — انتظر دقيقة ثم أعد المحاولة',
+            'Too many requests — wait a minute and try again',
+          ),
+        NetworkException() || RequestTimeoutException() => s.t(
+            'تعذّر الوصول إلى الخادم — تحقّق من اتصالك',
+            'Could not reach the server — check your connection',
+          ),
+        _ => s.t('تعذّر إرسال الرمز — حاول مرة أخرى',
+            'Could not send the code — try again'),
+      };
 
   void _startResendCountdown() {
     _resendTimer?.cancel();
@@ -210,11 +222,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _verify() async {
     final s = S.of(context);
-    if (_otp.text.trim() != _stagingCode) {
+    // The code is real and server-issued, so the server is the only thing
+    // that can validate it. All this checks is that the user typed something
+    // — anything more would reject a genuine code before `login()` ever got
+    // a chance to try it.
+    if (_otp.text.trim().isEmpty) {
       HapticFeedback.heavyImpact();
-      setState(() => _errors['otp'] = _otp.text.trim().isEmpty
-          ? s.t('أدخل الرمز المكوّن من 4 أرقام', 'Enter the 4-digit code')
-          : s.t('رمز غير صحيح', 'That code is not right'));
+      setState(() => _errors['otp'] =
+          s.t('أدخل الرمز المكوّن من 4 أرقام', 'Enter the 4-digit code'));
       return;
     }
 
@@ -232,15 +247,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       messenger.showSnackBar(
         SnackBar(content: Text(s.t('مرحباً بعودتك', 'Welcome back'))),
       );
-    } on AppException {
+    } on AppException catch (error) {
       if (!mounted) return;
       HapticFeedback.heavyImpact();
-      setState(() => _errors['otp'] = s.t(
-          'تعذّر تسجيل الدخول — حاول مرة أخرى', 'Could not log in — try again'));
+      setState(() => _errors['otp'] = _verifyMessage(s, error));
     } finally {
       if (mounted) setState(() => _verifying = false);
     }
   }
+
+  /// What to put under the code field when verification fails.
+  ///
+  /// Every one of these used to read "could not log in — try again", which is
+  /// the least useful thing the screen could say: it gives a person who
+  /// mistyped one digit no reason to look at what they typed, and a person
+  /// who has burned all five attempts no reason to ask for a new code.
+  ///
+  /// The server deliberately does *not* distinguish "wrong code" from
+  /// "expired" from "too many attempts" — all three answer
+  /// `otp_invalid_or_expired`, so an attacker cannot use the message to learn
+  /// whether a code was ever right. This copy respects that: it names the two
+  /// things the user can actually do something about without claiming to know
+  /// which one happened.
+  String _verifyMessage(S s, AppException error) => switch (error) {
+        UnauthorizedException(code: 'otp_invalid_or_expired') => s.t(
+            'الرمز غير صحيح أو انتهت صلاحيته — اطلب رمزاً جديداً',
+            'That code is wrong or has expired — request a new one',
+          ),
+        RateLimitedException() => s.t(
+            'محاولات كثيرة — انتظر دقيقة ثم أعد المحاولة',
+            'Too many attempts — wait a minute and try again',
+          ),
+        NetworkException() || RequestTimeoutException() => s.t(
+            'تعذّر الوصول إلى الخادم — تحقّق من اتصالك',
+            'Could not reach the server — check your connection',
+          ),
+        _ => s.t('تعذّر تسجيل الدخول — حاول مرة أخرى',
+            'Could not log in — try again'),
+      };
 
   // ----------------------------------------------------------------- build
 

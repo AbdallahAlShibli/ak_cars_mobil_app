@@ -1,3 +1,4 @@
+import '../../core/json/json_utils.dart';
 import 'service_request.dart';
 
 /// One settled or pending line in a workshop's earnings table (spec §3).
@@ -11,6 +12,7 @@ class EarningsLine {
     required this.at,
     required this.gross,
     required this.commission,
+    this.pendingOverride,
   });
 
   final ServiceRequest request;
@@ -22,11 +24,31 @@ class EarningsLine {
 
   final double gross;
   final double commission;
+  final bool? pendingOverride;
 
   double get net => gross - commission;
 
   /// True while the customer's money is still held rather than released.
-  bool get pending => !request.escrow.isTerminal;
+  /// The server sends this explicitly (`pending`); when a line is built
+  /// locally instead, it falls back to reading it off the booking's escrow
+  /// state.
+  bool get pending => pendingOverride ?? !request.escrow.isTerminal;
+
+  factory EarningsLine.fromJson(JsonMap json) => EarningsLine(
+    request: ServiceRequest.fromJson(json.requireObject('request')),
+    at: json.dateTimeOr('at', DateTime.now()),
+    gross: json.doubleOr('gross', 0),
+    commission: json.doubleOr('commission', 0),
+    pendingOverride: json.boolOrNull('pending'),
+  );
+
+  JsonMap toJson() => {
+    'request': request.toJson(),
+    'at': at.toIso8601String(),
+    'gross': gross,
+    'commission': commission,
+    'pending': pending,
+  };
 }
 
 /// What a workshop has earned, is owed, and has been charged (spec §3).
@@ -83,4 +105,22 @@ class WorkshopEarnings {
   double get releasedNet => releasedGross - releasedCommission;
 
   bool get isEmpty => lines.isEmpty && heldInEscrow == 0;
+
+  factory WorkshopEarnings.fromJson(JsonMap json) => WorkshopEarnings(
+    heldInEscrow: json.doubleOr('heldInEscrow', 0),
+    releasedGross: json.doubleOr('releasedGross', 0),
+    releasedCommission: json.doubleOr('releasedCommission', 0),
+    totalCommission: json.doubleOr('totalCommission', 0),
+    lines: json.objectList('lines').map(EarningsLine.fromJson).toList(),
+    window: Duration(days: json.intOr('windowDays', 30)),
+  );
+
+  JsonMap toJson() => {
+    'heldInEscrow': heldInEscrow,
+    'releasedGross': releasedGross,
+    'releasedCommission': releasedCommission,
+    'totalCommission': totalCommission,
+    'lines': [for (final l in lines) l.toJson()],
+    'windowDays': window.inDays,
+  };
 }

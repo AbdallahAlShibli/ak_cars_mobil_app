@@ -82,7 +82,24 @@ final settingsProvider =
 
 /// Region selected for service discovery. Defaults to the first governorate
 /// the marketplace operates in.
+///
+/// **`ref.read`, not `ref.watch`, and that is load-bearing.** This is a
+/// `StateProvider`: the closure below only ever supplies the *initial*
+/// value, and every real change to it afterwards is a plain `.state =`
+/// write from the region picker (`settings_screen.dart`,
+/// `services_screen.dart`). If this instead `watch`ed the catalogue
+/// repository, every `WarmCacheNotice.announce()` — which
+/// `SessionRefresh` fires on *both* sign-in and sign-out, since the public
+/// catalogues are re-warmed either way — would invalidate this whole
+/// provider and re-run the closure, discarding whatever region the user had
+/// selected and silently snapping it back to `regions.first`. That is a
+/// device preference, not account data; a sign-out clearing the signed-in
+/// user's own information must not also reset it, or reset the Services/
+/// Home/Garage/Register screens that filter by it out from under someone
+/// who is still signed in and simply refreshed their session. `read` still
+/// lets a fresh install (an empty catalogue warmed a moment before this is
+/// first touched) pick a sensible default — it just never does so again.
 final regionProvider = StateProvider<String>((ref) {
-  final regions = ref.watch(catalogRepositoryProvider).serviceRegions;
+  final regions = ref.read(catalogRepositoryProvider).serviceRegions;
   return regions.isEmpty ? '' : regions.first;
 });

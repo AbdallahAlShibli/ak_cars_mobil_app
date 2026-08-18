@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/guid.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../di/providers.dart';
@@ -60,7 +61,8 @@ class _QuoteScreenState extends ConsumerState<QuoteScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(s.t('عرض السعر · #${request.id}', 'Quote · #${request.id}')),
+        title: Text(s.t('عرض السعر · #${shortRef(request.id)}',
+            'Quote · #${shortRef(request.id)}')),
         actions: [
           Padding(
             padding: const EdgeInsetsDirectional.only(end: 16),
@@ -213,9 +215,13 @@ class _QuoteScreenState extends ConsumerState<QuoteScreen> {
                         ],
                       ),
                     const SizedBox(height: 18),
-                    EscrowBanner(s.t(
-                        'بقبولك، يُطلب منك تحويل ${quote.total.toStringAsFixed(2)} ر.ع ويُحجز كضمان — ولا يصل الورشة إلا بعد موافقتك على العمل.',
-                        'Accepting asks you to transfer OMR ${quote.total.toStringAsFixed(2)}, held in escrow — the workshop is not paid until you approve the work.')),
+                    EscrowBanner.rich(RialAmount(
+                      quote.total,
+                      prefix: s.t('بقبولك، يُطلب منك تحويل ', 'Accepting asks you to transfer '),
+                      suffix: s.t(
+                          ' ويُحجز كضمان — ولا يصل الورشة إلا بعد موافقتك على العمل.',
+                          ', held in escrow — the workshop is not paid until you approve the work.'),
+                    )),
                     const SizedBox(height: 14),
                     FilledButton.icon(
                       onPressed: _busy ? null : () => _accept(request),
@@ -316,7 +322,6 @@ class _PriceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = S.of(context);
     final ak = AkColors.of(context);
     return Row(
       children: [
@@ -330,8 +335,9 @@ class _PriceRow extends StatelessWidget {
             ),
           ),
         ),
-        Text(
-          '${s.omr} ${amount.toStringAsFixed(2)}',
+        RialAmount(
+          amount,
+          bold: emphasis,
           style: TextStyle(
             fontSize: emphasis ? 17 : 13.5,
             fontWeight: FontWeight.w800,

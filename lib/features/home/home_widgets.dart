@@ -201,27 +201,17 @@ class _DiscountCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text.rich(
-                  TextSpan(children: [
-                    TextSpan(
-                      text: _money.format(offer.discountedPrice),
-                      style: AppTheme.numeric(size: 17, color: ak.promoTitle),
-                    ),
-                    TextSpan(text: ' ${s.omr}'),
-                  ]),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: ak.promoTitle,
-                  ),
+                RialAmount.formatted(
+                  _money.format(offer.discountedPrice),
+                  style: AppTheme.numeric(size: 17, color: ak.promoTitle),
                 ),
                 const SizedBox(width: 7),
                 // The published price, struck through. Read from the catalogue
                 // via the validated offer, never typed by the workshop.
                 Padding(
                   padding: const EdgeInsets.only(bottom: 2),
-                  child: Text(
-                    '${_money.format(offer.referencePrice)} ${s.omr}',
+                  child: RialAmount.formatted(
+                    _money.format(offer.referencePrice),
                     style: TextStyle(
                       fontSize: 11,
                       color: ak.promoSub,
@@ -439,16 +429,9 @@ class _AnnouncementCard extends ConsumerWidget {
             Row(
               children: [
                 if (price != null)
-                  Text.rich(
-                    TextSpan(children: [
-                      TextSpan(text: s.t('من ', 'from ')),
-                      TextSpan(
-                        text: _money.format(price),
-                        style: AppTheme.numeric(
-                            size: 13, color: ak.promoTitle),
-                      ),
-                      TextSpan(text: ' ${s.omr}'),
-                    ]),
+                  RialAmount.formatted(
+                    _money.format(price),
+                    prefix: s.t('من ', 'from '),
                     style: TextStyle(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w700,
@@ -1041,15 +1024,9 @@ class _RecommendationCard extends StatelessWidget {
         style: TextStyle(fontSize: 9.5, color: ak.inkSub),
       );
     }
-    return Text.rich(
-      TextSpan(children: [
-        TextSpan(text: s.t('من ', 'from ')),
-        TextSpan(
-          text: _money.format(price),
-          style: AppTheme.numeric(size: 12, color: ak.ink),
-        ),
-        TextSpan(text: ' ${s.omr}'),
-      ]),
+    return RialAmount.formatted(
+      _money.format(price),
+      prefix: s.t('من ', 'from '),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
@@ -1187,17 +1164,9 @@ class _MostBookedRow extends ConsumerWidget {
             ),
             const SizedBox(width: 8),
             if (cheapest?.price != null)
-              Text.rich(
-                TextSpan(children: [
-                  TextSpan(
-                    text: _money.format(cheapest!.price),
-                    style: AppTheme.numeric(size: 12.5, color: ak.ink),
-                  ),
-                  TextSpan(
-                    text: ' ${s.omr}',
-                    style: TextStyle(fontSize: 9, color: ak.inkSub),
-                  ),
-                ]),
+              RialAmount.formatted(
+                _money.format(cheapest!.price),
+                style: AppTheme.numeric(size: 12.5, color: ak.ink),
               )
             else
               Icon(LucideIcons.chevronRight, size: 15, color: ak.inkFaint),

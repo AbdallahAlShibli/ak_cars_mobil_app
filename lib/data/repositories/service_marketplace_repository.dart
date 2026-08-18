@@ -46,7 +46,10 @@ typedef LiveOffer = ({Offer offer, ServiceOffering offering});
 /// warmed at bootstrap and read synchronously; the transactional side
 /// (creating and advancing a request) stays asynchronous.
 abstract interface class ServiceMarketplaceRepository {
-  Future<void> warmUp();
+  /// [includeFounderLedger] adds the payout ledger and the audit log, which
+  /// only a founder may read. Off by default: a guest cannot be a founder, so
+  /// asking is two round-trips that can only answer `401`.
+  Future<void> warmUp({bool includeFounderLedger = false});
 
   List<ServiceCategory> get categories;
 
@@ -95,6 +98,14 @@ abstract interface class ServiceMarketplaceRepository {
   /// One workshop by id, whatever stage it is in. Null when there is no such
   /// workshop.
   ServiceProvider? providerById(String providerId);
+
+  /// Re-fetches the roster and replaces the warm cache — for the founder's
+  /// admin-CRUD writes (`AdminWorkshopRepository`), which live outside this
+  /// repository and so have no cache of their own to patch in place. A full
+  /// re-fetch rather than a targeted patch because a delete removes the row
+  /// server-side entirely (`GetProvidersQuery` stops returning it), which a
+  /// local patch can't express as cleanly as "ask the server again".
+  Future<void> refreshProviders();
 
   /// The workshop an account owns, or null when it has never applied. What
   /// `/workshop`'s guard and the profile status card both read.
@@ -379,7 +390,7 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   final Map<String, BookingAvailability> _availability = {};
 
   @override
-  Future<void> warmUp() async {
+  Future<void> warmUp({bool includeFounderLedger = false}) async {
     await Future.wait([
       _categories.load(_service.fetchCategories),
       _providers.load(_service.fetchProviders),
@@ -389,17 +400,56 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       _demand.load(_service.fetchCategoryDemand),
       _workshopDemand.load(_service.fetchWorkshopDemand),
       _ratings.load(_service.fetchWorkshopRatings),
-      _payouts.load(_service.fetchPayouts),
-      _auditEntries.load(_service.fetchAuditLog),
+      // Founder-only on the API path (`GET /service-marketplace/payouts` and
+      // `/audit` answer a signed-in non-founder `403` and a guest `401`) —
+      // batching them with the customer-visible loads above would fail the
+      // whole `Future.wait` and leave a customer's categories/providers empty
+      // too. [_optionalForFounder] treats "this session cannot see this" the
+      // same way bootstrap treats "nobody is signed in": the ordinary shape
+      // of the call, not a failed warm-up.
+      //
+      // Skipped outright without a session. The client has no "is a founder"
+      // claim to check, so a *signed-in* non-founder still asks and still
+      // gets its `403` — but a guest provably cannot be a founder, and firing
+      // these anyway put two red 401s in every visitor's console on every
+      // cold start.
+      if (includeFounderLedger) ...[
+        _optionalForFounder(() => _payouts.load(_service.fetchPayouts)),
+        _optionalForFounder(() => _auditEntries.load(_service.fetchAuditLog)),
+      ],
     ]);
     await Future.wait([
       for (final provider in _providers.value) _warmProvider(provider.id),
     ]);
   }
 
+  Future<void> _optionalForFounder(Future<void> Function() warmUp) async {
+    try {
+      await warmUp();
+    } on ForbiddenException {
+      // Left at the WarmCache fallback (empty) — this session is not a
+      // founder, which is not a failure. See the comment above.
+    } on UnauthorizedException {
+      // And a guest is not a founder either. This became reachable when the
+      // browse half of `/service-marketplace` was opened to anonymous callers:
+      // the rest of this warm-up now succeeds without a session, so these two
+      // are the only calls left that answer `401` — and catching only `403`
+      // would have failed the whole `Future.wait`, leaving a guest with the
+      // empty categories and providers that opening the API up was meant to
+      // fix.
+    }
+  }
+
   Future<void> _warmProvider(String providerId) async {
     _addOns[providerId] = await _service.fetchAddOns(providerId);
-    _availability[providerId] = await _service.fetchAvailability(providerId);
+    // The booking screen only ever offers tomorrow's slots (there is no date
+    // picker) and labels the whole grid "Tomorrow" — so the day warmed here
+    // has to be tomorrow too, or the chips would show today's occupancy under
+    // a tomorrow label and a "free" slot could really be already taken.
+    _availability[providerId] = await _service.fetchAvailability(
+      providerId,
+      date: DateTime.now().add(const Duration(days: 1)),
+    );
   }
 
   @override
@@ -444,6 +494,11 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   @override
   ServiceProvider? providerById(String providerId) =>
       providers.where((p) => p.id == providerId).firstOrNull;
+
+  @override
+  Future<void> refreshProviders() async {
+    _providers.put(await _service.fetchProviders());
+  }
 
   @override
   ServiceProvider? providerOwnedBy(String userId) =>

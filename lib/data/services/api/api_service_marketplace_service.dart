@@ -30,8 +30,6 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
 
   final ApiClient _client;
 
-  static const _base = '/service-marketplace';
-
   // ------------------------------------------------------------- catalogue
 
   @override
@@ -58,7 +56,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
   @override
   Future<ServiceOffering> fetchOffering(String offeringId) async =>
       ServiceOffering.fromJson(
-        await _client.get('${ApiEndpoints.serviceOfferings}/$offeringId'),
+        await _client.get(ApiEndpoints.serviceOffering(offeringId)),
       );
 
   @override
@@ -77,7 +75,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
   Future<Offer> setOfferActive(String offerId, {required bool active}) async =>
       Offer.fromJson(
         await _client.patch(
-          '${ApiEndpoints.serviceOffers}/$offerId',
+          ApiEndpoints.serviceOffer(offerId),
           body: {'activeByFounder': active},
         ),
       );
@@ -111,10 +109,15 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
     String providerId, {
     DateTime? date,
   }) async {
+    // `GET .../slots` binds `date` as a required `DateOnly` — unlike the
+    // mock, which returns the same fixed slots regardless, the server has no
+    // "today" default of its own. A null [date] (the shape every warm-up
+    // call uses) means today here, same as the mock's implicit meaning.
+    final resolvedDate = date ?? DateTime.now();
     final json = await _client.get(
       ApiEndpoints.providerSlots(providerId),
       queryParameters: {
-        if (date != null) 'date': date.toIso8601String().split('T').first,
+        'date': resolvedDate.toIso8601String().split('T').first,
       },
     );
     return BookingAvailability(
@@ -165,7 +168,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
   Future<List<ServiceRequest>> fetchOperatorQueue() async =>
       // A different endpoint, not a wider filter — only an operator may ask
       // for it, and the server authorises it on that basis.
-      (await _client.getList('$_base/operator/requests'))
+      (await _client.getList(ApiEndpoints.operatorRequests))
           .map(ServiceRequest.fromJson)
           .toList();
 
@@ -207,7 +210,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
       // reasonless rejection gets, so both paths fail the same way.
       ServiceProvider.fromJson(
         await _client.patch(
-          '${ApiEndpoints.serviceProviders}/$providerId/stage',
+          ApiEndpoints.providerStage(providerId),
           body: {'stage': stage.key, 'reason': ?reason},
         ),
       );
@@ -220,7 +223,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
   }) async =>
       ServiceProvider.fromJson(
         await _client.post(
-          '$_base/applications',
+          ApiEndpoints.workshopApplications,
           body: {
             'ownerUserId': ownerUserId,
             'region': region,
@@ -233,24 +236,24 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
 
   @override
   Future<List<PayoutRecord>> fetchPayouts() async =>
-      (await _client.getList('$_base/payouts'))
+      (await _client.getList(ApiEndpoints.payouts))
           .map(PayoutRecord.fromJson)
           .toList();
 
   @override
   Future<PayoutRecord> recordPayout(PayoutRecord payout) async =>
       PayoutRecord.fromJson(
-        await _client.post('$_base/payouts', body: payout.toJson()),
+        await _client.post(ApiEndpoints.payouts, body: payout.toJson()),
       );
 
   @override
   Future<List<AuditEntry>> fetchAuditLog() async =>
-      (await _client.getList('$_base/audit'))
+      (await _client.getList(ApiEndpoints.auditLog))
           .map(AuditEntry.fromJson)
           .toList();
 
   @override
   Future<AuditEntry> appendAudit(AuditEntry entry) async => AuditEntry.fromJson(
-        await _client.post('$_base/audit', body: entry.toJson()),
+        await _client.post(ApiEndpoints.auditLog, body: entry.toJson()),
       );
 }

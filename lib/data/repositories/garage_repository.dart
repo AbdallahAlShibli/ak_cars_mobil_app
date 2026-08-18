@@ -36,7 +36,10 @@ class GarageRepositoryImpl implements GarageRepository {
   final _cars = WarmCache<List<Car>>(fallback: const []);
 
   @override
-  Future<void> warmUp() => _cars.load(_service.fetchCars);
+  // `async` so this really is a `Future<void>`: `_cars.load` returns a
+  // `Future<List<Car>>`, and widening that to `Future<void>` at the declaration
+  // does not change the object underneath. See `CarsRepositoryImpl.warmUp`.
+  Future<void> warmUp() async => _cars.load(_service.fetchCars);
 
   @override
   List<Car> get cars => _cars.value;

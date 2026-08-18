@@ -1,7 +1,10 @@
 import 'package:ak_cars_mobil_app/app/bootstrap.dart';
+import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'fakes/fakes.dart';
 
 /// Guards the contract the whole synchronous-read design rests on: after
 /// bootstrap, every repository a screen reads while building is populated.
@@ -14,7 +17,12 @@ void main() {
 
   test('createContainer wires platform dependencies and warms every '
       'repository', () async {
-    final container = await AppBootstrap.createContainer();
+    // This test is about the warm-up contract, not the network. The app has
+    // no offline data source to fall back on any more, so the doubles are
+    // injected explicitly — the same set the widget harness uses.
+    final container = await AppBootstrap.createContainer(
+      overrides: fakeServiceOverrides(await SharedPreferences.getInstance()),
+    );
     addTearDown(container.dispose);
 
     // Platform dependency injected rather than thrown.
@@ -58,10 +66,13 @@ void main() {
         isNotNull);
   });
 
-  test('the staging build is still on mock data', () async {
-    final container = await AppBootstrap.createContainer();
-    addTearDown(container.dispose);
-
-    expect(container.read(appConfigProvider).useMockData, isTrue);
+  test('the default build points at the real API host', () {
+    // Every environment shares one fixed API host, and since 2026-08-10 there
+    // is no other data source to point anywhere else — `AppConfig.current()`
+    // with no override is the production/staging/dev-with-no-flags path. This
+    // checks the config value directly rather than booting a container: a
+    // warm-up without the fakes would genuinely try to reach the API and hang
+    // for `bootTimeout` with nothing listening.
+    expect(AppConfig.current().apiBaseUrl, 'https://localhost:7291/api/v1');
   });
 }

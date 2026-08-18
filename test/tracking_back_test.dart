@@ -2,7 +2,7 @@ import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/config/app_environment.dart';
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
 import 'package:ak_cars_mobil_app/core/widgets/sand_widgets.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
+import 'fakes/data/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/features/services/tracking_screen.dart';
@@ -36,7 +36,7 @@ Future<ProviderContainer> _container() => createTestContainer(
     appConfigProvider.overrideWithValue(
       AppConfig.forEnvironment(
         AppEnvironment.development,
-      ).copyWith(simulateProviderLifecycle: false),
+      ),
     ),
   ],
 );

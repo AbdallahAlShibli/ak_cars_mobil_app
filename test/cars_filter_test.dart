@@ -1,5 +1,5 @@
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_cars_data.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_catalog_data.dart';
+import 'fakes/data/mock_cars_data.dart';
+import 'fakes/data/mock_catalog_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 

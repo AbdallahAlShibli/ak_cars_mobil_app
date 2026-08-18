@@ -455,15 +455,16 @@ class _OfferingCard extends ConsumerWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                offering.price != null
-                    ? '${s.omr} ${omrAmount(offering.price!)}'
-                    : s.t('عرض سعر', 'Quote'),
-                style: offering.price != null
-                    ? context.text.price
-                    : context.text.bodySecondary
-                        .copyWith(fontWeight: FontWeight.w700),
-              ),
+              offering.price != null
+                  ? RialAmount.formatted(
+                      omrAmount(offering.price!),
+                      style: context.text.price,
+                    )
+                  : Text(
+                      s.t('عرض سعر', 'Quote'),
+                      style: context.text.bodySecondary
+                          .copyWith(fontWeight: FontWeight.w700),
+                    ),
               const SizedBox(height: AppSpacing.xs),
               // Distance is the honest version of "near you" once results can
               // come from further out.

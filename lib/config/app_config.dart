@@ -1,48 +1,24 @@
 import 'app_environment.dart';
 
-/// Where the app's data comes from (§12).
-///
-/// Replaces the old `useMockData` boolean as the thing the composition root
-/// switches on. A boolean answered "are we still on demo data?"; this answers
-/// "which implementation of every service is bound", which is the question
-/// `di/providers.dart` actually asks — and it leaves room for a third source
-/// (a recorded fixture, an offline cache) without every binding growing a
-/// second condition.
-enum DataSourceMode {
-  /// The `Mock*` services and `MockSeed`'s world. Fully working offline.
-  mock,
-
-  /// The `Api*` services against [AppConfig.apiBaseUrl].
-  api;
-
-  String get key => name;
-
-  static DataSourceMode fromKey(String? key) {
-    for (final value in DataSourceMode.values) {
-      if (value.name.toLowerCase() == key?.toLowerCase()) return value;
-    }
-    return DataSourceMode.mock;
-  }
-}
-
 /// Immutable, environment-scoped runtime configuration.
 ///
-/// This is the single place that answers "which backend do we talk to, and
-/// are we still on demo data?". Nothing else in the app should read
-/// `String.fromEnvironment` directly.
+/// This is the single place that answers "which backend do we talk to?".
+/// Nothing else in the app should read `String.fromEnvironment` directly.
 ///
-/// Phase 2 (real backend): flip [useMockData] to `false` for an environment
-/// and register the REST services in `lib/di/providers.dart` — no screen,
-/// state or repository code has to change.
+/// There is no longer a second answer to that question. The app used to ship a
+/// complete offline data layer beside the REST one and pick between them on a
+/// `DataSourceMode`; the demo world has been removed from `lib/` entirely
+/// (2026-08-10) and now exists only as test doubles under `test/fakes/`. Every
+/// binding in `di/providers.dart` resolves to an `Api*` service, so a
+/// misconfigured host fails loudly with a [NetworkException] naming the URL it
+/// could not reach, instead of quietly serving invented data and looking
+/// healthy.
 class AppConfig {
   const AppConfig({
     required this.environment,
     required this.apiBaseUrl,
-    required this.useMockData,
     this.connectTimeout = const Duration(seconds: 15),
     this.receiveTimeout = const Duration(seconds: 20),
-    this.mockLatency = Duration.zero,
-    this.simulateProviderLifecycle = true,
     this.defaultPageSize = 20,
     this.approvalWindow = const Duration(hours: 72),
     this.approvalReminderLead = const Duration(hours: 24),
@@ -55,44 +31,8 @@ class AppConfig {
   /// Root of the AK Cars REST API, without a trailing slash.
   final String apiBaseUrl;
 
-  /// When true the DI layer binds the `Mock*` services instead of REST ones.
-  ///
-  /// Kept as the *stored* field so every existing environment definition and
-  /// test override goes on meaning what it meant. [dataSource] is what the
-  /// composition root reads, and it is derived from this plus the
-  /// `AK_DATA_SOURCE` define — so there is one answer, not two that can
-  /// disagree.
-  final bool useMockData;
-
-  /// Which set of service implementations to bind (§12).
-  ///
-  /// `--dart-define=AK_DATA_SOURCE=api` forces the REST path on any
-  /// environment, which is how the acceptance check is run: the app boots and
-  /// the first request fails with a clear [NetworkException] naming the base
-  /// URL, rather than silently falling back to demo data and looking like it
-  /// works.
-  DataSourceMode get dataSource {
-    final override = DataSourceMode.fromKey(_dataSourceKey);
-    if (_dataSourceKey.isNotEmpty) return override;
-    return useMockData ? DataSourceMode.mock : DataSourceMode.api;
-  }
-
-  static const _dataSourceKey =
-      String.fromEnvironment('AK_DATA_SOURCE', defaultValue: '');
-
   final Duration connectTimeout;
   final Duration receiveTimeout;
-
-  /// Artificial delay applied by the mock services so the app exercises the
-  /// same asynchronous code paths it will use against a real network.
-  ///
-  /// Kept at zero by default: a non-zero value would introduce loading states
-  /// the current UI does not render.
-  final Duration mockLatency;
-
-  /// Drives the demo timers that walk a service request / order through its
-  /// status lifecycle. The real backend pushes these transitions instead.
-  final bool simulateProviderLifecycle;
 
   final int defaultPageSize;
 
@@ -122,7 +62,8 @@ class AppConfig {
   /// How far back the Earnings tab's "recently released" figure looks.
   final Duration earningsWindow;
 
-  static const _envKey = String.fromEnvironment('AK_ENV', defaultValue: 'development');
+  static const _envKey =
+      String.fromEnvironment('AK_ENV', defaultValue: 'development');
 
   /// Use the remote vehicle-image CDNs (studio photos, brand logos) — **on by
   /// default**, so mobile shows the same real logos and studio photos the web
@@ -142,35 +83,40 @@ class AppConfig {
       bool.fromEnvironment('AK_REMOTE_CAR_IMAGES', defaultValue: true);
 
   /// Configuration for the environment this binary was built for.
-  factory AppConfig.current() => forEnvironment(AppEnvironment.fromKey(_envKey));
+  ///
+  /// [_apiBaseUrlOverride], when set, replaces the environment's
+  /// [apiBaseUrl] outright — for a physical device on `adb reverse` (which
+  /// forwards the device's own loopback, not `10.0.2.2`) or any other host the
+  /// per-environment defaults do not cover:
+  /// `--dart-define=AK_API_BASE_URL=http://127.0.0.1:5116/api/v1`.
+  factory AppConfig.current() {
+    final base = forEnvironment(AppEnvironment.fromKey(_envKey));
+    return _apiBaseUrlOverride.isEmpty
+        ? base
+        : base.copyWith(apiBaseUrl: _apiBaseUrlOverride);
+  }
 
-  static AppConfig forEnvironment(AppEnvironment environment) =>
-      switch (environment) {
-        AppEnvironment.development => const AppConfig(
-            environment: AppEnvironment.development,
-            apiBaseUrl: 'https://localhost:5001/api',
-            useMockData: true,
-          ),
-        AppEnvironment.staging => const AppConfig(
-            environment: AppEnvironment.staging,
-            apiBaseUrl: 'https://staging-api.akcars.om/api',
-            useMockData: true,
-          ),
-        AppEnvironment.production => const AppConfig(
-            environment: AppEnvironment.production,
-            apiBaseUrl: 'https://api.akcars.om/api',
-            useMockData: false,
-          ),
-      };
+  static const _apiBaseUrlOverride =
+      String.fromEnvironment('AK_API_BASE_URL', defaultValue: '');
+
+  // One fixed API host for every environment, set by the user 2026-08-09 —
+  // do not change until told to. https, not AKCarsMobileAPI's plain-http
+  // launch profile: its `UseHttpsRedirection()` runs unconditionally, so the
+  // http port only ever 307s. Port 7291 is the `https` profile in
+  // Properties/launchSettings.json. DioApiClient trusts its self-signed dev
+  // certificate for [AppEnvironment.development] only — see its constructor.
+  static const _sharedApiBaseUrl = 'https://localhost:7291/api/v1';
+
+  static AppConfig forEnvironment(AppEnvironment environment) => AppConfig(
+        environment: environment,
+        apiBaseUrl: _sharedApiBaseUrl,
+      );
 
   AppConfig copyWith({
     AppEnvironment? environment,
     String? apiBaseUrl,
-    bool? useMockData,
     Duration? connectTimeout,
     Duration? receiveTimeout,
-    Duration? mockLatency,
-    bool? simulateProviderLifecycle,
     int? defaultPageSize,
     Duration? approvalWindow,
     Duration? approvalReminderLead,
@@ -180,16 +126,11 @@ class AppConfig {
       AppConfig(
         environment: environment ?? this.environment,
         apiBaseUrl: apiBaseUrl ?? this.apiBaseUrl,
-        useMockData: useMockData ?? this.useMockData,
         connectTimeout: connectTimeout ?? this.connectTimeout,
         receiveTimeout: receiveTimeout ?? this.receiveTimeout,
-        mockLatency: mockLatency ?? this.mockLatency,
-        simulateProviderLifecycle:
-            simulateProviderLifecycle ?? this.simulateProviderLifecycle,
         defaultPageSize: defaultPageSize ?? this.defaultPageSize,
         approvalWindow: approvalWindow ?? this.approvalWindow,
-        approvalReminderLead:
-            approvalReminderLead ?? this.approvalReminderLead,
+        approvalReminderLead: approvalReminderLead ?? this.approvalReminderLead,
         platformCommission: platformCommission ?? this.platformCommission,
         earningsWindow: earningsWindow ?? this.earningsWindow,
       );

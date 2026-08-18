@@ -1,7 +1,10 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/error/app_exception.dart';
 import '../di/providers.dart';
 import '../state/app_state.dart';
 
@@ -67,17 +70,108 @@ abstract final class AppBootstrap {
   /// Fetches the reference data every screen assumes is already present.
   ///
   /// The repositories are warmed in parallel because none depends on another.
-  static Future<void> warmUp(ProviderContainer container) => Future.wait([
-        container.read(catalogRepositoryProvider).warmUp(),
-        container.read(serviceMarketplaceRepositoryProvider).warmUp(),
-        container.read(shopRepositoryProvider).warmUp(),
-        container.read(carsRepositoryProvider).warmUp(),
-        container.read(garageRepositoryProvider).warmUp(),
-        container.read(maintenanceRepositoryProvider).warmUp(),
-        container.read(challengeRepositoryProvider).warmUp(),
-        // The operator panels read their queue synchronously while building,
-        // exactly as the catalogue screens do, so it is warmed here with the
-        // rest rather than behind a loading state the design does not have.
-        container.read(operatorQueueProvider.notifier).refresh(),
-      ]);
+  ///
+  /// Most of these need no session and always run: the catalogue, shop and
+  /// cars feeds are public, the service marketplace's read half is public too,
+  /// and the garage and its maintenance books are session-routed below the
+  /// repository (`SessionGarageService`) so a guest reads the device. What is
+  /// left — the challenge board, and the per-account lists behind
+  /// [SessionRefresh.loadSessionLists] — is genuinely per-account, so it is
+  /// only attempted when there is a session to attempt it with:
+  ///
+  /// * **Signed in.** They run, still swallowing a `401` — [_optional] here,
+  ///   `SessionRefresh._bestEffort` there — because a *stored* token is not a
+  ///   *valid* one, and an expired session answers `401` just like no session
+  ///   at all.
+  /// * **Guest.** They are skipped outright. They can only answer `401`
+  ///   without a token, so firing them cost a guest's cold start round-trips
+  ///   that were guaranteed to fail and buried any real error in console noise
+  ///   on the way. This list used to be much longer: most of it was gated
+  ///   because the API gated it, not because the data was per-account.
+  ///
+  /// The `401`s were never fatal — [_optional] has always swallowed them, the
+  /// same case [ApiAuthService.fetchCurrentUser] treats as expected rather than
+  /// an error. Skipping the calls changes what is *requested*, not what ends up
+  /// warmed: an unwarmed repository is exactly where a swallowed `401` left it.
+  static Future<void> warmUp(ProviderContainer container) async {
+    final signedIn = await _signedIn(container);
+    await Future.wait([
+      container.read(catalogRepositoryProvider).warmUp(),
+      container.read(shopRepositoryProvider).warmUp(),
+      container.read(carsRepositoryProvider).warmUp(),
+      // The garage and its maintenance books are warmed for *everyone*, not
+      // only for a session. They are session-routed
+      // (`SessionGarageService`): a guest's cars live on the device, because
+      // registering one is step 3 of 3 of first launch and long precedes the
+      // registration gate. Skipping these for a guest meant the car they had
+      // just registered was written to the device and then never read back —
+      // an empty garage on the next launch, and the rest of the app behaving
+      // as if they had never registered one, since the start-choice flag
+      // *did* survive.
+      _optional(() => container.read(garageRepositoryProvider).warmUp()),
+      _optional(() => container.read(maintenanceRepositoryProvider).warmUp()),
+      // The service marketplace is browse data — who sells what, where, at
+      // what price — and the API serves its read half to anonymous callers, on
+      // the same rule that already makes `/cars` and `/products` public.
+      // Warming it only for a session was the mirror image of that gate on the
+      // client: a guest opened the Services tab onto nothing at all.
+      _optional(
+          () => container
+              .read(serviceMarketplaceRepositoryProvider)
+              .warmUp(includeFounderLedger: signedIn)),
+      if (signedIn) ...[
+        _optional(() => container.read(challengeRepositoryProvider).warmUp()),
+        // The per-account lists: this session's bookings and orders, and — for
+        // a founder — the operator queue. All three are read synchronously by
+        // the screens that show them, exactly as the catalogue screens read the
+        // catalogue, so they are loaded here rather than behind a loading state
+        // the design does not have.
+        //
+        // Delegated to [SessionRefresh] rather than listed here, because
+        // sign-in has to load the same set and then some: a cold start with a
+        // stored token and a sign-in a minute later differ only in whether the
+        // caches above already hold the right data, and two copies of this list
+        // would be two places to forget the same screen. `includeSelfLoading:
+        // false` leaves out the inbox and the reviews, which load themselves
+        // from their own `build()` — see that method. It is internally
+        // best-effort, including the `403` an ordinary customer or workshop
+        // gets for the founder-only operator queue.
+        container
+            .read(sessionRefreshProvider)
+            .loadSessionLists(includeSelfLoading: false),
+      ],
+    ]);
+  }
+
+  /// Whether the auth-gated warm-ups are worth attempting at all.
+  ///
+  /// Deliberately reads the token store rather than [authProvider]: the
+  /// profile is only re-attached by `restore()`, which bootstrap runs *after*
+  /// this, so auth state is still empty here no matter who is signed in. The
+  /// stored token is the one signal available this early.
+  static Future<bool> _signedIn(ProviderContainer container) =>
+      container.read(tokenStoreProvider).mayHaveSession();
+
+  /// Runs a warm-up that requires a signed-in session. A `401` here means
+  /// "nobody is signed in", not "the warm-up failed" — swallowed so it never
+  /// turns a guest's first launch into the boot-failure screen. Every other
+  /// exception (offline, 5xx, a malformed response) still propagates: those
+  /// are real failures and bootstrap should still treat them as fatal.
+  ///
+  /// Logged as a plain line, with no `error`/`stackTrace`: these are the
+  /// *expected* answers, and attaching the exception made `developer.log`
+  /// print a full 25-frame dump for each one. A guest's cold start produced
+  /// several, which is how an ordinary launch came to look like a stack of
+  /// crashes in the console.
+  static Future<void> _optional(Future<void> Function() warmUp) async {
+    try {
+      await warmUp();
+    } on UnauthorizedException {
+      developer.log(
+        'Skipped an auth-gated warm-up — no session yet',
+        name: 'AppBootstrap',
+      );
+    }
+  }
+
 }

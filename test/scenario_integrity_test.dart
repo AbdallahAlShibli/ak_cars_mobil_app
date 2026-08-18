@@ -1,12 +1,13 @@
+import 'dart:convert';
+
 import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/config/app_environment.dart';
 import 'package:ak_cars_mobil_app/core/error/app_exception.dart';
 import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
 import 'package:ak_cars_mobil_app/core/utils/guid.dart';
 import 'package:ak_cars_mobil_app/core/widgets/status_indicator.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
+import 'fakes/data/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
-import 'package:ak_cars_mobil_app/data/services/service_marketplace_service.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/features/operations/queue_urgency.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
@@ -14,7 +15,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+import 'fakes/data/mock_ids.dart';
+import 'fakes/fakes.dart';
+
+/// A JWT shaped like `TokenService.GenerateAccessToken`'s own output — see
+/// `jwt_claims.dart`'s doc comment for why the claim key is the long URI
+/// rather than the short `"role"` string one might expect.
+String _founderJwt() {
+  String segment(Object value) =>
+      base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+  return '${segment({
+        'alg': 'none',
+      })}.${segment({
+        'http://schemas.microsoft.com/ws/2008/06/identity/claims/role':
+            'founder',
+      })}.sig';
+}
 
 /// Scenario integrity (§13).
 ///
@@ -47,13 +63,10 @@ Future<ProviderContainer> _container({List<Override> extra = const []}) =>
       overrides: [
         appConfigProvider.overrideWithValue(
           AppConfig.forEnvironment(AppEnvironment.development)
-              .copyWith(simulateProviderLifecycle: false),
+              ,
         ),
         serviceMarketplaceServiceProvider.overrideWith(
-          (ref) => MockServiceMarketplaceService(
-            config: ref.watch(appConfigProvider),
-            seeded: false,
-          ),
+          (ref) => MockServiceMarketplaceService(seeded: false),
         ),
         ...extra,
       ],
@@ -469,24 +482,48 @@ void main() {
   });
 
   // ================================================== 8 — the panels are guarded
-  test('8. each operator panel admits only its own role', () async {
+  test(
+      '8. the active role is a real account fact, not a switch anyone can '
+      'flip', () async {
     final c = await _container();
-    final role = c.read(activeRoleProvider.notifier);
 
-    // The guard is a pure function of role and stage; the router calls it on
-    // every navigation. Asserted here through the same inputs.
-    role.setRole(AppRole.workshop);
+    // A guest, or a signed-in customer, is a customer — there is no third
+    // state to opt out of.
+    expect(c.read(activeRoleProvider), AppRole.customer);
+
+    // Filing a workshop application does not grant the role on its own —
+    // §11: an application only *starts* review.
+    await _registerWorkshop(c);
+    expect(c.read(activeRoleProvider), AppRole.customer);
+
+    // Approval is what the router's guard actually checks (see
+    // `_guardOperatorPanels`), so it is what flips the role too.
+    final id = _applicantWorkshop(c).id;
+    await c.read(adminActionsProvider).setStage(id, ProviderOnboardingStage.approved);
     expect(c.read(activeRoleProvider), AppRole.workshop);
-    expect(AppRole.workshop.panelRoute, '/workshop');
+    expect(c.read(activeRoleProvider).actor, EscrowActor.workshop);
 
-    role.setRole(AppRole.founder);
-    expect(c.read(activeRoleProvider), AppRole.founder);
-    expect(AppRole.founder.panelRoute, '/admin');
-
-    // A customer has no panel at all, which is why nothing links to one.
-    role.setRole(AppRole.customer);
-    expect(AppRole.customer.hasPanel, isFalse);
-
+    // The founder role comes from the JWT's own role claim — nothing else
+    // grants it, and nothing here can be reached without a real token
+    // carrying it. Rebuilding the container is what a fresh sign-in is:
+    // `AuthState.isFounder` is decoded once at that point, not re-read on
+    // every check.
+    final founderContainer = await _container(extra: [
+      tokenStoreProvider.overrideWithValue(
+        MemoryTokenStore(access: _founderJwt(), refresh: 'r'),
+      ),
+    ]);
+    await founderContainer.read(authProvider.notifier).register(
+          const UserProfile(
+            name: 'Founder',
+            phone: '+968 9333 4444',
+            email: 'founder@example.om',
+            region: 'Muscat',
+            address: '',
+          ),
+        );
+    expect(founderContainer.read(activeRoleProvider), AppRole.founder);
+    expect(founderContainer.read(activeRoleProvider).actor, EscrowActor.founder);
   });
 
   // ====================================== 9 — a new workshop is pending, not live

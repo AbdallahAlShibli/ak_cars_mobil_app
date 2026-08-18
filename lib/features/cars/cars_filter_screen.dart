@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/car_media.dart';
+import '../../core/widgets/rial_symbol.dart';
 import '../../core/widgets/sand_widgets.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
@@ -1329,8 +1330,8 @@ class _PriceRangeInputState extends State<_PriceRangeInput> {
           fontSize: 13, fontWeight: FontWeight.w700, color: ak.ink),
       decoration: InputDecoration(
         hintText: hint,
-        suffixText: s.omr,
-        suffixStyle: TextStyle(fontSize: 11, color: ak.inkSub),
+        prefixIcon: Center(child: RialGlyph(fontSize: 16, color: ak.inkSub)),
+        prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 0),
         isDense: true,
         filled: true,
         fillColor: ak.surface,

@@ -6,6 +6,8 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 
+export 'rial_symbol.dart';
+
 /// Rounded surface card used across the app. Colors resolve from the
 /// theme-aware [AkColors] (light "Sand" / dark "Ink") unless overridden.
 class AppCard extends StatelessWidget {
@@ -315,9 +317,14 @@ class _EntranceState extends State<Entrance> {
 
 /// Escrow notice banner (amber).
 class EscrowBanner extends StatelessWidget {
-  const EscrowBanner(this.message, {super.key});
+  const EscrowBanner(this.message, {super.key}) : child = null;
 
-  final String message;
+  /// For copy that embeds a widget mid-sentence (e.g. a [RialAmount]) rather
+  /// than plain text.
+  const EscrowBanner.rich(Widget this.child, {super.key}) : message = null;
+
+  final String? message;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
@@ -333,14 +340,14 @@ class EscrowBanner extends StatelessWidget {
           Icon(LucideIcons.lock, size: 16, color: ak.amberText),
           const SizedBox(width: 9),
           Expanded(
-            child: Text(
-              message,
+            child: DefaultTextStyle.merge(
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: ak.amberDeep,
                 height: 1.4,
               ),
+              child: child ?? Text(message!),
             ),
           ),
         ],

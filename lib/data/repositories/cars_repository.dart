@@ -40,10 +40,20 @@ class CarsRepositoryImpl implements CarsRepository {
   final _homeListings = WarmCache<List<CarListing>>(fallback: const []);
 
   @override
-  Future<void> warmUp() => Future.wait([
-        _listings.load(() => _service.fetchListings()),
-        _homeListings.load(_service.fetchHomeListings),
-      ]);
+  // `async`, not `=> Future.wait(...)`, and that is load-bearing rather than a
+  // style choice. `Future.wait` here hands back a `Future<List<...>>`; widening
+  // it to the declared `Future<void>` is legal at compile time but does not
+  // change the object, so the future's *runtime* type argument stays
+  // `List<...>`. `warmUp().catchError((_) {})` then fails with "the error
+  // handler of Future.catchError must return a value of the future's type" —
+  // and does so only once the warm-up actually throws, replacing a real error
+  // with a confusing one. An `async` body produces a genuine `Future<void>`.
+  Future<void> warmUp() async {
+    await Future.wait([
+      _listings.load(() => _service.fetchListings()),
+      _homeListings.load(_service.fetchHomeListings),
+    ]);
+  }
 
   @override
   List<GalleryListing> get listings => _listings.value;

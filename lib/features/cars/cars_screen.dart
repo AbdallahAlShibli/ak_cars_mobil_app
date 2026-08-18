@@ -12,6 +12,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/contact.dart';
 import '../../core/widgets/car_media.dart';
+import '../../core/widgets/rial_symbol.dart';
 import '../../core/widgets/sand_widgets.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
@@ -558,21 +559,9 @@ class _AdCard extends ConsumerWidget {
                                     fontWeight: FontWeight.w700,
                                     color: ak.inkSub),
                               )
-                            : Text.rich(
-                                TextSpan(children: [
-                                  TextSpan(
-                                    text: _fmt.format(listing.price),
-                                    style: AppTheme.numeric(
-                                        size: 13, color: ak.ink),
-                                  ),
-                                  TextSpan(
-                                    text: ' ${s.omr}',
-                                    style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w500,
-                                        color: ak.inkSub),
-                                  ),
-                                ]),
+                            : RialAmount.formatted(
+                                _fmt.format(listing.price),
+                                style: AppTheme.numeric(size: 13, color: ak.ink),
                               ),
                       ),
                       GestureDetector(

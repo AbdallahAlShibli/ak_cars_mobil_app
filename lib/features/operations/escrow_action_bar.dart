@@ -5,6 +5,7 @@ import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/widgets/rial_symbol.dart';
 import '../../data/models/models.dart';
 import '../../state/app_state.dart';
 
@@ -178,8 +179,7 @@ class OperatorRequestHeader extends StatelessWidget {
             const SizedBox(width: AppSpacing.sm),
             // §2: the amount is the heaviest thing on an operator row. It is
             // what the panel exists to move.
-            Text('${s.omr} ${request.total.toStringAsFixed(2)}',
-                style: context.text.price),
+            RialAmount(request.total, style: context.text.price),
           ],
         ),
         const SizedBox(height: AppSpacing.xs),

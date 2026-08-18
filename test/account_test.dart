@@ -169,7 +169,13 @@ void main() {
       expect(find.text('My activity'), findsOneWidget);
     });
 
-    testWidgets('changing the phone requires a fresh code and rejects a wrong one',
+    // This screen used to demand an OTP when the phone or email changed, and
+    // compared it against a constant compiled into the app. `PUT
+    // /user/profile` saves whatever it is sent with no OTP step, so that gate
+    // could only ever have been satisfied by a code the real server never
+    // issued — it went with the rest of the demo plumbing on 2026-08-10.
+    // Login still verifies a real, server-issued code.
+    testWidgets('changing the phone saves it, with nothing to re-verify',
         (tester) async {
       final container = await pumpAccount(tester, profile: _profile);
 
@@ -178,22 +184,9 @@ void main() {
       await tester.enterText(fieldUnder('Phone number'), '95550000');
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('You changed your phone number'),
-          findsOneWidget);
-      await tester.tap(find.text('Send the code').last);
-      await tester.pumpAndSettle();
+      expect(find.text('Verify with'), findsNothing);
+      expect(find.textContaining('Enter the code sent to'), findsNothing);
 
-      await tester.enterText(fieldUnder('Enter the code sent to +968 9555 0000'), '1111');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Save changes'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('That code is not right'), findsOneWidget);
-      expect(container.read(authProvider).profile!.phone, '+968 92001234',
-          reason: 'an unverified number must not be saved');
-
-      await tester.enterText(fieldUnder('Enter the code sent to +968 9555 0000'), '7391');
-      await tester.pumpAndSettle();
       await tester.tap(find.text('Save changes'));
       await tester.pumpAndSettle();
 
@@ -211,7 +204,7 @@ void main() {
       await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '123');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Verify and continue'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
       expect(find.text('An 8-digit Oman number'), findsOneWidget);
@@ -246,12 +239,7 @@ void main() {
       await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '99887766');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Verify and continue'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-          fieldUnder('Enter the code sent to +968 9988 7766'), '7391');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Verify and continue'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
       expect(container.read(authProvider).profile!.wilayat, 'Seeb');
@@ -281,7 +269,7 @@ void main() {
       await tester.enterText(fieldUnder('Phone number'), '24478120');
       await tester.pumpAndSettle();
       await pickGovernorate(tester, 'Muscat');
-      await tester.tap(find.text('Verify and continue'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
       expect(find.text('An Oman mobile number starting with 7 or 9'),
@@ -323,7 +311,7 @@ void main() {
       );
     });
 
-    testWidgets('sends a code before asking for one, then registers',
+    testWidgets('registers in one step, with no code to wait for',
         (tester) async {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
@@ -334,19 +322,11 @@ void main() {
       await tester.pumpAndSettle();
       await pickGovernorate(tester, 'Muscat');
 
-      // No code field yet — the first tap is what sends the code, rather
-      // than complaining about a code the user was never shown a box for.
+      // `POST /auth/register` has no OTP step, so neither does this screen.
       expect(find.textContaining('Enter the code sent to'), findsNothing);
-      await tester.tap(find.text('Verify and continue'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('Enter the code sent to +968 9988 7766'),
-          findsOneWidget);
-      expect(container.read(authProvider).isRegistered, isFalse);
+      expect(find.text('Verify with'), findsNothing);
 
-      await tester.enterText(
-          fieldUnder('Enter the code sent to +968 9988 7766'), '7391');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Verify and continue'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
       final saved = container.read(authProvider).profile!;
@@ -357,27 +337,37 @@ void main() {
       expect(container.read(regionProvider), 'Muscat');
     });
 
-    testWidgets('email verification needs an email address', (tester) async {
-      await pumpAccount(tester, initialLocation: '/register');
+    // Email used to be a *verification channel* the user picked, and became
+    // required once they picked it. With no OTP anywhere on this screen it is
+    // simply an optional contact detail — but a typo in one is still worth
+    // catching, since it is where a receipt would be sent.
+    testWidgets('email is optional, but a malformed one is refused',
+        (tester) async {
+      final container =
+          await pumpAccount(tester, initialLocation: '/register');
       await chooseCustomerAccount(tester);
 
       await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '99887766');
       await tester.pumpAndSettle();
       await pickGovernorate(tester, 'Muscat');
-      await tester.tap(find.text('Email OTP'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Verify and continue'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Email is required to verify by email'), findsOneWidget);
 
       await tester.enterText(fieldUnder('Email'), 'not-an-email');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Verify and continue'));
+      await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
       expect(find.text('That does not look like an email'), findsOneWidget);
+      expect(container.read(authProvider).isRegistered, isFalse);
+
+      // Cleared rather than corrected: an account with only a phone number is
+      // complete.
+      await tester.enterText(fieldUnder('Email'), '');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(container.read(authProvider).isRegistered, isTrue);
     });
   });
 }

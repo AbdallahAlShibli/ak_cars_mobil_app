@@ -19,6 +19,20 @@ import '../../data/models/models.dart';
 import 'platform_trust_widgets.dart';
 import 'service_detail_screen.dart';
 
+/// Formats a raw "HH:mm" slot key (as served by `GET .../slots`, e.g.
+/// `"09:00"`) into a locale-aware clock time (`"9:00 AM"` / Arabic
+/// equivalent) for display. Falls back to the raw string if it isn't in the
+/// expected shape, so an unexpected server value degrades to plain text
+/// instead of throwing.
+String _formatSlotTime(String raw, bool isAr) {
+  final parts = raw.split(':');
+  final hour = parts.length == 2 ? int.tryParse(parts[0]) : null;
+  final minute = parts.length == 2 ? int.tryParse(parts[1]) : null;
+  if (hour == null || minute == null) return raw;
+  return DateFormat('h:mm a', isAr ? 'ar' : 'en')
+      .format(DateTime(2000, 1, 1, hour, minute));
+}
+
 /// Time & place:
 /// - fulfillment options come from real provider capacity;
 /// - emergency services default to roadside and skip time slots (ASAP);
@@ -113,7 +127,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     final tomorrow = DateTime.now().add(const Duration(days: 1));
     final date =
         DateFormat('EEE d MMM', s.isAr ? 'ar' : 'en').format(tomorrow);
-    return '$date · $_slot';
+    return '$date · ${_formatSlotTime(_slot, s.isAr)}';
   }
 
   Future<void> _pickPlateLetters() async {
@@ -149,12 +163,28 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       );
       return;
     }
+    // The server files every booking against a real, registered vehicle —
+    // `carId` is a foreign key, not free text. A placeholder id used to be
+    // sent here when the garage was empty; the server has no such vehicle and
+    // rejects it with a 500 while saving, which is the crash this guards
+    // against. `PartRequestScreen._send` makes the same check for the same
+    // reason.
+    final car = ref.read(primaryCarProvider);
+    if (car == null) {
+      HapticFeedback.vibrate();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(s.t('أضف سيارتك أولاً للمتابعة مع الحجز',
+                'Add your car first to continue with this booking'))),
+      );
+      context.push('/add-car');
+      return;
+    }
+
     setState(() => _confirming = true);
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
 
-    final car = ref.read(primaryCarProvider) ??
-        const Car(id: 'adhoc', make: 'Selected', model: 'car', year: 2020);
     final plate =
         '${_plateNumber.text.trim()} $_plateLetters'.toUpperCase();
 
@@ -174,24 +204,48 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     final maintenanceItemKey =
         intent.state?.carId == car.id ? intent.state?.itemKey : null;
 
-    // The repository prices and stores the booking and raises the
-    // "request sent" notification — nothing is held in escrow until the
-    // founder confirms the transfer landed (spec §3, note 2).
-    final request = await requests.place(
-      CreateServiceRequestDraft(
-        offering: _offering,
-        car: car,
-        plate: plate,
-        fulfillment: _fulfillment,
-        slot: _slotLabel(s),
-        addOnIds: selectedAddOns.state,
-        maintenanceItemKey: maintenanceItemKey,
-      ),
-    );
+    final ServiceRequest request;
+    try {
+      // The repository prices and stores the booking and raises the
+      // "request sent" notification — nothing is held in escrow until the
+      // founder confirms the transfer landed (spec §3, note 2).
+      request = await requests.place(
+        CreateServiceRequestDraft(
+          offering: _offering,
+          car: car,
+          plate: plate,
+          fulfillment: _fulfillment,
+          // The raw "HH:mm" slot key the server matches against its own
+          // schedule (`docs/api_contract.md`'s `POST .../requests` example is
+          // `"slot": "10:30"`), not `_slotLabel`'s localized display string —
+          // that one is for the summary card only. Empty when no slot applies
+          // (roadside/ASAP), the same "nothing scheduled yet" convention
+          // `ServiceRequest.partInstall` uses.
+          slot: _needsSlot ? _slot : '',
+          addOnIds: selectedAddOns.state,
+          maintenanceItemKey: maintenanceItemKey,
+        ),
+      );
+    } catch (_) {
+      // Without this the button spun forever and the screen said nothing —
+      // the reason reached a console the user will never open. Same pattern
+      // as `AddCarScreen._watchWrite`.
+      if (!mounted) return;
+      setState(() => _confirming = false);
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+            content: Text(s.t(
+                'تعذّر إتمام الحجز. تحقّق من اتصالك وحاول مرة أخرى.',
+                'Could not complete the booking. Check your connection and '
+                    'try again.'))));
+      return;
+    }
 
     // Keep the garage in sync — the plate entered here becomes the
     // car's registered plate.
-    if (car.id != 'adhoc' && car.plate != plate) {
+    if (car.plate != plate) {
       garage.setPlate(car.id, plate);
     }
     selectedAddOns.state = {};
@@ -277,14 +331,14 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  for (final s in _availability.slots)
+                                  for (final slot in _availability.slots)
                                     _SlotChip(
-                                      label: s,
+                                      label: _formatSlotTime(slot, s.isAr),
                                       booked:
-                                          !_availability.isAvailable(s),
-                                      selected: _slot == s,
+                                          !_availability.isAvailable(slot),
+                                      selected: _slot == slot,
                                       onTap: () =>
-                                          setState(() => _slot = s),
+                                          setState(() => _slot = slot),
                                     ),
                                 ],
                               ),
@@ -360,25 +414,35 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                           ),
                           const SizedBox(height: 6),
                         ],
-                        _SummaryRow(
-                          label: _offering.name.of(s),
-                          value: _offering.price != null
-                              ? '${s.omr} ${_offering.price!.toStringAsFixed(2)}'
-                              : s.t('عرض سعر بعد الفحص',
-                                  'Quote after inspection'),
-                        ),
+                        _offering.price != null
+                            ? _SummaryRow.widget(
+                                label: _offering.name.of(s),
+                                valueWidget: RialAmount(_offering.price!),
+                              )
+                            : _SummaryRow(
+                                label: _offering.name.of(s),
+                                value: s.t('عرض سعر بعد الفحص',
+                                    'Quote after inspection'),
+                              ),
                         const SizedBox(height: 6),
-                        _SummaryRow(
-                          label: s.t('طريقة التنفيذ', 'Fulfillment'),
-                          value: switch (_fulfillment) {
-                            Fulfillment.pickup =>
-                              '${_fulfillment.label(s)} · +${s.omr} ${provider.pickupFee.toStringAsFixed(0)}',
-                            Fulfillment.roadside =>
-                              '${_fulfillment.label(s)} · ${s.t('في أقرب وقت', 'ASAP')}',
-                            _ =>
-                              '${_fulfillment.label(s)} · ${s.t('مجاناً', 'free')}',
-                          },
-                        ),
+                        _fulfillment == Fulfillment.pickup
+                            ? _SummaryRow.widget(
+                                label: s.t('طريقة التنفيذ', 'Fulfillment'),
+                                valueWidget: RialAmount(
+                                  provider.pickupFee,
+                                  decimals: 0,
+                                  prefix: '${_fulfillment.label(s)} · +',
+                                ),
+                              )
+                            : _SummaryRow(
+                                label: s.t('طريقة التنفيذ', 'Fulfillment'),
+                                value: switch (_fulfillment) {
+                                  Fulfillment.roadside =>
+                                    '${_fulfillment.label(s)} · ${s.t('في أقرب وقت', 'ASAP')}',
+                                  _ =>
+                                    '${_fulfillment.label(s)} · ${s.t('مجاناً', 'free')}',
+                                },
+                              ),
                         const SizedBox(height: 6),
                         _SummaryRow(
                             label: s.t('الموعد', 'When'),
@@ -394,8 +458,9 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                                 style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700)),
-                            Text(
-                              '${s.omr} ${_total.toStringAsFixed(2)}',
+                            RialAmount(
+                              _total,
+                              bold: true,
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
@@ -434,11 +499,12 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2.5, color: Colors.white),
                       )
-                    : Text(_isEmergency
-                        ? s.t('اطلب المساعدة الآن — ${_total.toStringAsFixed(2)} ر.ع',
-                            'Request help now — OMR ${_total.toStringAsFixed(2)}')
-                        : s.t('تأكيد ودفع ${_total.toStringAsFixed(2)} ر.ع',
-                            'Confirm & pay OMR ${_total.toStringAsFixed(2)}')),
+                    : RialAmount(
+                        _total,
+                        prefix: _isEmergency
+                            ? s.t('اطلب المساعدة الآن — ', 'Request help now — ')
+                            : s.t('تأكيد ودفع ', 'Confirm & pay '),
+                      ),
               ),
             ),
           ],
@@ -468,15 +534,18 @@ class _FulfillmentCard extends StatelessWidget {
     final s = S.of(context);
     final subtitle = switch (fulfillment) {
       _ when !offered =>
-        s.t('غير متوفرة لدى هذا المزود', 'Not offered by this provider'),
-      Fulfillment.workshop =>
-        s.t('مجاناً · اختر موعداً بالأسفل', 'Free · pick a slot below'),
-      Fulfillment.pickup => s.t(
-          '+ ${fee?.toStringAsFixed(0)} ر.ع · متوفرة لدى هذا المزود',
-          '+ OMR ${fee?.toStringAsFixed(0)} · offered by this provider'),
-      Fulfillment.roadside => s.t(
+        Text(s.t('غير متوفرة لدى هذا المزود', 'Not offered by this provider')),
+      Fulfillment.workshop => Text(
+          s.t('مجاناً · اختر موعداً بالأسفل', 'Free · pick a slot below')),
+      Fulfillment.pickup => RialAmount(
+          fee ?? 0,
+          decimals: 0,
+          prefix: '+ ',
+          suffix: s.t(' · متوفرة لدى هذا المزود', ' · offered by this provider'),
+        ),
+      Fulfillment.roadside => Text(s.t(
           'في أقرب وقت · متوسط الاستجابة 25 دقيقة',
-          'ASAP · avg 25 min response'),
+          'ASAP · avg 25 min response')),
     };
 
     return Opacity(
@@ -506,9 +575,11 @@ class _FulfillmentCard extends StatelessWidget {
                   Text(fulfillment.label(s),
                       style: const TextStyle(
                           fontSize: 13.5, fontWeight: FontWeight.w700)),
-                  Text(subtitle,
-                      style: const TextStyle(
-                          fontSize: 11.5, color: AppColors.ink3)),
+                  DefaultTextStyle.merge(
+                    style: const TextStyle(
+                        fontSize: 11.5, color: AppColors.ink3),
+                    child: subtitle,
+                  ),
                 ],
               ),
             ),
@@ -578,10 +649,15 @@ class _SlotChip extends StatelessWidget {
 }
 
 class _SummaryRow extends StatelessWidget {
-  const _SummaryRow({required this.label, required this.value});
+  const _SummaryRow({required this.label, required this.value})
+      : valueWidget = null;
+
+  const _SummaryRow.widget({required this.label, required Widget this.valueWidget})
+      : value = null;
 
   final String label;
-  final String value;
+  final String? value;
+  final Widget? valueWidget;
 
   @override
   Widget build(BuildContext context) {
@@ -594,9 +670,10 @@ class _SummaryRow extends StatelessWidget {
               style:
                   const TextStyle(fontSize: 12.5, color: AppColors.ink2)),
         ),
-        Text(value,
-            style: const TextStyle(
-                fontSize: 12.5, fontWeight: FontWeight.w600)),
+        DefaultTextStyle.merge(
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+          child: valueWidget ?? Text(value!),
+        ),
       ],
     );
   }

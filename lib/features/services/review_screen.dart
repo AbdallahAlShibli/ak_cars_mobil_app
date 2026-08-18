@@ -108,7 +108,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               ),
               const SizedBox(height: 3),
               Text(
-                '${request.offering.name.of(s)} · #${request.id}',
+                '${request.offering.name.of(s)} · #${shortRef(request.id)}',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: ak.inkSub),
               ),

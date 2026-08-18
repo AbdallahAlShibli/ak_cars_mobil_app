@@ -7,6 +7,7 @@ import 'package:intl/intl.dart' as intl;
 
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/rial_symbol.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
@@ -346,16 +347,24 @@ class _ProviderOfferRow extends ConsumerWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  offering.price != null
-                      ? '${s.omr} ${omrAmount(offering.price!)}'
-                      : s.t('عرض سعر', 'Quote'),
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: ak.ink,
-                  ),
-                ),
+                offering.price != null
+                    ? RialAmount.formatted(
+                        omrAmount(offering.price!),
+                        bold: true,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: ak.ink,
+                        ),
+                      )
+                    : Text(
+                        s.t('عرض سعر', 'Quote'),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: ak.ink,
+                        ),
+                      ),
                 // The price above is already the discounted one; this says why
                 // it is lower than the workshop's published price, so the row
                 // and the service page tell the same story.
@@ -363,8 +372,8 @@ class _ProviderOfferRow extends ConsumerWidget {
                     .watch(serviceMarketplaceRepositoryProvider)
                     .offerFor(offering.id)
                     case final offer?)
-                  Text(
-                    '${s.omr} ${omrAmount(offer.referencePrice)}',
+                  RialAmount.formatted(
+                    omrAmount(offer.referencePrice),
                     style: TextStyle(
                       fontSize: 10.5,
                       color: ak.inkFaint,
@@ -448,28 +457,37 @@ class ServicePackageCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  [
-                    if (fromPrice != null)
-                      s.t('من ${omrAmount(fromPrice)} ${s.omr}',
-                          'from ${s.omr} ${omrAmount(fromPrice)}')
-                    else if (category.note != null)
-                      category.note!.of(s),
-                    if (local)
-                      s.workshops(providerCount)
-                    else
-                      s.t('خارج المحافظة', 'outside your area'),
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                Builder(builder: (context) {
+                  final style = TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,
                     color: filled
                         ? ak.onPrimary.withValues(alpha: 0.7)
                         : ak.inkFaint,
-                  ),
-                ),
+                  );
+                  final priceSpan = fromPrice != null
+                      ? rialAmountSpan(
+                          numeral: omrAmount(fromPrice),
+                          style: style,
+                        )
+                      : null;
+                  final spans = <InlineSpan>[
+                    if (priceSpan != null) ...[
+                      TextSpan(text: s.t('من ', 'from ')),
+                      priceSpan,
+                    ] else if (category.note != null)
+                      TextSpan(text: category.note!.of(s)),
+                    TextSpan(
+                        text:
+                            '${priceSpan != null || category.note != null ? ' · ' : ''}'
+                            '${local ? s.workshops(providerCount) : s.t('خارج المحافظة', 'outside your area')}'),
+                  ];
+                  return Text.rich(
+                    TextSpan(style: style, children: spans),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  );
+                }),
               ],
             ),
           ),

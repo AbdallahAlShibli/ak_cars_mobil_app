@@ -26,7 +26,7 @@ tests all still build.
 | `weekChallengeEnabled` | `true` | The weekly challenge and `/challenge` |
 | `requestPartInstall` | `true` | "Request a part + fitting": `/request-part`, `/quote/:id`, the services-tab CTA — see §12 |
 | `verifiedReviews` | `true` | `/review/:id`, ratings on provider cards, the "rate your experience" prompt — see §13 |
-| `operatorPanelsEnabled` | `true` | `/workshop`, `/admin`, the Settings role switcher |
+| `operatorPanelsEnabled` | `true` | `/workshop` (redirects to `/workshop/dashboard`), `/admin`, Settings' "My business" section |
 
 Override for a local check:
 `flutter run --dart-define=AK_PARTS_STORE=true`.
@@ -50,10 +50,16 @@ UI (features/)  →  State (state/)  →  Repositories (data/repositories/)
                                            ↓
                                     Services (data/services/)
                                            ↓
-                                Mock datasources (data/datasources/mock/)
-                                    ── replaced in Phase 2 by ──
-                                       ApiClient → REST API
+                                  ApiClient → REST API
 ```
+
+There is no second data source. The app carried a complete offline
+implementation of every service — `Mock*Service` reading a seeded world under
+`data/datasources/mock/` — selected by a `DataSourceMode` flag. All of it was
+removed from `lib/` on **2026-08-10**; the doubles now live in `test/fakes/`
+and are injected by `test/helpers/test_harness.dart`. A build that cannot reach
+`AppConfig.apiBaseUrl` fails with a `NetworkException` naming the host, which
+is the point: there is nothing left for it to quietly fall back to.
 
 Each arrow is one-directional. A widget never sees a service; a service never
 sees a widget.
@@ -64,8 +70,9 @@ sees a widget.
 | `lib/config/` | `AppEnvironment`, `AppConfig` | The only reader of `dart-define`s |
 | `lib/core/` | i18n, theme, router, widgets, `constants/`, `error/`, `json/`, `media/`, `network/` | No feature or data knowledge |
 | `lib/data/models/` | Immutable domain models | `fromJson`/`toJson`/`copyWith`, value equality |
-| `lib/data/datasources/mock/` | The demo dataset | Read **only** by `Mock*Service` |
-| `lib/data/services/` | `XService` interface + `MockXService` | Shaped like a REST client |
+| `lib/data/services/` | `XService` interface + `ApiXService` | The REST client |
+| `lib/data/services/` (local stores) | `LocalGarageStore`, `LocalMaintenanceStore` | Device-local guest data only — see §3 |
+| `test/fakes/` | The doubles + their seeded world | Test-only; never imported from `lib/` |
 | `lib/data/repositories/` | `XRepository` interface + `XRepositoryImpl` | Caching, composition, domain rules |
 | `lib/state/` | Riverpod notifiers and derived providers | Calls repositories; holds no data logic |
 | `lib/di/providers.dart` | Every service/repository binding | **The only file naming a concrete impl** |
@@ -111,6 +118,68 @@ frame rather than only existing for the session that created them.
 Transactional work (booking, checkout, chat) is asynchronous end to end and
 always was.
 
+### How a warm cache announces that it moved
+
+A `WarmCache` is a plain field on a long-lived repository, and Riverpod compares
+a provider's value by identity — so refilling one changes what the next read
+returns and tells nothing watching `carsRepositoryProvider` anything at all. A
+screen opened before the refill goes on rendering the world as it was when it
+opened.
+
+Invalidating the repository providers would announce the change *and* throw the
+caches away, blanking every screen that reads them synchronously until the
+network answered. So the app uses `Ref.notifyListeners` instead, which tells a
+provider's dependents to read again without rebuilding the provider. Each
+cache-holding repository registers its own `ref` with `WarmCacheNotice`
+(`lib/di/providers.dart`); `SessionRefresh` refills every cache and then calls
+`announce()` once. `WarmCache.load` keeps the previous value until the new one
+arrives, so screens go from old data straight to new data with no empty frame in
+between, and no call site has to remember to watch anything.
+
+`adminRevisionProvider` / `offersRevisionProvider` predate this and still cover
+the founder's own single writes.
+
+### What signing in — and signing out — refreshes
+
+`SessionRefresh` (`lib/state/session_refresh.dart`) is the one place that
+decides, for both directions. `refreshEverything` (sign-in) refills all seven
+warm caches — the public catalogues included, not just the `[Authorize]`d
+ones — announces them, and then loads the lists that belong to an account
+rather than to the platform: bookings, orders, the inbox, the reviews and
+(for a founder) the operator queue. `AppBootstrap` calls the second half on a
+cold start that already has a stored token. `clearAfterSignOut` is the mirror
+image: same warm-cache refill (public data may be stale by the time someone
+signs out too) but with the founder ledger dropped rather than asked for
+again, the same announce, and the per-account lists cleared — `.clear()` on
+each notifier, not reloaded, since there is nobody left to load them for.
+
+Every step is best-effort and logged: the session is committed before the
+refresh runs, so nothing here may strand a user on the auth screen. `401` and
+`403` are logged as plain lines — they are the ordinary answers for an expired
+session and for an account that is not a founder.
+
+**Two bugs found writing the sign-out half, both worth knowing before touching
+this file again:**
+
+1. **Never `ref.invalidate()` `requestsProvider`/`ordersProvider`/
+   `notificationsProvider`/`reviewsProvider`.** These are read via `.notifier`
+   from `SessionRefresh`'s own `Ref` — never from a widget's `watch` — and
+   invalidating one there can leave it disposed rather than rebuilt by the
+   time the very next unrelated `SessionRefresh` call goes looking for it
+   (reproduced by `session_refresh_test.dart`: a booking silently vanished
+   after a sign-out immediately followed by a sign-in). `NotificationsNotifier`
+   also cannot be invalidated for an independent reason — it would open a
+   second push subscription without closing the first. Each of the four
+   notifiers has its own `clear()` — a plain `state = const []` — for exactly
+   this use.
+2. **Two fire-and-forget `SessionRefresh` calls can finish out of order.**
+   Sign out immediately followed by sign in starts two independent background
+   refreshes; without something to arbitrate, the sign-out's tail (clearing
+   the lists) can land *after* the sign-in's tail (loading them), silently
+   dropping the new session's data. `AuthNotifier.generation` — bumped by
+   `register`/`login`/`signOut`, threaded into both `SessionRefresh` methods —
+   is what only lets the most recently started call apply its effects.
+
 ---
 
 ## 3. Phase 2: connecting the real backend
@@ -144,19 +213,24 @@ class RestCatalogService implements CatalogService {
 }
 ```
 
-**Step 3 — flip the binding in `lib/di/providers.dart`:**
+**Step 3 — the binding in `lib/di/providers.dart`:**
 
 ```dart
-final catalogServiceProvider = Provider<CatalogService>((ref) {
-  final config = ref.watch(appConfigProvider);
-  return config.useMockData
-      ? MockCatalogService(config: config)
-      : RestCatalogService(ref.watch(apiClientProvider));
-});
+final catalogServiceProvider = Provider<CatalogService>(
+  (ref) => ApiCatalogService(ref.watch(apiClientProvider)),
+);
 ```
 
-`AppConfig.useMockData` is already `false` for production. Repositories, state
-and all 34 screens compile unchanged.
+One arm, no condition. Repositories, state and all 34 screens are written
+against `CatalogService` and never saw the change.
+
+**The two deliberate exceptions** are `garageServiceProvider` and
+`maintenanceServiceProvider`. Neither is a fallback: a guest is invited to
+register a car as step 3 of 3 of first launch, long before the registration
+gate, while `/user/vehicles` is `[Authorize]`d. `SessionGarageService` wraps a
+`LocalGarageStore` (SharedPreferences) and an `ApiGarageService`, writing to the
+device while there is no session and handing the result to the server at
+sign-in.
 
 ### What will need a decision at that point
 
@@ -166,13 +240,10 @@ and all 34 screens compile unchanged.
 - **Large collections.** Once inventory outgrows a warm cache, move the cars
   feed and parts catalogue to per-screen `FutureProvider`s. Both repositories
   already expose the async `fetchListings` / `fetchProducts` path for this.
-- **Lifecycle simulation.** `RequestsNotifier._simulateLifecycle` and
-  `OrdersNotifier._simulateStoreLifecycle` stand in for server-pushed status
-  events. They are gated behind `AppConfig.simulateProviderLifecycle` — turn it
-  off and subscribe to the real event stream instead.
-- **Auth tokens.** `AuthService` deals in `UserProfile`, not tokens. The REST
-  implementation adds token storage under `AppConstants.prefsAuthToken` and the
-  `ApiClient` attaches it.
+- **Lifecycle simulation — removed 2026-08-10.** `RequestsNotifier` and
+  `OrdersNotifier` used to run client-side timers that walked a booking or an
+  order along its happy path, standing in for server-pushed events. The server
+  owns those transitions; the app now only reflects what it is told.
 
 ---
 
@@ -201,7 +272,7 @@ Ids come from three places and nowhere else:
 |---|---|
 | `newGuid()` | a record the user just created |
 | `derivedGuid(namespace, a, b)` | a record *composed* from others, which must compare equal across rebuilds (the part-install stand-in offering, a booking's service record) |
-| `mockId*` in `data/datasources/mock/mock_ids.dart` | the demo dataset's frozen ids |
+| `mockId*` in `test/fakes/data/mock_ids.dart` | the test world's frozen ids (test-only) |
 
 Four non-obvious encodings:
 
@@ -485,11 +556,36 @@ before payment cannot show "funds held" as done.
 
 ### Roles
 
-`AppRole` (customer / workshop / founder, spec §6) is device-local, stored in
-SharedPreferences and switched at the bottom of Settings. It is not a
-permissions system — the backend will own that. `AppRole.actor` maps it onto
-the `EscrowActor` the transition table speaks, and that mapping is the whole of
-the integration: a role is a person, an actor is a party in the table.
+`AppRole` (customer / workshop / founder, spec §6) is **derived, not
+switched** (`lib/state/role_state.dart`'s `activeRoleProvider`) — there is no
+device-local preference and nothing in Settings lets an account pick a role
+that isn't theirs. It still isn't a permissions system of its own — the
+backend enforces every call regardless of what this resolves to — but it is
+now a read of real facts rather than a local toggle:
+
+- `AppRole.founder` ⟸ `AuthState.isFounder`, decoded off the JWT's own role
+  claim (`lib/core/utils/jwt_claims.dart`). `TokenService.GenerateAccessToken`
+  on the backend is the only thing that grants it, by adding
+  `ClaimTypes.Role: "founder"` to the token — the claim's actual JSON key is
+  the long `http://schemas.microsoft.com/ws/2008/06/identity/claims/role` URI,
+  not the short `"role"` string, confirmed by decoding a token the real
+  service produced (`JwtPayload.AddClaims` writes `Claim.Type` verbatim; the
+  short-name remapping only happens on the inbound/validation side).
+- `AppRole.workshop` ⟸ the signed-in account owns a real `ServiceProvider`
+  (`providerOwnedBy`, keyed on `ownerUserId` — a workshop's staff member does
+  **not** get this just by being linked to the roster) that is
+  `ServiceProvider.isApproved`. A pending or rejected application stays
+  `AppRole.customer`; its status is shown on the profile screen and in
+  Settings' status row, not by granting a role early.
+- `AppRole.customer` ⟸ everyone else, guests included.
+
+`AppRole.actor` still maps a role onto the `EscrowActor` the transition table
+speaks — that part of the integration is unchanged.
+
+`activeRoleProvider` watches `adminRevisionProvider` (bumped by every founder
+write — see §5's admin section) and registers with `WarmCacheNotice`, so an
+approval or suspension made from the founder's own panel is picked up on the
+next read rather than freezing at whatever the provider first resolved to.
 
 ---
 
@@ -843,3 +939,85 @@ unused. The uniqueness constraint has to be a real
 `UNIQUE (bookingId, direction)` index server-side, and the released-booking
 check has to be re-run there: the client mirrors both rules for the UI's sake,
 and mirrors are not guarantees.
+
+## 14. Workshop (Provider) Dashboard
+
+`lib/features/workshop_dashboard/`, reachable at `/workshop/dashboard` —
+`/workshop` itself is now a redirect into it. Real CRUD for a workshop's
+offerings, add-ons, inventory, staff, derived customer list, schedule and
+(§14's Statistics screen) its own earnings/performance charts.
+
+### `/workshop` is a redirect now, not a second panel
+
+There used to be two workshop panels: this dashboard, and an older read-only
+`/workshop` (`lib/features/operations/workshop_screen.dart`, now deleted)
+that showed a "demo view" banner and stood in with the first approved
+workshop on the marketplace for any account that had switched its role to
+`workshop` without owning one. That stand-in (`activeWorkshopProvider`,
+`isStandingInForDemoProvider` — `lib/state/workshop_state.dart`, also
+deleted) is what let someone preview the panel on an account that never
+applied to be a workshop.
+
+It is gone. `GoRoute(path: '/workshop', redirect: (_, __) =>
+'/workshop/dashboard')` sends every deep link straight into the real
+dashboard, which `_guardOperatorPanels` gates on **actual** ownership
+(`providerOwnedBy(userId)?.isApproved == true`, re-read fresh — never through
+the cached `activeRoleProvider` — on every navigation) — an account with no
+real, approved workshop lands on `/settings`, not on a demo. See §5's Roles
+section for how `AppRole.workshop` itself is now derived the same way.
+
+### Escrow transitions go through one table, from one call site
+
+The orders screen (`orders_screen.dart`) renders exactly the transitions
+`ServiceRequest.escrow.transitionsFor(EscrowActor.workshop)` allows — the
+single authority in `lib/data/models/escrow.dart`. It does **not** fire them
+through `EscrowActionBar`/`operatorQueueProvider`, whose list comes from
+`GET /operator/requests` — founder-only on the real backend, so a real
+(non-founder) workshop owner's refresh of that provider would 403. Instead it
+calls `ServiceMarketplaceRepository.applyEscrowEvent`/`.submitQuote` directly
+— the same `POST /requests/{id}/status` call, authorised the same way
+(`ProviderId` ownership), just not routed through the founder-scoped list.
+Quote submission opens the same `QuoteSheet` (`lib/features/operations/
+quote_sheet.dart`, extracted so both a founder's audit trail and a workshop
+owner's orders screen show the identical sheet) the deleted panel used.
+
+### Inventory quantity is a projection, never a field write
+
+`InventoryItem.quantityOnHand` is only ever changed by
+`WorkshopRepository.recordInventoryMovement`, which appends an
+`InventoryMovement` and lets the *server* return the recomputed quantity
+(itself summed from the movement ledger, not trusted from a stored column —
+see `WorkshopFinanceCalculator`'s backend counterpart). Two people recording
+a sale at the same moment cannot lose a unit between them, because neither
+client ever asserts what the new count should be.
+
+### Earnings and performance are server-computed, and have their own screen
+
+`GET /my-workshop/earnings`/`/metrics` compute `WorkshopEarnings`/
+`WorkshopMetrics` server-side — the same figures the deleted `/workshop`
+panel used to compute on-device from bookings already in memory
+(`ServiceMarketplaceRepositoryImpl.earningsFor`/`metricsFor`, which still
+exist and are still real, just no longer the workshop's own view of its own
+numbers — nothing else in the app used them for that purpose). `EarningsLine`
+gained `fromJson`/`toJson` for this and now embeds the full
+`ServiceRequestDto`, matching what the client already expected on
+`EarningsLine.request`.
+
+`workshopDashboardEarningsProvider`/`workshopDashboardMetricsProvider`
+(`provider_dashboard_state.dart`) back a dedicated
+`lib/features/workshop_dashboard/statistics_screen.dart` — a 7/30/90-day
+window selector, an `fl_chart` bar chart of net earnings bucketed from
+`WorkshopEarnings.lines` (capped at 14 bars regardless of window length, so a
+90-day view reads as weeks rather than as ninety slivers), and the
+acceptance/completion/dispute rate cards the deleted panel's Performance tab
+used to show. Reachable from the dashboard home's quick-actions grid.
+
+### State: `AsyncNotifier`, not the operator queue's plain `Notifier`
+
+`lib/state/provider_dashboard_state.dart` uses `AsyncNotifier` throughout —
+every list starts unloaded and the screens all need real loading states,
+unlike `operator_queue_state.dart`'s `Notifier` + manual `refresh()`, which
+works because the operator queue is warmed at bootstrap and always has
+*something* to show. Every mutation that changes a KPI invalidates
+`workshopSummaryProvider` so the dashboard home reflects a write immediately
+rather than on next open.

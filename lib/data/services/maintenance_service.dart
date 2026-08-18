@@ -1,9 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../config/app_config.dart';
 import '../../core/constants/app_constants.dart';
 import '../models/maintenance.dart';
-import 'mock_service_base.dart';
 import 'prefs_collection.dart';
 
 /// One maintenance book per registered car.
@@ -67,18 +65,19 @@ abstract interface class MaintenanceService {
   Future<MaintenanceBook> removeCustomItem(String carId, String itemId);
 }
 
-/// Stands in for the server *and* the table it would keep the books in.
+/// The device's own copy of the maintenance books.
 ///
-/// Persisted for the same reason the garage is: the mileage entered when a car
-/// is registered, and every record logged against it since, is the user's own
-/// data. Kept only in memory it vanished on the next launch, so a car
-/// restored from the device would come back with an empty history it had not
-/// actually lost.
-class MockMaintenanceService
-    with MockServiceBase
-    implements MaintenanceService {
-  MockMaintenanceService({
-    required this.config,
+/// **Not a mock** — same role as [LocalGarageStore], and for the same reason:
+/// a book belongs to a car, and a guest is allowed to have a car before they
+/// have an account. [SessionMaintenanceService] hands these to the server at
+/// sign-in.
+///
+/// Persisted because the mileage entered when a car is registered, and every
+/// record logged against it since, is the user's own data. Kept only in
+/// memory it vanished on the next launch, so a car restored from the device
+/// came back with an empty history it had not actually lost.
+class LocalMaintenanceStore implements MaintenanceService {
+  LocalMaintenanceStore({
     required SharedPreferences prefs,
   }) : _storage = PrefsCollection<MaintenanceBook>(
          prefs: prefs,
@@ -91,9 +90,6 @@ class MockMaintenanceService
     }
   }
 
-  @override
-  final AppConfig config;
-
   final PrefsCollection<MaintenanceBook> _storage;
 
   /// Seeded from the device on construction. Empty on a fresh install: no
@@ -103,7 +99,7 @@ class MockMaintenanceService
 
   @override
   Future<Map<String, MaintenanceBook>> fetchBooks() =>
-      respond(Map<String, MaintenanceBook>.unmodifiable(_books));
+      Future.value(Map<String, MaintenanceBook>.unmodifiable(_books));
 
   @override
   Future<MaintenanceBook> createBook(String carId) =>
@@ -113,12 +109,12 @@ class MockMaintenanceService
   Future<void> removeBook(String carId) {
     _books.remove(carId);
     _save();
-    return respond(null);
+    return Future.value(null);
   }
 
   @override
   Future<MaintenanceBook> updateOdometer(String carId, int km) {
-    if (km <= 0) return respond(_book(carId));
+    if (km <= 0) return Future.value(_book(carId));
     final book = _book(carId);
     // The reading being replaced becomes the previous one, which is what
     // gives the book a usage rate to project from (spec §4). A correction
@@ -262,7 +258,7 @@ class MockMaintenanceService
   Future<MaintenanceBook> _store(MaintenanceBook book) {
     _books[book.carId] = book;
     _save();
-    return respond(book);
+    return Future.value(book);
   }
 
   void _save() => _storage.save(_books.values);

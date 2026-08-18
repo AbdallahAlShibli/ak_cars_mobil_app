@@ -662,9 +662,9 @@ class _OfferCard extends StatelessWidget {
                       DiscountBadge(percent: product.discountPercent),
                       const SizedBox(width: 8),
                       Flexible(
-                        child: Text(
-                          s.t('وفّر ${product.saving.toStringAsFixed(2)} ${s.omr}',
-                              'SAVE OMR ${product.saving.toStringAsFixed(2)}'),
+                        child: RialAmount(
+                          product.saving,
+                          prefix: s.t('وفّر ', 'SAVE '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -689,14 +689,21 @@ class _OfferCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    s.t(
-                        '${product.price.toStringAsFixed(2)} بدلاً من ${product.oldPrice!.toStringAsFixed(2)} ${s.omr}',
-                        'OMR ${product.price.toStringAsFixed(2)} instead of ${product.oldPrice!.toStringAsFixed(2)}'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11.5, color: ak.promoSub),
-                  ),
+                  Builder(builder: (context) {
+                    final style = TextStyle(fontSize: 11.5, color: ak.promoSub);
+                    return Text.rich(
+                      TextSpan(
+                        style: style,
+                        children: [
+                          rialAmountSpan(amount: product.price, style: style),
+                          TextSpan(text: s.t(' بدلاً من ', ' instead of ')),
+                          rialAmountSpan(amount: product.oldPrice!, style: style),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  }),
                   const SizedBox(height: 8),
                   Text(
                     s.t('اعرض القطعة ›', 'View part ›'),
@@ -1055,9 +1062,10 @@ class _CartBar extends ConsumerWidget {
             Icon(LucideIcons.shoppingBag, color: ak.onPrimary, size: 19),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                s.t('${items.length} قطعة · ${total.toStringAsFixed(2)} ${s.omr}',
-                    '${items.length} item${items.length == 1 ? '' : 's'} · OMR ${total.toStringAsFixed(2)}'),
+              child: RialAmount(
+                total,
+                prefix: s.t('${items.length} قطعة · ',
+                    '${items.length} item${items.length == 1 ? '' : 's'} · '),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(

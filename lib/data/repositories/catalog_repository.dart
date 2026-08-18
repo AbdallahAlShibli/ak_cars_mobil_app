@@ -48,12 +48,16 @@ class CatalogRepositoryImpl implements CatalogRepository {
   List<String> get serviceRegions => _regions.value;
 
   @override
-  Future<void> warmUp() => Future.wait([
-        _vehicles.load(_service.fetchVehicleCatalog),
-        _specs.load(_service.fetchSpecCatalog),
-        _locations.load(_service.fetchLocationCatalog),
-        _regions.load(_service.fetchServiceRegions),
-      ]);
+  // `async` so this really is a `Future<void>` — see `CarsRepositoryImpl.warmUp`
+  // for why a `=> Future.wait(...)` body is a `catchError` trap.
+  Future<void> warmUp() async {
+    await Future.wait([
+      _vehicles.load(_service.fetchVehicleCatalog),
+      _specs.load(_service.fetchSpecCatalog),
+      _locations.load(_service.fetchLocationCatalog),
+      _regions.load(_service.fetchServiceRegions),
+    ]);
+  }
 
   @override
   Future<VehicleCatalog> refreshVehicles() =>

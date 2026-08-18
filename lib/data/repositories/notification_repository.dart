@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../config/app_config.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/utils/guid.dart';
 import '../models/app_notification.dart';
@@ -73,9 +74,21 @@ abstract interface class NotificationRepository {
 }
 
 class NotificationRepositoryImpl implements NotificationRepository {
-  NotificationRepositoryImpl(this._service);
+  NotificationRepositoryImpl(this._service, {required this.config});
 
   final NotificationService _service;
+  final AppConfig config;
+
+  /// A placeholder never inserted anywhere — [notify*] callers already treat
+  /// the return as fire-and-forget, so this exists only to satisfy the
+  /// non-nullable signatures without touching the server-owned inbox.
+  static final _noop = AppNotification(
+    id: 'noop',
+    title: const L('', ''),
+    body: const L('', ''),
+    icon: LucideIcons.bell,
+    time: DateTime.fromMillisecondsSinceEpoch(0),
+  );
 
   @override
   Future<List<AppNotification>> fetchNotifications() =>
@@ -87,8 +100,12 @@ class NotificationRepositoryImpl implements NotificationRepository {
     required L body,
     IconData icon = LucideIcons.bell,
     String? route,
-  }) =>
-      _service.push(title: title, body: body, icon: icon, route: route);
+  }) {
+    // The inbox is server-owned: the server raises every notification as a
+    // side effect of the event that caused it, and a copy written here would
+    // be a second, possibly-diverging source of wording for the same event.
+    return Future.value(_noop);
+  }
 
   @override
   Future<List<AppNotification>> markAllRead() => _service.markAllRead();

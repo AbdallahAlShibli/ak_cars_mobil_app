@@ -178,8 +178,9 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(
-                    '${s.omr} ${request.total.toStringAsFixed(2)}',
+                  RialAmount(
+                    request.total,
+                    bold: true,
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w800,

@@ -131,8 +131,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                 title: o.name.of(s),
                                 subtitle: o.provider.name.of(s),
                                 trailing: o.price == null
-                                    ? s.t('عرض سعر', 'Quote')
-                                    : 'OMR ${o.price!.toStringAsFixed(2)}',
+                                    ? Text(s.t('عرض سعر', 'Quote'))
+                                    : RialAmount(o.price!),
                                 onTap: () => context.push('/service/${o.id}'),
                               ),
                           ],
@@ -153,8 +153,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                   if (p.brand != null) p.brand!.of(s),
                                   if (p.partNumber != null) p.partNumber!,
                                 ].join(' · '),
-                                trailing:
-                                    'OMR ${p.price.toStringAsFixed(2)}',
+                                trailing: RialAmount(p.price),
                                 onTap: () =>
                                     context.push('/shop/product/${p.id}'),
                               ),
@@ -176,8 +175,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                     .watch(locationCatalogProvider)
                                     .localizedRegion(l.region, s.isAr),
                                 trailing: l.price == null
-                                    ? s.t('عند الطلب', 'Ask')
-                                    : 'OMR ${l.price!.toStringAsFixed(0)}',
+                                    ? Text(s.t('عند الطلب', 'Ask'))
+                                    : RialAmount(l.price!, decimals: 0),
                                 onTap: () =>
                                     context.push('/cars/listing/${l.id}'),
                               ),
@@ -349,7 +348,7 @@ class _ResultRow extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  final String trailing;
+  final Widget trailing;
   final VoidCallback onTap;
 
   @override
@@ -390,13 +389,13 @@ class _ResultRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Flexible(
-            child: Text(
-              trailing,
+            child: DefaultTextStyle.merge(
+              style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.end,
-              style:
-                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+              child: trailing,
             ),
           ),
         ],

@@ -1,49 +1,52 @@
 import 'package:ak_cars_mobil_app/app/bootstrap.dart';
 import 'package:ak_cars_mobil_app/core/utils/guid.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
-import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../fakes/fakes.dart';
+
 /// Builds a container wired exactly like the app's, including the bootstrap
-/// warm-up.
+/// warm-up — but with every service bound to its double from `test/fakes/`.
+///
+/// The app itself has no offline data source any more: `di/providers.dart`
+/// binds `Api*` unconditionally, so without these overrides a widget test
+/// would try to reach `https://localhost:7291` and fail. The doubles are
+/// injected here, at the one seam the composition root exposes, rather than
+/// selected by a flag the shipped app could read.
 ///
 /// Screens read reference data (spec vocabulary, makes, locations, the parts
 /// catalogue) synchronously while building, on the assumption that bootstrap
 /// has already loaded it. Tests must honour that same contract, so they go
 /// through [AppBootstrap.warmUp] rather than constructing a bare
 /// `ProviderScope`.
+///
+/// A caller-supplied override for the same provider in [overrides] still wins
+/// (last override in the list applies), which is how a test swaps in an
+/// unseeded marketplace or a variant [AppConfig].
 Future<ProviderContainer> createTestContainer({
   List<Override> overrides = const [],
-}) async {
-  SharedPreferences.setMockInitialValues({});
-  final prefs = await SharedPreferences.getInstance();
-
-  final container = ProviderContainer(
-    overrides: [sharedPrefsProvider.overrideWithValue(prefs), ...overrides],
-  );
-  addTearDown(container.dispose);
-
-  await AppBootstrap.warmUp(container);
-  return container;
-}
+}) => _warmedContainer(overrides);
 
 /// Warmed container for pure-Dart tests that never touch a widget tree.
 ///
-/// Still overrides SharedPreferences: the mock services stand in for the
-/// server's storage as well as its API, so the garage and the maintenance
-/// books read and write it. Each call starts from empty storage, which is what
-/// keeps these tests independent of one another.
+/// Identical wiring; the separate name only documents intent at the call
+/// site. SharedPreferences is overridden either way because the garage and the
+/// maintenance books are genuinely device-local (see `LocalGarageStore`) —
+/// each call starts from empty storage, which is what keeps these tests
+/// independent of one another.
 Future<ProviderContainer> createDataContainer({
   List<Override> overrides = const [],
-}) async {
+}) => _warmedContainer(overrides);
+
+Future<ProviderContainer> _warmedContainer(List<Override> overrides) async {
   TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
 
   final container = ProviderContainer(
-    overrides: [sharedPrefsProvider.overrideWithValue(prefs), ...overrides],
+    overrides: [...fakeServiceOverrides(prefs), ...overrides],
   );
   addTearDown(container.dispose);
 

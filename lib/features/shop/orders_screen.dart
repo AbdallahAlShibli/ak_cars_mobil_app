@@ -182,9 +182,8 @@ class _OrderCard extends ConsumerWidget {
                       style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                     ),
                   ),
-                  Text(
-                    s.t('${item.total.toStringAsFixed(2)} ${s.omr}',
-                        'OMR ${item.total.toStringAsFixed(2)}'),
+                  RialAmount(
+                    item.total,
                     style: const TextStyle(
                         fontSize: 12.5, fontWeight: FontWeight.w700),
                   ),
@@ -201,9 +200,9 @@ class _OrderCard extends ConsumerWidget {
                     : s.t('الإجمالي حُوّل للمتجر', 'Total released to store'),
                 style: TextStyle(fontSize: 12.5, color: ak.inkSub),
               ),
-              Text(
-                s.t('${order.total.toStringAsFixed(2)} ${s.omr}',
-                    'OMR ${order.total.toStringAsFixed(2)}'),
+              RialAmount(
+                order.total,
+                bold: true,
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,

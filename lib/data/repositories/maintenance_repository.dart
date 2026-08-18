@@ -78,7 +78,8 @@ class MaintenanceRepositoryImpl implements MaintenanceRepository {
   static const _daysPerMonth = 30.4;
 
   @override
-  Future<void> warmUp() => _books.load(_service.fetchBooks);
+  // `async` so this really is a `Future<void>` — see `CarsRepositoryImpl.warmUp`.
+  Future<void> warmUp() async => _books.load(_service.fetchBooks);
 
   @override
   Map<String, MaintenanceBook> get books => _books.value;

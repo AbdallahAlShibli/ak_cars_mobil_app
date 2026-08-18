@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/utils/guid.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/rial_symbol.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
@@ -826,9 +827,13 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
                           decoration: InputDecoration(
                             hintText: _askForPrice
                                 ? s.t('سيسألك المشترون', 'Buyers will ask you')
-                                : s.t('السعر (ر.ع)', 'Price (OMR)'),
-                            prefixIcon:
-                                const Icon(LucideIcons.wallet),
+                                : s.t('السعر', 'Price'),
+                            prefixIcon: Center(
+                              child: RialGlyph(
+                                fontSize: 20,
+                                color: AppColors.ink3,
+                              ),
+                            ),
                           ),
                         ),
                       ),

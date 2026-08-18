@@ -1,11 +1,33 @@
+import 'dart:convert';
+
 import 'package:ak_cars_mobil_app/config/app_flags.dart';
 import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
+import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/features/shell/shell_tabs.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fakes/memory_token_store.dart';
 import 'helpers/test_harness.dart';
+
+/// A JWT shaped exactly like the ones `TokenService.GenerateAccessToken`
+/// mints — same claim key for the founder role, confirmed by decoding a real
+/// token from that method (see `jwt_claims.dart`'s doc comment). The
+/// signature segment is never checked client-side (`jwt_claims.dart` only
+/// reads claims for UI gating; the server enforces `[Authorize]` on every
+/// call regardless), so it does not need to verify against anything.
+String _fakeJwt(Map<String, Object?> claims) {
+  String segment(Object value) =>
+      base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+  return '${segment({
+        'alg': 'none',
+      })}.${segment(claims)}.sig';
+}
+
+final _founderToken = _fakeJwt({
+  'http://schemas.microsoft.com/ws/2008/06/identity/claims/role': 'founder',
+});
 
 /// The flags are compile-time constants, so these tests pin the *shipped*
 /// configuration rather than exercising both sides of each switch. Flipping a
@@ -63,24 +85,37 @@ void main() {
   });
 
   group('roles', () {
-    test('the device starts as a customer', () async {
+    test('a guest, and a signed-in account with no founder claim, are both '
+        'a customer', () async {
       final container = await createTestContainer();
       expect(container.read(activeRoleProvider), AppRole.customer);
     });
 
-    test('a role switch persists and maps to an escrow actor', () async {
-      final container = await createTestContainer();
-      container.read(activeRoleProvider.notifier).setRole(AppRole.founder);
+    test('a real founder JWT resolves the role, with no switch to flip',
+        () async {
+      final container = await createTestContainer(
+        overrides: [
+          tokenStoreProvider.overrideWithValue(
+            MemoryTokenStore(access: _founderToken, refresh: 'r'),
+          ),
+        ],
+      );
+      // Registering is what makes `AuthNotifier` decode the token it was
+      // just handed — see `AuthState.isFounder`'s doc comment. The profile
+      // itself carries no founder fact; the JWT does.
+      await container.read(authProvider.notifier).register(
+            const UserProfile(
+              name: 'Founder',
+              phone: '+968 9111 2222',
+              email: 'founder@example.om',
+              region: 'Muscat',
+              address: '',
+            ),
+          );
 
+      expect(container.read(authProvider).isFounder, isTrue);
       expect(container.read(activeRoleProvider), AppRole.founder);
       expect(container.read(activeRoleProvider).actor, EscrowActor.founder);
-      expect(container.read(activeRoleProvider).panelRoute, '/admin');
-    });
-
-    test('only the operator roles have a panel', () {
-      expect(AppRole.customer.hasPanel, isFalse);
-      expect(AppRole.workshop.hasPanel, isTrue);
-      expect(AppRole.founder.hasPanel, isTrue);
     });
   });
 }

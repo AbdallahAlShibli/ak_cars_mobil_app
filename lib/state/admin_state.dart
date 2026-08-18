@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/i18n/strings.dart';
 import '../data/models/audit_entry.dart';
 import '../data/models/payout_record.dart';
 import '../data/models/service_provider.dart';
@@ -123,6 +124,53 @@ class AdminActions {
         );
     _ref.read(adminRevisionProvider.notifier).state++;
     return record;
+  }
+
+  /// Edits a workshop's profile fields directly — the founder's counterpart
+  /// to the owner's own `updateMyWorkshop`, usable on a pending or suspended
+  /// workshop too since it does not require approval first. Stage changes
+  /// stay exclusively on [setStage].
+  Future<ServiceProvider> updateProviderProfile(
+    String providerId, {
+    required L name,
+    required String area,
+    required String region,
+    String? phone,
+    String? whatsapp,
+    L? hours,
+    required Set<Fulfillment> fulfillments,
+    required Set<ProviderCapability> capabilities,
+    required double pickupFee,
+    String? vatNumber,
+    String? crNumber,
+  }) async {
+    final updated = await _ref.read(adminWorkshopRepositoryProvider).updateProvider(
+          providerId,
+          name: name,
+          area: area,
+          region: region,
+          phone: phone,
+          whatsapp: whatsapp,
+          hours: hours,
+          fulfillments: fulfillments,
+          capabilities: capabilities,
+          pickupFee: pickupFee,
+          vatNumber: vatNumber,
+          crNumber: crNumber,
+        );
+    await _ref.read(serviceMarketplaceRepositoryProvider).refreshProviders();
+    _ref.read(adminRevisionProvider.notifier).state++;
+    return updated;
+  }
+
+  /// Permanently removes a workshop (soft delete server-side — see
+  /// `AdminWorkshopRepository.deleteProvider`). The roster is re-fetched
+  /// afterwards rather than patched locally, because the server simply stops
+  /// returning this row at all.
+  Future<void> deleteProvider(String providerId) async {
+    await _ref.read(adminWorkshopRepositoryProvider).deleteProvider(providerId);
+    await _ref.read(serviceMarketplaceRepositoryProvider).refreshProviders();
+    _ref.read(adminRevisionProvider.notifier).state++;
   }
 }
 

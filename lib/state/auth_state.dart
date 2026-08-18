@@ -1,12 +1,17 @@
+import 'dart:async' show unawaited;
+import 'dart:developer' as developer;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_flags.dart';
 import '../core/constants/app_constants.dart';
+import '../core/utils/jwt_claims.dart';
 import '../data/models/service_provider.dart';
 import '../data/models/user_profile.dart';
 import '../data/models/workshop_application.dart';
 import '../di/providers.dart';
+import 'session_refresh.dart';
 
 /// Session state.
 ///
@@ -21,11 +26,18 @@ class AuthState {
     this.profile,
     this.onboardingSeen = false,
     this.startChoiceMade = false,
+    this.isFounder = false,
   });
 
   final UserProfile? profile;
   final bool onboardingSeen;
   final bool startChoiceMade;
+
+  /// Whether the stored access token carries the backend's `founder` role
+  /// claim — see `jwt_claims.dart`. Decoded once per session (restore,
+  /// login, register) rather than re-read on every guard check, the same way
+  /// [profile] is cached rather than re-fetched from the server each time.
+  final bool isFounder;
 
   bool get isRegistered => profile != null;
 
@@ -45,24 +57,57 @@ class AuthState {
     UserProfile? profile,
     bool? onboardingSeen,
     bool? startChoiceMade,
+    bool? isFounder,
   }) =>
       AuthState(
         profile: profile ?? this.profile,
         onboardingSeen: onboardingSeen ?? this.onboardingSeen,
         startChoiceMade: startChoiceMade ?? this.startChoiceMade,
+        isFounder: isFounder ?? this.isFounder,
       );
 }
 
 class AuthNotifier extends Notifier<AuthState> {
   SharedPreferences get _prefs => ref.read(sharedPrefsProvider);
 
+  /// Whether this notifier has been torn down.
+  ///
+  /// [_adoptGuestDataThenWarm] is deliberately fire-and-forget, so it can
+  /// still be running when the container goes away. Reading `ref` after that
+  /// throws a bare `StateError` into the zone with nobody to catch it, which
+  /// is not something a best-effort background upload should be able to do.
+  bool _disposed = false;
+
+  /// Bumped by [register], [login] and [signOut] — every operation that
+  /// starts a fire-and-forget [SessionRefresh] call. [generation] is how that
+  /// call later asks "is anything newer than me now in charge", so its own
+  /// completion cannot land on top of a session that has already moved on.
+  ///
+  /// **The bug this exists to fix, not a defence against one that might
+  /// happen:** sign out then sign back in in quick succession — the two
+  /// realistic ways this occurs are a fast tap on the login screen right
+  /// after signing out, and this file's own tests doing exactly that back to
+  /// back. `signOut`'s refresh clears `requestsProvider`/`ordersProvider`;
+  /// `login`'s refresh reloads them for the new account. Fire-and-forget on
+  /// both sides means whichever finishes *last* wins, not whichever started
+  /// *last* — and if the sign-out's clear lands after the sign-in's load,
+  /// the new account's own bookings and orders vanish from underneath it.
+  /// `SessionRefresh` checks [generation] before its own side-effecting
+  /// steps and bails out silently if it has been superseded, so only the
+  /// most recent call is ever allowed to finish.
+  int _generation = 0;
+
+  int get generation => _generation;
+
   @override
-  AuthState build() => AuthState(
-        onboardingSeen:
-            _prefs.getBool(AppConstants.prefsOnboardingSeen) ?? false,
-        startChoiceMade:
-            _prefs.getBool(AppConstants.prefsStartChoiceMade) ?? false,
-      );
+  AuthState build() {
+    ref.onDispose(() => _disposed = true);
+    return AuthState(
+      onboardingSeen: _prefs.getBool(AppConstants.prefsOnboardingSeen) ?? false,
+      startChoiceMade:
+          _prefs.getBool(AppConstants.prefsStartChoiceMade) ?? false,
+    );
+  }
 
   /// Re-attaches the stored profile after a cold start.
   ///
@@ -72,8 +117,17 @@ class AuthNotifier extends Notifier<AuthState> {
   /// checkout.
   Future<void> restore() async {
     final stored = await ref.read(authRepositoryProvider).currentUser();
-    if (stored != null) state = state.copyWith(profile: stored);
+    if (stored != null) {
+      state = state.copyWith(profile: stored, isFounder: await _readIsFounder());
+    }
   }
+
+  /// Decodes the founder claim off whatever access token is currently
+  /// stored. Called after every call that can start or restore a session —
+  /// see [restore], [login] and [register] — never on a timer or a guard
+  /// check, so a guard reads [AuthState.isFounder] synchronously.
+  Future<bool> _readIsFounder() async =>
+      jwtHasFounderRole(await ref.read(tokenStoreProvider).tryReadAccessToken());
 
   void markOnboardingSeen() {
     state = state.copyWith(onboardingSeen: true);
@@ -103,7 +157,7 @@ class AuthNotifier extends Notifier<AuthState> {
     _markFirstRunDone();
     try {
       final stored = await ref.read(authRepositoryProvider).register(profile);
-      state = state.copyWith(profile: stored);
+      state = state.copyWith(profile: stored, isFounder: await _readIsFounder());
 
       // §11 step 1: a workshop account files its application *as part of
       // registering*, not as a follow-up the user could abandon halfway. If it
@@ -125,6 +179,7 @@ class AuthNotifier extends Notifier<AuthState> {
               region: stored.region,
             );
       }
+      _adoptGuestDataThenWarm(++_generation);
     } catch (_) {
       state = previous;
       rethrow;
@@ -150,14 +205,59 @@ class AuthNotifier extends Notifier<AuthState> {
         profile: stored,
         onboardingSeen: true,
         startChoiceMade: true,
+        isFounder: await _readIsFounder(),
       );
       // A returning user has, by definition, finished the intro — same
       // reasoning as [register].
       _markFirstRunDone();
+      _adoptGuestDataThenWarm(++_generation);
     } catch (_) {
       state = previous;
       rethrow;
     }
+  }
+
+  /// Hands the server whatever this device built while nobody was signed in,
+  /// then re-reads the entire app for the account that now owns it.
+  ///
+  /// Ordered, and that order is the point: a guest registers their car as step
+  /// 3 of 3 of first launch, so by the time they reach this the device may hold
+  /// a garage and its maintenance books that the account has never seen.
+  /// Refreshing first would pull the server's empty garage over them and the
+  /// car would be gone — which is exactly the bug that made a first-run car
+  /// vanish on the next cold start.
+  ///
+  /// What "the rest" means lives in [SessionRefresh], not here. It used to be a
+  /// list of four warm-ups in this file, chosen as "the ones bootstrap had to
+  /// skip without a session" — which left the parts of the app that *had* been
+  /// warmed showing the guest's view of the world to a signed-in user, and left
+  /// the bookings, orders, inbox and reviews unfetched entirely.
+  ///
+  /// Best-effort, and deliberately unawaited: the session is already committed
+  /// by the time this runs, so a failure must not block navigation away from
+  /// the auth screen. Nothing is lost by failing — the local copy is only
+  /// dropped once its upload succeeded, so the next sign-in picks up where this
+  /// left off.
+  void _adoptGuestDataThenWarm(int generation) {
+    Future(() async {
+      if (_disposed) return;
+      for (final adopter in ref.read(guestDataAdoptersProvider)) {
+        try {
+          await adopter.adoptGuestData();
+        } catch (error, stack) {
+          developer.log(
+            'Could not hand this device\'s guest data to the new session',
+            name: 'AuthNotifier',
+            error: error,
+            stackTrace: stack,
+          );
+        }
+        if (_disposed) return;
+      }
+      await ref
+          .read(sessionRefreshProvider)
+          .refreshEverything(generation: generation);
+    });
   }
 
   /// Re-files a rejected workshop application after the owner corrected it
@@ -210,10 +310,48 @@ class AuthNotifier extends Notifier<AuthState> {
 
   /// Clears the identity but keeps onboarding done — signing out drops the
   /// user back to browsing, not through the intro again.
+  ///
+  /// The repository call is awaited before the refresh starts: it is what
+  /// clears the stored token, and [SessionRefresh.clearAfterSignOut] relies on
+  /// that having already happened — its own re-warmed notifiers check for a
+  /// session before fetching anything, and must see none.
+  ///
+  /// **Never lets that call's own failure skip the refresh.** `ApiAuthService.
+  /// signOut()` clears the token in its own `finally` regardless of whether
+  /// `POST /auth/logout` succeeded — an access token that had already expired
+  /// answers that call `401`, which is an ordinary thing to happen to a
+  /// session old enough that its owner is signing out of it. Before this, an
+  /// uncaught throw here meant the line below never ran: the token was gone
+  /// but every screen — garage, inbox, bookings, orders — kept showing the
+  /// departed account's data, because nothing ever told their providers to
+  /// clear or re-fetch. Logged rather than silently swallowed, the same rule
+  /// [SessionRefresh._bestEffort] follows.
+  ///
+  /// The refresh itself is fire-and-forget, the same as sign-in's
+  /// [_adoptGuestDataThenWarm]: the state above is already committed and the
+  /// screen behind "sign out" is already showing a guest's shell, so a slow or
+  /// failed refresh must not hold that up — it would just leave a screen
+  /// showing the previous account's data a moment longer, not sign the user
+  /// back in.
   Future<void> signOut() async {
+    final generation = ++_generation;
     state = const AuthState(onboardingSeen: true, startChoiceMade: true);
     _markFirstRunDone();
-    await ref.read(authRepositoryProvider).signOut();
+    try {
+      await ref.read(authRepositoryProvider).signOut();
+    } catch (error, stack) {
+      developer.log(
+        'Sign-out call failed; the token is still cleared and the app still '
+        'refreshes as signed-out',
+        name: 'AuthNotifier',
+        error: error,
+        stackTrace: stack,
+      );
+    }
+    if (_disposed) return;
+    unawaited(
+      ref.read(sessionRefreshProvider).clearAfterSignOut(generation: generation),
+    );
   }
 
   void _markFirstRunDone() {

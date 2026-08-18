@@ -646,17 +646,6 @@ class _WorkshopApplicationCard extends ConsumerWidget {
               ),
             ),
           ],
-          if (approved) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              // The role switch is device-local and separate from approval, so
-              // an approved workshop that has not switched roles would tap the
-              // button and land back in Settings without knowing why.
-              s.t('إن لم تفتح اللوحة، بدّل الدور إلى «ورشة» من الإعدادات.',
-                  'If the panel does not open, switch your role to "Workshop" in Settings.'),
-              style: context.text.bodySecondary.copyWith(height: 1.5),
-            ),
-          ],
         ],
       ),
     );

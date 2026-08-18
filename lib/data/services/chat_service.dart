@@ -1,7 +1,4 @@
-import '../../config/app_config.dart';
-import '../datasources/mock/mock_chat_data.dart';
 import '../models/chat_message.dart';
-import 'mock_service_base.dart';
 
 // `providerThreadId` / `isProviderThread` come from `chat_message.dart`.
 
@@ -13,74 +10,16 @@ import 'mock_service_base.dart';
 /// change the screen: today a canned answer completes it, tomorrow an
 /// inbound socket frame does.
 abstract interface class ChatService {
-  Future<List<ChatMessage>> fetchMessages(String requestId);
+  Future<List<ChatMessage>> fetchMessages(String threadId);
 
-  Future<ChatMessage> sendMessage(String requestId, String text);
+  Future<ChatMessage> sendMessage(String threadId, String text);
 
   /// Completes with the provider's next message on this thread.
   ///
   /// [isArabic] exists only for the staging build, whose canned replies are
   /// bilingual. A real thread carries the sender's own words and ignores it.
   Future<ChatMessage> awaitProviderReply(
-    String requestId, {
+    String threadId, {
     required bool isArabic,
   });
-}
-
-class MockChatService with MockServiceBase implements ChatService {
-  MockChatService({required this.config});
-
-  @override
-  final AppConfig config;
-
-  final Map<String, List<ChatMessage>> _threads = {};
-
-  /// Rotates through the canned replies per thread.
-  final Map<String, int> _replyCursors = {};
-
-  @override
-  Future<List<ChatMessage>> fetchMessages(String requestId) =>
-      respond(List<ChatMessage>.unmodifiable(_threads[requestId] ?? const []));
-
-  @override
-  Future<ChatMessage> sendMessage(String requestId, String text) =>
-      respond(_append(requestId, fromUser: true, text: text));
-
-  @override
-  Future<ChatMessage> awaitProviderReply(
-    String requestId, {
-    required bool isArabic,
-  }) async {
-    await Future<void>.delayed(MockChatData.replyDelay);
-
-    final cursor = _replyCursors[requestId] ?? 0;
-    _replyCursors[requestId] = cursor + 1;
-    // An enquiry thread has no booking behind it, so it gets answers that do
-    // not claim one.
-    final replies = isProviderThread(requestId)
-        ? MockChatData.enquiryReplies
-        : MockChatData.providerReplies;
-    final reply = replies[cursor % replies.length];
-
-    return _append(
-      requestId,
-      fromUser: false,
-      text: isArabic ? reply.ar : reply.en,
-    );
-  }
-
-  ChatMessage _append(
-    String requestId, {
-    required bool fromUser,
-    required String text,
-  }) {
-    final message = ChatMessage(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      fromUser: fromUser,
-      text: text,
-      time: DateTime.now(),
-    );
-    _threads.putIfAbsent(requestId, () => []).add(message);
-    return message;
-  }
 }

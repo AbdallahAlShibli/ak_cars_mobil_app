@@ -89,6 +89,7 @@ class ServiceRequest {
     this.type = BookingType.catalogService,
     this.partRequest,
     this.quote,
+    this.assignedStaffId,
   });
 
   /// Opens a "part + installation" request (spec §6).
@@ -178,6 +179,10 @@ class ServiceRequest {
   /// [EscrowState.quoteAccepted] is reached, [total] is this quote's total and
   /// nothing else.
   final Quote? quote;
+
+  /// Which of the workshop's own staff is doing this job. Independent of
+  /// [escrow] — assigning a technician is not an escrow transition.
+  final String? assignedStaffId;
 
   /// True while the booking is waiting for a price rather than for work.
   bool get inQuotePhase => escrow.isQuotePhase;
@@ -333,6 +338,7 @@ class ServiceRequest {
     quote: json.objectOrNull('quote') == null
         ? null
         : Quote.fromJson(json.requireObject('quote')),
+    assignedStaffId: json.stringOrNull('assignedStaffId'),
   );
 
   JsonMap toJson() => {
@@ -354,6 +360,7 @@ class ServiceRequest {
     'type': type.key,
     'partRequest': partRequest?.toJson(),
     'quote': quote?.toJson(),
+    'assignedStaffId': assignedStaffId,
   };
 
   ServiceRequest copyWith({
@@ -375,6 +382,7 @@ class ServiceRequest {
     BookingType? type,
     PartRequest? partRequest,
     Quote? quote,
+    String? assignedStaffId,
   }) => ServiceRequest(
     id: id ?? this.id,
     offering: offering ?? this.offering,
@@ -394,6 +402,7 @@ class ServiceRequest {
     type: type ?? this.type,
     partRequest: partRequest ?? this.partRequest,
     quote: quote ?? this.quote,
+    assignedStaffId: assignedStaffId ?? this.assignedStaffId,
   );
 
   @override
@@ -415,6 +424,7 @@ class ServiceRequest {
       other.type == type &&
       other.partRequest == partRequest &&
       other.quote == quote &&
+      other.assignedStaffId == assignedStaffId &&
       _sameAddOns(other.addOns);
 
   bool _sameAddOns(List<AddOn> other) {
@@ -443,6 +453,7 @@ class ServiceRequest {
     type,
     partRequest,
     quote,
+    assignedStaffId,
     Object.hashAll(addOns),
   );
 }
@@ -491,7 +502,10 @@ class CreateServiceRequestDraft {
   final String plate;
   final Fulfillment fulfillment;
 
-  /// Human-readable slot label chosen in the booking screen.
+  /// The raw "HH:mm" slot key chosen in the booking screen — what
+  /// `GET .../slots` returned and what the server matches its own schedule
+  /// against (`docs/api_contract.md`), not a localized display string. Empty
+  /// when the fulfillment has no slot concept (roadside/ASAP).
   final String slot;
 
   final Set<String> addOnIds;

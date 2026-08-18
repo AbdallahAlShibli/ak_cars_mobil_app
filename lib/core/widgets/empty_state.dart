@@ -147,7 +147,7 @@ class MetricTile extends StatelessWidget {
     this.tone,
   });
 
-  final String value;
+  final Widget value;
   final String label;
 
   /// Set only where the number itself is the alarm — an open dispute count,
@@ -168,11 +168,11 @@ class MetricTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            value,
+          DefaultTextStyle.merge(
+            style: context.text.cardTitle.copyWith(color: tone ?? ak.ink),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: context.text.cardTitle.copyWith(color: tone ?? ak.ink),
+            child: value,
           ),
           const SizedBox(height: AppSpacing.xs / 2),
           Text(

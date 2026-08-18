@@ -1,31 +1,46 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../core/constants/app_constants.dart';
 import '../data/models/app_role.dart';
 import '../di/providers.dart';
+import 'admin_state.dart';
+import 'auth_state.dart';
 
-/// Which of the pilot's three roles (spec §6) is driving the app.
+/// Which of the app's three roles (spec §6) this session actually is.
 ///
-/// Device-local, like the theme and the language: it is a fact about who is
-/// holding *this* phone, not about the account. When the backend lands, the
-/// role comes off the JWT and this notifier becomes a read of that claim —
-/// which is why nothing outside it ever writes the preference key directly.
+/// **Derived from real account facts, never from a local switch.** There used
+/// to be a device-local "role switcher" in Settings that let any signed-in
+/// account preview any panel — useful for the pilot, but it meant a customer
+/// account could open the founder's dispute queue by tapping a row. This now
+/// answers the same question the switcher used to ask, but from facts the
+/// backend actually decided:
 ///
-/// Defaults to [AppRole.customer]. A customer cannot switch themselves into
-/// the workshop or founder panel by accident: the switcher lives at the
-/// bottom of Settings and states plainly what it is for.
-class RoleNotifier extends Notifier<AppRole> {
-  SharedPreferences get _prefs => ref.read(sharedPrefsProvider);
+/// * [AppRole.founder] — [AuthState.isFounder], decoded off the JWT's role
+///   claim (see `jwt_claims.dart`). Nothing else grants this.
+/// * [AppRole.workshop] — the signed-in account owns a real
+///   [ServiceProvider] (`providerOwnedBy`, keyed on `ownerUserId`, so a
+///   workshop's staff member does **not** get this just by being linked to
+///   the roster) and that workshop is [ServiceProvider.isApproved]. A
+///   pending or rejected application is still [AppRole.customer] — the
+///   application's own status lives on the profile screen, not behind a
+///   role change.
+/// * [AppRole.customer] — everyone else, including a guest.
+final activeRoleProvider = Provider<AppRole>((ref) {
+  // A workshop's approval can change from the founder's own panel mid-session
+  // — `adminRevisionProvider` is what every other provider built on the
+  // roster (`rosterProvider`, `pendingApplicationsProvider`, ...) watches for
+  // exactly that reason (see `admin_state.dart`); `AdminActions` bumps it
+  // after every write. `WarmCacheNotice` covers the other case — a cache
+  // refilled wholesale at sign-in — which is why this registers there too.
+  ref.watch(adminRevisionProvider);
+  ref.read(warmCacheNoticeProvider).register(ref);
+  if (ref.watch(authProvider).isFounder) return AppRole.founder;
 
-  @override
-  AppRole build() => AppRole.fromKey(_prefs.getString(AppConstants.prefsRole));
-
-  void setRole(AppRole role) {
-    state = role;
-    _prefs.setString(AppConstants.prefsRole, role.key);
+  final userId = ref.watch(authProvider).profile?.id;
+  if (userId != null) {
+    final owned =
+        ref.watch(serviceMarketplaceRepositoryProvider).providerOwnedBy(userId);
+    if (owned != null && owned.isApproved) return AppRole.workshop;
   }
-}
 
-final activeRoleProvider =
-    NotifierProvider<RoleNotifier, AppRole>(RoleNotifier.new);
+  return AppRole.customer;
+});

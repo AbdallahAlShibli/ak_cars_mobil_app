@@ -19,6 +19,7 @@ class ServiceOffering {
     this.durationMin,
     this.includes = const [],
     this.warrantyMonths,
+    this.isActive = true,
   });
 
   final String id;
@@ -58,6 +59,11 @@ class ServiceOffering {
   /// (a callout, an open-ended contract).
   final int? warrantyMonths;
 
+  /// Publish/unpublish flag for a workshop's own catalogue management. The
+  /// public catalogue read only ever returns `true` rows; `/my-workshop`
+  /// reads return both so the owner can see what they have unpublished.
+  final bool isActive;
+
   /// The catalogue id a "request a part + installation" booking files itself
   /// under. Not a real category in the marketplace catalogue — nothing lists
   /// or searches it — but a stable key so the maintenance mapper and the
@@ -76,24 +82,23 @@ class ServiceOffering {
   factory ServiceOffering.partInstall({
     required ServiceProvider provider,
     required String partDescription,
-  }) =>
-      ServiceOffering(
-        // Derived rather than random so the same workshop's part-install
-        // offering is the same record every time it is built — this factory
-        // runs on each read of a custom-quote booking, and a fresh GUID per
-        // call would make the offering compare unequal to itself.
-        id: derivedGuid('part-install', provider.id),
-        categoryId: derivedGuid('category', partInstallCategorySlug),
-        categorySlug: partInstallCategorySlug,
-        // The customer's own words, shown in both languages because the app
-        // does not translate what a user typed.
-        name: L(partDescription, partDescription),
-        provider: provider,
-        description: const L(
-          'طلب قطعة + تركيبها — السعر بعد عرض الورشة',
-          'Part supplied and fitted — priced by the workshop',
-        ),
-      );
+  }) => ServiceOffering(
+    // Derived rather than random so the same workshop's part-install
+    // offering is the same record every time it is built — this factory
+    // runs on each read of a custom-quote booking, and a fresh GUID per
+    // call would make the offering compare unequal to itself.
+    id: derivedGuid('part-install', provider.id),
+    categoryId: derivedGuid('category', partInstallCategorySlug),
+    categorySlug: partInstallCategorySlug,
+    // The customer's own words, shown in both languages because the app
+    // does not translate what a user typed.
+    name: L(partDescription, partDescription),
+    provider: provider,
+    description: const L(
+      'طلب قطعة + تركيبها — السعر بعد عرض الورشة',
+      'Part supplied and fitted — priced by the workshop',
+    ),
+  );
 
   bool get quoteOnly => price == null;
 
@@ -117,33 +122,35 @@ class ServiceOffering {
       ]);
 
   factory ServiceOffering.fromJson(JsonMap json) => ServiceOffering(
-        id: json.requireString('id'),
-        categoryId: json.stringOr('categoryId', ''),
-        categorySlug: json.stringOr('categorySlug', ''),
-        name: L.fromJson(json['name']),
-        provider: ServiceProvider.fromJson(json.requireObject('provider')),
-        description: L.fromJson(json['description']),
-        price: json.doubleOrNull('price'),
-        durationMin: json.intOrNull('durationMin'),
-        includes: [
-          for (final item in (json['includes'] as List<dynamic>? ?? const []))
-            L.fromJson(item)
-        ],
-        warrantyMonths: json.intOrNull('warrantyMonths'),
-      );
+    id: json.requireString('id'),
+    categoryId: json.stringOr('categoryId', ''),
+    categorySlug: json.stringOr('categorySlug', ''),
+    name: L.fromJson(json['name']),
+    provider: ServiceProvider.fromJson(json.requireObject('provider')),
+    description: L.fromJson(json['description']),
+    price: json.doubleOrNull('price'),
+    durationMin: json.intOrNull('durationMin'),
+    includes: [
+      for (final item in (json['includes'] as List<dynamic>? ?? const []))
+        L.fromJson(item),
+    ],
+    warrantyMonths: json.intOrNull('warrantyMonths'),
+    isActive: json.boolOr('isActive', true),
+  );
 
   JsonMap toJson() => {
-        'id': id,
-        'categoryId': categoryId,
-        'categorySlug': categorySlug,
-        'name': name.toJson(),
-        'provider': provider.toJson(),
-        'description': description.toJson(),
-        'price': price,
-        'durationMin': durationMin,
-        'includes': [for (final item in includes) item.toJson()],
-        'warrantyMonths': warrantyMonths,
-      };
+    'id': id,
+    'categoryId': categoryId,
+    'categorySlug': categorySlug,
+    'name': name.toJson(),
+    'provider': provider.toJson(),
+    'description': description.toJson(),
+    'price': price,
+    'durationMin': durationMin,
+    'includes': [for (final item in includes) item.toJson()],
+    'warrantyMonths': warrantyMonths,
+    'isActive': isActive,
+  };
 
   ServiceOffering copyWith({
     String? id,
@@ -156,19 +163,20 @@ class ServiceOffering {
     int? durationMin,
     List<L>? includes,
     int? warrantyMonths,
-  }) =>
-      ServiceOffering(
-        id: id ?? this.id,
-        categoryId: categoryId ?? this.categoryId,
-        categorySlug: categorySlug ?? this.categorySlug,
-        name: name ?? this.name,
-        provider: provider ?? this.provider,
-        description: description ?? this.description,
-        price: price ?? this.price,
-        durationMin: durationMin ?? this.durationMin,
-        includes: includes ?? this.includes,
-        warrantyMonths: warrantyMonths ?? this.warrantyMonths,
-      );
+    bool? isActive,
+  }) => ServiceOffering(
+    id: id ?? this.id,
+    categoryId: categoryId ?? this.categoryId,
+    categorySlug: categorySlug ?? this.categorySlug,
+    name: name ?? this.name,
+    provider: provider ?? this.provider,
+    description: description ?? this.description,
+    price: price ?? this.price,
+    durationMin: durationMin ?? this.durationMin,
+    includes: includes ?? this.includes,
+    warrantyMonths: warrantyMonths ?? this.warrantyMonths,
+    isActive: isActive ?? this.isActive,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -182,19 +190,21 @@ class ServiceOffering {
       other.price == price &&
       other.durationMin == durationMin &&
       other.warrantyMonths == warrantyMonths &&
+      other.isActive == isActive &&
       const ListEquality<L>().equals(other.includes, includes);
 
   @override
   int get hashCode => Object.hash(
-        id,
-        categoryId,
-        categorySlug,
-        name,
-        provider,
-        description,
-        price,
-        durationMin,
-        warrantyMonths,
-        Object.hashAll(includes),
-      );
+    id,
+    categoryId,
+    categorySlug,
+    name,
+    provider,
+    description,
+    price,
+    durationMin,
+    warrantyMonths,
+    isActive,
+    Object.hashAll(includes),
+  );
 }

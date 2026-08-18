@@ -100,10 +100,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                               fontWeight:
                                                   FontWeight.w700)),
                                       const SizedBox(height: 3),
-                                      Text(
-                                        s.t(
-                                            '${item.product.price.toStringAsFixed(2)} ${s.omr}',
-                                            'OMR ${item.product.price.toStringAsFixed(2)}'),
+                                      RialAmount(
+                                        item.product.price,
                                         style: TextStyle(
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w800,
@@ -143,9 +141,9 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                 style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700)),
-                            Text(
-                              s.t('${total.toStringAsFixed(2)} ${s.omr}',
-                                  'OMR ${total.toStringAsFixed(2)}'),
+                            RialAmount(
+                              total,
+                              bold: true,
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
@@ -171,9 +169,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                       strokeWidth: 2.5,
                                       color: Colors.white),
                                 )
-                              : Text(s.t(
-                                  'الدفع — ${total.toStringAsFixed(2)} ${s.omr}',
-                                  'Checkout — OMR ${total.toStringAsFixed(2)}')),
+                              : RialAmount(
+                                  total,
+                                  prefix: s.t('الدفع — ', 'Checkout — '),
+                                ),
                         ),
                       ],
                     ),

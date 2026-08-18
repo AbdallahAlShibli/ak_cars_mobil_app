@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_cars_data.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_catalog_data.dart';
+import 'fakes/data/mock_cars_data.dart';
+import 'fakes/data/mock_catalog_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 
@@ -124,9 +124,14 @@ void main() {
     expect(oil2.status, DueStatus.due);
   });
 
+  // The maintenance record the tyre-pressure challenge feeds is written
+  // server-side, in the same transaction as the award — see
+  // `CompleteChallengeCommand.FeedMaintenanceRecordAsync` in AKCarsMobileAPI.
+  // The client wrote its own copy too until 2026-08-10: invisible against
+  // the mock backend, a duplicate entry against the real one.
   test(
-      'challenge: completing all steps awards points + badge + streak '
-      'and feeds the default car\'s maintenance book', () async {
+      'challenge: completing all steps awards points + badge + streak, '
+      'and leaves the maintenance record to the server', () async {
     final container = await createDataContainer();
     const camry =
         Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2021);
@@ -154,9 +159,9 @@ void main() {
     expect(after.current, isNull);
     expect(after.history.length, before.history.length + 1);
 
-    // The tyre-pressure challenge writes a maintenance record — on the
-    // default car's book, not a global one.
     expect(container.read(maintenanceBookProvider(camry.id)).records.length,
-        recordsBefore + 1);
+        recordsBefore,
+        reason: 'the server writes this record; a client-side copy would be '
+            'a second entry for one job');
   });
 }

@@ -1,10 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../config/app_config.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/error/app_exception.dart';
 import '../models/car.dart';
-import 'mock_service_base.dart';
 import 'prefs_collection.dart';
 
 /// The user's saved cars.
@@ -32,17 +30,21 @@ abstract interface class GarageService {
   Future<List<Car>> setPrimary(String carId);
 }
 
-/// Stands in for the server *and* the vehicles table it would keep them in.
+/// The device's own copy of the user's cars.
 ///
-/// The saved cars are written to SharedPreferences rather than held in a
-/// field: in memory, a registered car existed only for the launch that
-/// created it, so a user who added their Camry came back the next morning to
-/// an empty garage — and to the rest of the app behaving as if they had never
-/// registered one, since the start-choice flag *did* survive. Same reasoning
-/// as `MockAuthService`; the REST implementation reads the same cars back
-/// from `/user/vehicles`.
-class MockGarageService with MockServiceBase implements GarageService {
-  MockGarageService({required this.config, required SharedPreferences prefs})
+/// **Not a mock** — it is half of the live API path. A guest is invited to
+/// register a car as step 3 of 3 of first launch, long before the
+/// registration gate, while `/user/vehicles` is `[Authorize]`d. So a guest
+/// writes here and [SessionGarageService] hands the result to the server at
+/// sign-in; after that the server is the source of truth.
+///
+/// The cars go to SharedPreferences rather than a field: in memory, a
+/// registered car existed only for the launch that created it, so a user who
+/// added their Camry came back the next morning to an empty garage — and to
+/// the rest of the app behaving as if they had never registered one, since
+/// the start-choice flag *did* survive.
+class LocalGarageStore implements GarageService {
+  LocalGarageStore({required SharedPreferences prefs})
     : _store = PrefsCollection<Car>(
         prefs: prefs,
         key: AppConstants.prefsGarage,
@@ -52,16 +54,13 @@ class MockGarageService with MockServiceBase implements GarageService {
     _cars.addAll(_store.load());
   }
 
-  @override
-  final AppConfig config;
-
   final PrefsCollection<Car> _store;
 
   /// Seeded from the device on construction — empty only on a fresh install.
   final List<Car> _cars = [];
 
   @override
-  Future<List<Car>> fetchCars() => respond(List<Car>.unmodifiable(_cars));
+  Future<List<Car>> fetchCars() => Future.value(List<Car>.unmodifiable(_cars));
 
   @override
   Future<Car> addCar(Car car) {
@@ -116,6 +115,6 @@ class MockGarageService with MockServiceBase implements GarageService {
   /// reach memory without also reaching the device.
   Future<T> _persist<T>(T result) {
     _store.save(_cars);
-    return respond(result);
+    return Future.value(result);
   }
 }

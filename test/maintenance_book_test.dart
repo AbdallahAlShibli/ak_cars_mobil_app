@@ -3,7 +3,7 @@ import 'package:ak_cars_mobil_app/config/app_environment.dart';
 import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
 import 'package:ak_cars_mobil_app/core/widgets/sand_widgets.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
+import 'fakes/data/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/features/garage/maintenance_screen.dart';
@@ -16,7 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'helpers/test_harness.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+import 'fakes/data/mock_ids.dart';
 
 /// Maintenance is per car.
 ///
@@ -62,7 +62,7 @@ Future<ProviderContainer> _container({List<Car> garage = const []}) async {
       appConfigProvider.overrideWithValue(
         AppConfig.forEnvironment(
           AppEnvironment.development,
-        ).copyWith(simulateProviderLifecycle: false),
+        ),
       ),
     ],
   );

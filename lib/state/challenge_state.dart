@@ -1,11 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/utils/guid.dart';
 import '../core/error/app_exception.dart';
 import '../data/models/challenge.dart';
-import '../data/models/maintenance.dart';
 import '../di/providers.dart';
-import 'garage_state.dart';
 import 'maintenance_state.dart';
 
 /// The weekly challenge: one challenge per week with checkable steps.
@@ -45,33 +42,10 @@ class ChallengeNotifier extends Notifier<ChallengeBoard> {
       return false;
     }
 
-    final feeds = current.feedsMaintenance;
-    if (feeds != null) await _writeMaintenanceRecord(current, feeds);
+    // The server writes the maintenance record inside the same transaction as
+    // the award, so nothing is written here — doing it client-side as well
+    // would file a second, duplicate record against the car's book.
     return true;
-  }
-
-  /// Files the record against the *default car's* book — the car whose
-  /// powertrain chose this challenge in the first place. With an empty garage
-  /// there is no car the work could have been done on, so nothing is written.
-  Future<void> _writeMaintenanceRecord(
-    WeeklyChallenge challenge,
-    MaintenanceType type,
-  ) async {
-    final car = ref.read(primaryCarProvider);
-    if (car == null) return;
-    final book = ref.read(maintenanceBookProvider(car.id));
-    await ref.read(maintenanceProvider.notifier).addRecord(
-          car.id,
-          ServiceRecord(
-            id: newGuid(),
-            // The record says what the challenge actually had the owner do.
-            title: challenge.recordTitle ?? challengeRecordTitle,
-            workshop: challengeRecordWorkshop,
-            odometerKm: book.currentOdometerKm ?? car.odometerKm ?? 0,
-            date: DateTime.now(),
-            itemKey: type.key,
-          ),
-        );
   }
 }
 

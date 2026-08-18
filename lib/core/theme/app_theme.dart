@@ -9,6 +9,15 @@ import 'app_typography.dart';
 /// Sand & Ink theme. Typography: IBM Plex Sans Arabic for text,
 /// Chakra Petch for numbers/values (prices, odometer, counters).
 abstract final class AppTheme {
+  /// Test-only escape hatch: `google_fonts` fetches its `.ttf` files over
+  /// the network on first use, which makes widget/golden tests depend on
+  /// network reachability. Golden tests that don't care about the exact
+  /// glyphs (only layout/colour) set this to skip both `GoogleFonts.*`
+  /// call sites below and fall back to Flutter's built-in test font.
+  /// Mirrors Flutter's own `debugDisableShadows`-style flags — never read
+  /// outside of tests, always `false` in production.
+  static bool debugDisableGoogleFonts = false;
+
   static ThemeData light() => _build(AkColors.light, Brightness.light);
 
   /// Dark "Ink" theme. Note: the rebuilt core screens read [AkColors]
@@ -23,12 +32,14 @@ abstract final class AppTheme {
     Color? color,
     double? height,
   }) =>
-      GoogleFonts.chakraPetch(
-        fontSize: size,
-        fontWeight: weight,
-        color: color,
-        height: height,
-      );
+      debugDisableGoogleFonts
+          ? TextStyle(fontSize: size, fontWeight: weight, color: color, height: height)
+          : GoogleFonts.chakraPetch(
+              fontSize: size,
+              fontWeight: weight,
+              color: color,
+              height: height,
+            );
 
   static ThemeData _build(AkColors ak, Brightness brightness) {
     final base = ThemeData(
@@ -46,15 +57,19 @@ abstract final class AppTheme {
       splashFactory: InkSparkle.splashFactory,
     );
 
-    final text = GoogleFonts.ibmPlexSansArabicTextTheme(base.textTheme)
+    final text = (debugDisableGoogleFonts
+            ? base.textTheme
+            : GoogleFonts.ibmPlexSansArabicTextTheme(base.textTheme))
         .apply(bodyColor: ak.ink, displayColor: ak.ink)
         // `bodySmall` is the supporting rank (`AppTypographyX.bodySecondary`),
         // so its dimmer color is set once here rather than at every call site.
         .copyWith(
-          bodySmall: GoogleFonts.ibmPlexSansArabic(
-            textStyle: base.textTheme.bodySmall,
-            color: ak.inkSub,
-          ),
+          bodySmall: debugDisableGoogleFonts
+              ? base.textTheme.bodySmall?.copyWith(color: ak.inkSub)
+              : GoogleFonts.ibmPlexSansArabic(
+                  textStyle: base.textTheme.bodySmall,
+                  color: ak.inkSub,
+                ),
         );
 
     return base.copyWith(

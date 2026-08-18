@@ -11,7 +11,7 @@ import 'package:ak_cars_mobil_app/features/services/services_screen.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 
 import 'helpers/test_harness.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+import 'fakes/data/mock_ids.dart';
 
 /// The region chip used to only *sort* results, so workshops from other
 /// governorates were listed under "Popular near you" whenever the selected
@@ -150,7 +150,15 @@ void main() {
     // something the tap can actually reach.
     expect(marketplace.fromPriceFor(mockIdFull), 27);
     expect(marketplace.fromPriceFor(mockIdFull, region: 'Muscat'), 30);
-    expect(find.textContaining('from OMR 30 · 2 workshops'), findsOneWidget);
+    // The price and the copy around it are no longer one string: the rial
+    // sign is a `WidgetSpan`, so the numeral sits in its own `RichText` while
+    // "from …" / "· n workshops" wraps it. That also costs this assertion its
+    // uniqueness — two Muscat categories have exactly two workshops — so the
+    // *price* is pinned by `fromPriceFor` above, which is the behaviour under
+    // test, and this only checks the card prints the count it was given.
+    expect(find.textContaining('· 2 workshops', findRichText: true),
+        findsWidgets);
+    expect(find.textContaining('30', findRichText: true), findsWidgets);
 
     // Tyres used to exist only in Sohar and Salalah, so a Muscat user tapping
     // the tile got a sheet of out-of-region workshops. It is now sold locally.

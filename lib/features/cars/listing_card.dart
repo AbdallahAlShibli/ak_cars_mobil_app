@@ -70,16 +70,25 @@ class ListingCard extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 5),
-                Text(
-                  listing.price != null
-                      ? '${s.omr} ${listing.price!.toStringAsFixed(0)}'
-                      : s.t('اسأل عن السعر', 'Ask for price'),
-                  style: TextStyle(
-                    fontSize: listing.price != null ? 18 : 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.brandDark,
-                  ),
-                ),
+                listing.price != null
+                    ? RialAmount(
+                        listing.price!,
+                        decimals: 0,
+                        bold: true,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.brandDark,
+                        ),
+                      )
+                    : Text(
+                        s.t('اسأل عن السعر', 'Ask for price'),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.brandDark,
+                        ),
+                      ),
                 const SizedBox(height: 3),
                 Row(
                   children: [

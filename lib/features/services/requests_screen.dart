@@ -240,7 +240,7 @@ class _RequestCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '#${request.id} · ${request.offering.name.of(s)}',
+                      '#${shortRef(request.id)} · ${request.offering.name.of(s)}',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: context.text.cardTitle,
@@ -277,8 +277,7 @@ class _RequestCard extends StatelessWidget {
                 Text(s.t('لم يُسعَّر بعد', 'Not priced yet'),
                     style: context.text.bodySecondary)
               else
-                Text('${s.omr} ${request.total.toStringAsFixed(2)}',
-                    style: context.text.price),
+                RialAmount(request.total, style: context.text.price),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),

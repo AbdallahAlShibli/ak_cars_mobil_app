@@ -294,8 +294,10 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                       child: Row(
                         children: [
                           if (listing.price != null)
-                            Text(
-                              '${s.omr} ${listing.price!.toStringAsFixed(0)}',
+                            RialAmount(
+                              listing.price!,
+                              decimals: 0,
+                              bold: true,
                               style: const TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w800,
@@ -595,18 +597,27 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                                                 BorderRadius.circular(
                                                     999),
                                           ),
-                                          child: Text(
-                                            r.price != null
-                                                ? '${s.omr} ${r.price!.toStringAsFixed(0)}'
-                                                : s.t('اسأل عن السعر',
-                                                    'Ask for price'),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 11,
-                                              fontWeight:
-                                                  FontWeight.w700,
-                                            ),
-                                          ),
+                                          child: r.price != null
+                                              ? RialAmount(
+                                                  r.price!,
+                                                  decimals: 0,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.w700,
+                                                  ),
+                                                )
+                                              : Text(
+                                                  s.t('اسأل عن السعر',
+                                                      'Ask for price'),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.w700,
+                                                  ),
+                                                ),
                                         ),
                                       ),
                                     ],

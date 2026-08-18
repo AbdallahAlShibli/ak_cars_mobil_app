@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
+import 'fakes/data/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/features/services/proof_upload_sheet.dart';
 import 'package:flutter/material.dart';

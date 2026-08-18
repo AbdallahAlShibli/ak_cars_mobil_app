@@ -2,8 +2,8 @@ import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/config/app_environment.dart';
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
 import 'package:ak_cars_mobil_app/core/utils/provider_contact.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
+import 'fakes/data/mock_ids.dart';
+import 'fakes/data/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/features/services/booking_screen.dart';
@@ -34,7 +34,7 @@ Future<ProviderContainer> _container() => createTestContainer(
         // test and the state under assertion is gone by the first pump.
         appConfigProvider.overrideWithValue(
           AppConfig.forEnvironment(AppEnvironment.development)
-              .copyWith(simulateProviderLifecycle: false),
+              ,
         ),
       ],
     );

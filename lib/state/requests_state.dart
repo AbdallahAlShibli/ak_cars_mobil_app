@@ -4,6 +4,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_flags.dart';
+import '../core/error/app_exception.dart';
 import '../data/models/car.dart';
 import '../data/models/escrow.dart';
 import '../data/models/proof_of_work.dart';
@@ -24,15 +25,60 @@ import 'role_state.dart';
 class RequestsNotifier extends Notifier<List<ServiceRequest>> {
   final List<Timer> _timers = [];
 
+  /// Whether this notifier has been torn down. [load] is awaited across a
+  /// network call and assigns `state` afterwards, so without this a container
+  /// disposed mid-load — a sign-out, a hot restart — makes it write to a dead
+  /// notifier. Same guard, same reason, as [ReviewsNotifier]'s.
+  bool _disposed = false;
+
   @override
   List<ServiceRequest> build() {
     ref.onDispose(() {
+      _disposed = true;
       for (final t in _timers) {
         t.cancel();
       }
     });
     return const [];
   }
+
+  /// Loads the signed-in customer's own bookings from the server.
+  ///
+  /// Starts empty and is filled by [SessionRefresh] — at sign-in, and at boot
+  /// for a session that was already stored. Deliberately *not* started from
+  /// [build]: this list is mutated optimistically by [place] and [fire] while
+  /// the user works, and a fetch begun on some earlier frame landing on top of
+  /// that would silently undo a transition they just watched happen.
+  ///
+  /// `GET /service-marketplace/requests` is `[Authorize]`d, so for a guest it
+  /// can only answer `401`. Guarded rather than asked, exactly as
+  /// [NotificationsNotifier.load] and [ReviewsNotifier.load] are.
+  Future<void> load() async {
+    if (_disposed) return;
+    if (!await ref.read(tokenStoreProvider).mayHaveSession()) return;
+    if (_disposed) return;
+    try {
+      final mine =
+          await ref.read(serviceMarketplaceRepositoryProvider).fetchRequests();
+      if (_disposed) return;
+      state = mine;
+    } on UnauthorizedException {
+      // Still reachable above the guard on an expired token. A guest keeps the
+      // empty list; signing in calls this again.
+    }
+  }
+
+  /// Drops this account's bookings on sign-out — there is nobody left to
+  /// [load] a replacement for.
+  ///
+  /// A direct `state =` write, not `ref.invalidate(requestsProvider)`: this
+  /// notifier is read via `.notifier` from `SessionRefresh`, outside any
+  /// widget's `watch`, and invalidating it there left it disposed rather than
+  /// rebuilt by the time the very next `SessionRefresh` call went looking for
+  /// it — a real, reproduced bug on sign-out immediately followed by a
+  /// sign-in, not a hypothetical one. Setting `state` directly has no such
+  /// timing to get wrong.
+  void clear() => state = const [];
 
   Duration get _approvalWindow => ref.read(appConfigProvider).approvalWindow;
 
@@ -51,9 +97,6 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
               .notifyRequestPlaced(request),
         );
 
-    if (ref.read(appConfigProvider).simulateProviderLifecycle) {
-      _simulateLifecycle(request.id);
-    }
     return request;
   }
 
@@ -279,16 +322,6 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
     for (final r in state)
       if (r.id == updated.id) updated else r,
   ];
-
-  /// Staging stand-in for the workshop portal and the founder's manual
-  /// confirmations: walks the happy path so a demo booking reaches "awaiting
-  /// your approval" without three people having to be on three phones.
-  /// Gated behind [AppConfig.simulateProviderLifecycle].
-  void _simulateLifecycle(String requestId) {
-    for (final seconds in const [4, 10, 20, 34]) {
-      _timers.add(Timer(Duration(seconds: seconds), () => advance(requestId)));
-    }
-  }
 }
 
 final requestsProvider =

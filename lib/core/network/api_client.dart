@@ -55,4 +55,15 @@ abstract interface class ApiClient {
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
   });
+
+  /// `POST` routes that answer with a top-level JSON array rather than an
+  /// object — e.g. `POST /user/vehicles/{id}/primary` and
+  /// `POST /notifications/read`, both of which return the whole updated
+  /// collection rather than the single record the verb might suggest.
+  Future<List<JsonMap>> postList(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+  });
 }

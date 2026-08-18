@@ -6,8 +6,9 @@ import 'package:ak_cars_mobil_app/config/app_flags.dart';
 import 'package:ak_cars_mobil_app/app/bootstrap.dart';
 import 'package:ak_cars_mobil_app/core/constants/app_constants.dart';
 import 'package:ak_cars_mobil_app/data/models/user_profile.dart';
-import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
+
+import 'fakes/fakes.dart';
 
 /// The intro is a *first launch* thing. It used to replay on every cold start:
 /// the router always began at `/splash`, and the two flags that were supposed
@@ -28,9 +29,12 @@ void main() {
   /// A cold start: new container, same stored preferences.
   Future<ProviderContainer> relaunch() async {
     final prefs = await SharedPreferences.getInstance();
-    final container = ProviderContainer(
-      overrides: [sharedPrefsProvider.overrideWithValue(prefs)],
-    );
+    // The app binds `Api*` unconditionally now, so a bare container would go
+    // to the network. The doubles come from the same helper the widget
+    // harness uses; prefs are *not* reset here, which is what makes the next
+    // container a cold start over the same storage rather than a fresh
+    // install.
+    final container = ProviderContainer(overrides: fakeServiceOverrides(prefs));
     addTearDown(container.dispose);
     await container.read(authProvider.notifier).restore();
     return container;
@@ -113,8 +117,11 @@ void main() {
       final seeded = await relaunch();
       await seeded.read(authProvider.notifier).register(profile);
 
-      // The real launch path, rather than calling restore() by hand.
-      final container = await AppBootstrap.createContainer();
+      // The real launch path, rather than calling restore() by hand — with
+      // the service doubles, since there is no offline data source now.
+      final container = await AppBootstrap.createContainer(
+        overrides: fakeServiceOverrides(await SharedPreferences.getInstance()),
+      );
       addTearDown(container.dispose);
 
       expect(container.read(authProvider).isRegistered, isTrue);

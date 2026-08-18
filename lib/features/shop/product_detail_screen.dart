@@ -139,7 +139,11 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     SectionHeader(s.t('قطع مشابهة', 'Similar parts')),
                     const SizedBox(height: 10),
                     SizedBox(
-                      height: 112,
+                      // Sized for the tallest real case: a 2-line name plus
+                      // rating plus RialAmount price line (wider/taller than
+                      // the old plain Text) — 112 and 124 both clipped it on
+                      // some products.
+                      height: 150,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         clipBehavior: Clip.none,
@@ -339,17 +343,31 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               // rather than pushing the row into an overflow.
               if (product.onOffer)
                 Flexible(
-                  child: StatusBadge.warn(s.t(
-                      'وفّر ${product.saving.toStringAsFixed(2)} ${s.omr}',
-                      'Save OMR ${product.saving.toStringAsFixed(2)}')),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: ak.amberSoft,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: RialAmount(
+                      product.saving,
+                      prefix: s.t('وفّر ', 'Save '),
+                      style: TextStyle(
+                        color: ak.amberText,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            s.t(
-                'شامل ضريبة القيمة المضافة ٥٪ (${vat.toStringAsFixed(2)} ${s.omr})',
-                'Includes 5% VAT (OMR ${vat.toStringAsFixed(2)})'),
+          RialAmount(
+            vat,
+            prefix: s.t('شامل ضريبة القيمة المضافة ٥٪ (', 'Includes 5% VAT ('),
+            suffix: ')',
             style: TextStyle(fontSize: 11.5, color: ak.inkSub),
           ),
         ],
@@ -721,9 +739,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                           ),
                         );
                       },
-                      child: Text(
-                        s.t('أضف للسلة · ${total.toStringAsFixed(2)} ${s.omr}',
-                            'Add to cart · OMR ${total.toStringAsFixed(2)}'),
+                      child: RialAmount(
+                        total,
+                        prefix: s.t('أضف للسلة · ', 'Add to cart · '),
                         style: const TextStyle(
                             fontSize: 14, fontWeight: FontWeight.w800),
                       ),

@@ -46,9 +46,8 @@ class ApiGarageService implements GarageService {
       );
 
   @override
-  Future<List<Car>> setPrimary(String carId) async => (await _client.getList(
-        '${ApiEndpoints.garageVehicle(carId)}/primary',
-      ))
+  Future<List<Car>> setPrimary(String carId) async =>
+      (await _client.postList(ApiEndpoints.primaryVehicle(carId)))
           .map(Car.fromJson)
           .toList();
 }

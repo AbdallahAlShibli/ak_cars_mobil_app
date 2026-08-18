@@ -1,3 +1,4 @@
+import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
 import '../../models/maintenance.dart';
 import '../maintenance_service.dart';
@@ -17,11 +18,9 @@ class ApiMaintenanceService implements MaintenanceService {
 
   final ApiClient _client;
 
-  static String _book(String carId) => '/user/vehicles/$carId/maintenance';
-
   @override
   Future<Map<String, MaintenanceBook>> fetchBooks() async {
-    final books = await _client.getList('/user/vehicles/maintenance');
+    final books = await _client.getList(ApiEndpoints.maintenanceBooks);
     return {
       for (final json in books)
         json['carId'].toString(): MaintenanceBook.fromJson(json),
@@ -30,21 +29,30 @@ class ApiMaintenanceService implements MaintenanceService {
 
   @override
   Future<MaintenanceBook> createBook(String carId) async =>
-      MaintenanceBook.fromJson(await _client.post(_book(carId)));
+      MaintenanceBook.fromJson(
+        await _client.post(ApiEndpoints.vehicleMaintenance(carId)),
+      );
 
   @override
-  Future<void> removeBook(String carId) => _client.delete(_book(carId));
+  Future<void> removeBook(String carId) =>
+      _client.delete(ApiEndpoints.vehicleMaintenance(carId));
 
   @override
   Future<MaintenanceBook> updateOdometer(String carId, int km) async =>
       MaintenanceBook.fromJson(
-        await _client.put('${_book(carId)}/odometer', body: {'km': km}),
+        await _client.put(
+          ApiEndpoints.maintenanceOdometer(carId),
+          body: {'km': km},
+        ),
       );
 
   @override
   Future<MaintenanceBook> addRecord(String carId, ServiceRecord record) async =>
       MaintenanceBook.fromJson(
-        await _client.post('${_book(carId)}/records', body: record.toJson()),
+        await _client.post(
+          ApiEndpoints.maintenanceRecords(carId),
+          body: record.toJson(),
+        ),
       );
 
   @override
@@ -54,7 +62,7 @@ class ApiMaintenanceService implements MaintenanceService {
   ) async =>
       MaintenanceBook.fromJson(
         await _client.put(
-          '${_book(carId)}/records/${record.id}',
+          ApiEndpoints.maintenanceRecord(carId, record.id),
           body: record.toJson(),
         ),
       );
@@ -62,7 +70,7 @@ class ApiMaintenanceService implements MaintenanceService {
   @override
   Future<MaintenanceBook> removeRecord(String carId, String recordId) async =>
       MaintenanceBook.fromJson(
-        await _client.delete('${_book(carId)}/records/$recordId'),
+        await _client.delete(ApiEndpoints.maintenanceRecord(carId, recordId)),
       );
 
   @override
@@ -73,7 +81,7 @@ class ApiMaintenanceService implements MaintenanceService {
   ) async =>
       MaintenanceBook.fromJson(
         await _client.put(
-          '${_book(carId)}/intervals/$itemKey',
+          ApiEndpoints.maintenanceInterval(carId, itemKey),
           // Sent explicitly as null rather than omitted: null *is* the value
           // here — it clears an override and puts the item back on its
           // default — and an omitted field would read as "leave it alone".
@@ -89,7 +97,7 @@ class ApiMaintenanceService implements MaintenanceService {
   ) async =>
       MaintenanceBook.fromJson(
         await _client.put(
-          '${_book(carId)}/intervals/$itemKey',
+          ApiEndpoints.maintenanceInterval(carId, itemKey),
           body: {'months': months},
         ),
       );
@@ -100,12 +108,15 @@ class ApiMaintenanceService implements MaintenanceService {
     CustomMaintenanceItem item,
   ) async =>
       MaintenanceBook.fromJson(
-        await _client.post('${_book(carId)}/items', body: item.toJson()),
+        await _client.post(
+          ApiEndpoints.maintenanceItems(carId),
+          body: item.toJson(),
+        ),
       );
 
   @override
   Future<MaintenanceBook> removeCustomItem(String carId, String itemId) async =>
       MaintenanceBook.fromJson(
-        await _client.delete('${_book(carId)}/items/$itemId'),
+        await _client.delete(ApiEndpoints.maintenanceItem(carId, itemId)),
       );
 }

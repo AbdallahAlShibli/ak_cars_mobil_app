@@ -143,6 +143,20 @@ class OperatorQueueNotifier extends Notifier<List<ServiceRequest>> {
     ];
     state = _merged(ref.read(requestsProvider));
   }
+
+  /// Drops the marketplace-wide half of the queue on sign-out.
+  ///
+  /// [build] watches `requestsProvider`, so clearing *that* does make this
+  /// notifier re-run — but [_marketplace] is a plain field on this instance,
+  /// not derived state, and a rebuild does not reset it. Without this, an
+  /// operator's queue kept showing every other account's bookings (fetched by
+  /// [refresh], most recently at this session's own sign-in) until the next
+  /// signed-in [refresh] happened to overwrite it — visible to whoever the
+  /// operator panels' route guard let through in between.
+  void clear() {
+    _marketplace = const [];
+    state = _merged(ref.read(requestsProvider));
+  }
 }
 
 final operatorQueueProvider =

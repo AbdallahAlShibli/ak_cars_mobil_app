@@ -2,17 +2,17 @@ import 'dart:convert';
 
 import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
 import 'package:ak_cars_mobil_app/core/json/icon_codec.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_cars_data.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_catalog_data.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_garage_data.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_shop_data.dart';
+import 'fakes/data/mock_cars_data.dart';
+import 'fakes/data/mock_catalog_data.dart';
+import 'fakes/data/mock_garage_data.dart';
+import 'fakes/data/mock_service_data.dart';
+import 'fakes/data/mock_shop_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+import 'fakes/data/mock_ids.dart';
 
 /// Proves the models are genuinely wire-ready: every one survives a trip
 /// through `toJson` → `jsonEncode` → `jsonDecode` → `fromJson` unchanged.
@@ -21,8 +21,10 @@ import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
 /// matters — it catches fields that hold a Dart object a real HTTP body could
 /// never carry.
 void main() {
-  T roundTrip<T>(Map<String, dynamic> json, T Function(Map<String, dynamic>) parse) =>
-      parse(jsonDecode(jsonEncode(json)) as Map<String, dynamic>);
+  T roundTrip<T>(
+    Map<String, dynamic> json,
+    T Function(Map<String, dynamic>) parse,
+  ) => parse(jsonDecode(jsonEncode(json)) as Map<String, dynamic>);
 
   group('round-trips through encoded JSON', () {
     test('Car', () {
@@ -51,7 +53,12 @@ void main() {
       expect(decoded.isElectric, isTrue);
 
       // "Not recorded" survives as null rather than becoming a default.
-      const unstated = Car(id: 'u1', make: 'Nissan', model: 'Patrol', year: 2019);
+      const unstated = Car(
+        id: 'u1',
+        make: 'Nissan',
+        model: 'Patrol',
+        year: 2019,
+      );
       expect(roundTrip(unstated.toJson(), Car.fromJson).powertrain, isNull);
 
       // The wire also accepts a marketplace fuel value, so a car saved from an
@@ -82,8 +89,7 @@ void main() {
 
     test('ServiceProvider keeps its fulfillment and capability sets', () {
       for (final provider in MockServiceData.providers) {
-        final decoded =
-            roundTrip(provider.toJson(), ServiceProvider.fromJson);
+        final decoded = roundTrip(provider.toJson(), ServiceProvider.fromJson);
         expect(decoded, provider);
         expect(decoded.fulfillments, provider.fulfillments);
         expect(decoded.capabilities, provider.capabilities);
@@ -98,8 +104,7 @@ void main() {
 
     test('ServiceCategory keeps its icon and bilingual text', () {
       for (final category in MockServiceData.categories) {
-        final decoded =
-            roundTrip(category.toJson(), ServiceCategory.fromJson);
+        final decoded = roundTrip(category.toJson(), ServiceCategory.fromJson);
         expect(decoded, category);
         expect(decoded.icon, category.icon);
         expect(decoded.name.ar, category.name.ar);
@@ -115,8 +120,10 @@ void main() {
 
     test('ServiceOffering keeps its expanded provider', () {
       for (final offering in MockServiceData.offerings) {
-        expect(roundTrip(offering.toJson(), ServiceOffering.fromJson),
-            offering);
+        expect(
+          roundTrip(offering.toJson(), ServiceOffering.fromJson),
+          offering,
+        );
       }
     });
 
@@ -126,16 +133,14 @@ void main() {
         expect(decoded, product);
         expect(decoded.powertrains, product.powertrains);
       }
-      final cable =
-          MockShopData.products.firstWhere((p) => p.id == mockIdPr7);
+      final cable = MockShopData.products.firstWhere((p) => p.id == mockIdPr7);
       expect(cable.powertrains, isNotEmpty);
       expect(roundTrip(cable.toJson(), Product.fromJson).evOnly, isTrue);
     });
 
     test('GalleryListing keeps its colour swatches', () {
       for (final listing in MockCarsData.galleryListings) {
-        final decoded =
-            roundTrip(listing.toJson(), GalleryListing.fromJson);
+        final decoded = roundTrip(listing.toJson(), GalleryListing.fromJson);
         expect(decoded.id, listing.id);
         expect(decoded.exteriorSwatch, listing.exteriorSwatch);
         expect(decoded.interiorSwatch, listing.interiorSwatch);
@@ -145,12 +150,15 @@ void main() {
         expect(decoded.engineLitres, listing.engineLitres);
         // EV facts, including the difference between "no" and "not stated".
         expect(decoded.rangeKm, listing.rangeKm);
-        expect(decoded.batteryWarrantyUntilYear,
-            listing.batteryWarrantyUntilYear);
+        expect(
+          decoded.batteryWarrantyUntilYear,
+          listing.batteryWarrantyUntilYear,
+        );
         expect(decoded.chargerIncluded, listing.chargerIncluded);
       }
-      final ev = MockCarsData.galleryListings
-          .firstWhere((l) => l.fuel == 'Electric');
+      final ev = MockCarsData.galleryListings.firstWhere(
+        (l) => l.fuel == 'Electric',
+      );
       expect(ev.rangeKm, isNotNull);
       expect(ev.batteryWarrantyUntilYear, isNotNull);
       expect(ev.chargerIncluded, isNotNull);
@@ -220,8 +228,9 @@ void main() {
         route: '/track/1042',
       );
       expect(
-          roundTrip(notification.toJson(), AppNotification.fromJson),
-          notification);
+        roundTrip(notification.toJson(), AppNotification.fromJson),
+        notification,
+      );
     });
 
     test('ChatMessage', () {
@@ -326,13 +335,20 @@ void main() {
         final decoded = roundTrip(promotion.toJson(), Promotion.fromJson);
         expect(decoded, promotion);
         // The icon survives as a registry key, not as a raw code point.
-        expect(IconCodec.encode(promotion.icon), isNotNull,
-            reason: '${promotion.id} uses an icon the registry cannot name');
+        expect(
+          IconCodec.encode(promotion.icon),
+          isNotNull,
+          reason: '${promotion.id} uses an icon the registry cannot name',
+        );
       }
       // An expiry is a real DateTime on the way out and back.
-      final dated =
-          MockServiceData.promotions.firstWhere((p) => p.endsAt != null);
-      expect(roundTrip(dated.toJson(), Promotion.fromJson).endsAt, dated.endsAt);
+      final dated = MockServiceData.promotions.firstWhere(
+        (p) => p.endsAt != null,
+      );
+      expect(
+        roundTrip(dated.toJson(), Promotion.fromJson).endsAt,
+        dated.endsAt,
+      );
     });
 
     test('CategoryDemand and WorkshopRating', () {
@@ -344,10 +360,15 @@ void main() {
       }
       // A workshop the marketplace publishes no job count for keeps a null,
       // rather than gaining a zero on the way through.
-      const partial =
-          WorkshopRating(providerId: 'p99', rating: 4.4, reviews: 31);
-      expect(roundTrip(partial.toJson(), WorkshopRating.fromJson).completedJobs,
-          isNull);
+      const partial = WorkshopRating(
+        providerId: 'p99',
+        rating: 4.4,
+        reviews: 31,
+      );
+      expect(
+        roundTrip(partial.toJson(), WorkshopRating.fromJson).completedJobs,
+        isNull,
+      );
     });
 
     test('SpecCatalog', () {
@@ -361,17 +382,262 @@ void main() {
 
     test('VehicleCatalog and LocationCatalog', () {
       const vehicles = MockCatalogData.vehicleCatalog;
-      final decodedVehicles =
-          roundTrip(vehicles.toJson(), VehicleCatalog.fromJson);
+      final decodedVehicles = roundTrip(
+        vehicles.toJson(),
+        VehicleCatalog.fromJson,
+      );
       expect(decodedVehicles.makes, vehicles.makes);
       expect(decodedVehicles.trimsByModel, vehicles.trimsByModel);
       expect(decodedVehicles.plateLetters, vehicles.plateLetters);
 
       const locations = MockCatalogData.locationCatalog;
-      final decodedLocations =
-          roundTrip(locations.toJson(), LocationCatalog.fromJson);
+      final decodedLocations = roundTrip(
+        locations.toJson(),
+        LocationCatalog.fromJson,
+      );
       expect(decodedLocations.governorates, locations.governorates);
       expect(decodedLocations.arabicNames, locations.arabicNames);
+    });
+
+    test('InventoryItem keeps its unit and low-stock derivation', () {
+      final item = InventoryItem(
+        id: 'i1',
+        name: const L('فلتر زيت', 'Oil filter'),
+        sku: 'OIL-FLT-001',
+        partNumber: 'PN-99',
+        brand: 'Toyota',
+        categoryId: 'cat-1',
+        unitCost: 2.5,
+        sellPrice: 5,
+        quantityOnHand: 4,
+        reorderLevel: 10,
+        unit: InventoryUnit.piece,
+        location: 'Bay 1',
+        createdAt: DateTime.utc(2026, 7, 1),
+        updatedAt: DateTime.utc(2026, 7, 20),
+      );
+      final decoded = roundTrip(item.toJson(), InventoryItem.fromJson);
+      expect(decoded, item);
+      expect(decoded.isLowStock, isTrue);
+      expect(decoded.isOutOfStock, isFalse);
+    });
+
+    test('InventoryMovement keeps its reason and optional requestId', () {
+      final movement = InventoryMovement(
+        id: 'm1',
+        itemId: 'i1',
+        delta: -2,
+        reason: InventoryMovementReason.consumed,
+        requestId: 'r1',
+        note: 'Used on job',
+        at: DateTime.utc(2026, 7, 21, 9),
+        byUserId: 'u1',
+      );
+      expect(
+        roundTrip(movement.toJson(), InventoryMovement.fromJson),
+        movement,
+      );
+    });
+
+    test('WorkshopStaff keeps its role and specialties', () {
+      final staff = WorkshopStaff(
+        id: 's1',
+        name: 'Said Al Harthy',
+        phone: '+968 9200 0002',
+        role: WorkshopStaffRole.technician,
+        specialties: const ['brakes', 'suspension'],
+        joinedAt: DateTime.utc(2026, 1, 1),
+        userId: 'u2',
+        openJobCount: 3,
+      );
+      final decoded = roundTrip(staff.toJson(), WorkshopStaff.fromJson);
+      expect(decoded, staff);
+      expect(decoded.role.canManage, isFalse);
+
+      final manager = staff.copyWith(role: WorkshopStaffRole.manager);
+      expect(manager.role.canManage, isTrue);
+    });
+
+    test('WorkshopCustomer keeps its tag set and omits phone when null', () {
+      final customer = WorkshopCustomer(
+        userId: 'u3',
+        name: 'Nasser Al Balushi',
+        carCount: 2,
+        bookingsCount: 5,
+        lifetimeGross: 340,
+        lastBookingAt: DateTime.utc(2026, 7, 20),
+        avgRatingGiven: 4.5,
+        tags: const {WorkshopCustomerTag.repeat},
+      );
+      final decoded = roundTrip(customer.toJson(), WorkshopCustomer.fromJson);
+      expect(decoded, customer);
+      expect(decoded.phone, isNull);
+    });
+
+    test('WorkshopCustomerDetail keeps its bookings and notes', () {
+      final detail = WorkshopCustomerDetail(
+        customer: WorkshopCustomer(
+          userId: 'u3',
+          name: 'Nasser Al Balushi',
+          carCount: 1,
+          bookingsCount: 1,
+          lifetimeGross: 27.5,
+          lastBookingAt: DateTime.utc(2026, 7, 20),
+          tags: const {WorkshopCustomerTag.newCustomer},
+        ),
+        bookings: [
+          ServiceRequest(
+            id: '1042',
+            offering: MockServiceData.offerings.first,
+            car: const Car(
+              id: 'c1',
+              make: 'Toyota',
+              model: 'Camry',
+              year: 2021,
+            ),
+            plate: '1234 AB',
+            fulfillment: Fulfillment.workshop,
+            slot: 'Mon 3 Aug · 10:30',
+            addOns: const [],
+            total: 27.5,
+            escrow: EscrowState.releasedToWorkshop,
+            createdAt: DateTime.utc(2026, 7, 20, 9),
+          ),
+        ],
+        notes: [
+          WorkshopCustomerNote(
+            id: 'n1',
+            body: 'Prefers morning slots.',
+            at: DateTime.utc(2026, 7, 20, 10),
+          ),
+        ],
+      );
+      final decoded = roundTrip(
+        detail.toJson(),
+        WorkshopCustomerDetail.fromJson,
+      );
+      expect(decoded.customer, detail.customer);
+      expect(decoded.bookings, detail.bookings);
+      expect(decoded.notes.single.body, 'Prefers morning slots.');
+    });
+
+    test('WorkshopSchedule and WorkshopDaySchedule', () {
+      const schedule = WorkshopSchedule(
+        hours: L('السبت–الخميس ٨:٠٠–٢٠:٠٠', 'Sat–Thu 8:00–20:00'),
+        slotTemplate: ['09:00', '11:00', '13:00'],
+        capacityPerSlot: 2,
+        closedDays: ['Friday'],
+      );
+      final decodedSchedule = WorkshopSchedule.fromJson(
+        jsonDecode(jsonEncode(schedule.toJson())) as Map<String, dynamic>,
+      );
+      expect(decodedSchedule.hours, schedule.hours);
+      expect(decodedSchedule.slotTemplate, schedule.slotTemplate);
+      expect(decodedSchedule.capacityPerSlot, schedule.capacityPerSlot);
+      expect(decodedSchedule.closedDays, schedule.closedDays);
+
+      final day = WorkshopDaySchedule(
+        date: DateTime.utc(2026, 8, 12),
+        slots: const ['09:00', '11:00'],
+        bookedSlots: const ['09:00'],
+        assignedJobs: const [],
+      );
+      expect(day.isAvailable('09:00'), isFalse);
+      expect(day.isAvailable('11:00'), isTrue);
+      final decodedDay = WorkshopDaySchedule.fromJson(
+        jsonDecode(jsonEncode(day.toJson())) as Map<String, dynamic>,
+      );
+      expect(decodedDay.slots, day.slots);
+      expect(decodedDay.bookedSlots, day.bookedSlots);
+    });
+
+    test('WorkshopSummary keeps every nested figure', () {
+      final json = {
+        'provider': MockServiceData.providers.first.toJson(),
+        'jobs': {
+          'needsYou': 4,
+          'inProgress': 3,
+          'awaitingApproval': 2,
+          'overdue': 1,
+          'todays': 6,
+        },
+        'money': {
+          'heldInEscrow': 4200.0,
+          'releasedGross': 18900.0,
+          'totalCommission': 1890.0,
+          'payoutDue': 3100.0,
+        },
+        'stock': {
+          'items': 42,
+          'lowStock': 5,
+          'outOfStock': 1,
+          'stockValue': 12750.0,
+        },
+        'people': {'activeStaff': 4, 'customers': 87, 'repeatRate': 0.34},
+        'rating': {
+          'avg': 4.6,
+          'reviewCount': 31,
+          'acceptanceRate': 0.92,
+          'avgResponseMinutes': 47.0,
+        },
+        'alerts': [
+          {'code': 'low_stock', 'count': 5},
+          {'code': 'overdue_jobs', 'count': 1},
+        ],
+      };
+      final decoded = WorkshopSummary.fromJson(
+        jsonDecode(jsonEncode(json)) as Map<String, dynamic>,
+      );
+
+      expect(decoded.provider, MockServiceData.providers.first);
+      expect(decoded.jobs.needsYou, 4);
+      expect(decoded.jobs.overdue, 1);
+      expect(decoded.money.payoutDue, 3100.0);
+      expect(decoded.stock.lowStock, 5);
+      expect(decoded.people.repeatRate, 0.34);
+      expect(decoded.rating.avg, 4.6);
+      expect(decoded.alerts, hasLength(2));
+      expect(decoded.alerts.first.code, 'low_stock');
+    });
+
+    test('WorkshopEarnings keeps its lines with the embedded booking', () {
+      final earnings = WorkshopEarnings(
+        heldInEscrow: 100,
+        releasedGross: 200,
+        releasedCommission: 20,
+        totalCommission: 40,
+        window: const Duration(days: 30),
+        lines: [
+          EarningsLine(
+            request: ServiceRequest(
+              id: '1042',
+              offering: MockServiceData.offerings.first,
+              car: const Car(
+                id: 'c1',
+                make: 'Toyota',
+                model: 'Camry',
+                year: 2021,
+              ),
+              plate: '1234 AB',
+              fulfillment: Fulfillment.workshop,
+              slot: 'Mon 3 Aug · 10:30',
+              addOns: const [],
+              total: 27.5,
+              escrow: EscrowState.releasedToWorkshop,
+              createdAt: DateTime.utc(2026, 7, 20, 9),
+            ),
+            at: DateTime.utc(2026, 7, 21, 9),
+            gross: 27.5,
+            commission: 2.75,
+          ),
+        ],
+      );
+      final decoded = roundTrip(earnings.toJson(), WorkshopEarnings.fromJson);
+      expect(decoded.heldInEscrow, earnings.heldInEscrow);
+      expect(decoded.window, earnings.window);
+      expect(decoded.lines.single.request.id, '1042');
+      expect(decoded.lines.single.pending, isFalse);
+      expect(decoded.lines.single.net, closeTo(24.75, 0.001));
     });
   });
 
@@ -393,9 +659,13 @@ void main() {
     test('every registered icon key maps to a distinct icon', () {
       final keys = IconCodec.keys.toList();
       for (final key in keys) {
-        expect(IconCodec.encode(IconCodec.decode(key)), key,
-            reason: '"$key" does not survive a decode/encode round trip — '
-                'another key almost certainly shares its icon');
+        expect(
+          IconCodec.encode(IconCodec.decode(key)),
+          key,
+          reason:
+              '"$key" does not survive a decode/encode round trip — '
+              'another key almost certainly shares its icon',
+        );
       }
     });
 
@@ -411,12 +681,51 @@ void main() {
     });
 
     test('a missing identity field is reported, not silently defaulted', () {
-      expect(() => Car.fromJson(const {'make': 'Toyota'}), throwsA(isA<Object>()));
+      expect(
+        () => Car.fromJson(const {'make': 'Toyota'}),
+        throwsA(isA<Object>()),
+      );
     });
 
     test('L accepts both the object form and a bare string', () {
       expect(L.fromJson({'ar': 'أ', 'en': 'A'}), const L('أ', 'A'));
       expect(L.fromJson('Solo'), const L('Solo', 'Solo'));
     });
+
+    test('an unknown inventory unit falls back to piece', () {
+      final decoded = InventoryItem.fromJson({
+        'id': 'i1',
+        'name': {'ar': 'أ', 'en': 'A'},
+        'sku': 'X',
+        'unit': 'gallon',
+        'createdAt': '2026-07-01T00:00:00Z',
+        'updatedAt': '2026-07-01T00:00:00Z',
+      });
+      expect(decoded.unit, InventoryUnit.piece);
+    });
+
+    test('an unknown staff role falls back to technician, not owner', () {
+      final decoded = WorkshopStaff.fromJson({
+        'id': 's1',
+        'name': 'X',
+        'role': 'ceo',
+        'joinedAt': '2026-01-01T00:00:00Z',
+      });
+      expect(decoded.role, WorkshopStaffRole.technician);
+      expect(decoded.role.canManage, isFalse);
+    });
+
+    test(
+      'a customer tag the client does not recognise is dropped, not guessed',
+      () {
+        final decoded = WorkshopCustomer.fromJson({
+          'userId': 'u1',
+          'name': 'X',
+          'lastBookingAt': '2026-07-20T00:00:00Z',
+          'tags': ['repeat', 'vip'],
+        });
+        expect(decoded.tags, {WorkshopCustomerTag.repeat});
+      },
+    );
   });
 }

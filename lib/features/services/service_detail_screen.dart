@@ -303,8 +303,9 @@ class ServiceDetailScreen extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                'OMR ${offering.price!.toStringAsFixed(2)}',
+              RialAmount(
+                offering.price!,
+                bold: true,
                 style: const TextStyle(
                     fontSize: 24, fontWeight: FontWeight.w800),
               ),
@@ -329,10 +330,10 @@ class ServiceDetailScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            s.t(
-                'شامل ضريبة القيمة المضافة ٥٪ (${vat.toStringAsFixed(2)} ${s.omr})',
-                'Includes 5% VAT (OMR ${vat.toStringAsFixed(2)})'),
+          RialAmount(
+            vat,
+            prefix: s.t('شامل ضريبة القيمة المضافة ٥٪ (', 'Includes 5% VAT ('),
+            suffix: ')',
             style: TextStyle(fontSize: 11.5, color: ak.inkSub),
           ),
           // The offer, stated in full on the page that takes the booking: what
@@ -358,25 +359,26 @@ class ServiceDetailScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text.rich(
-                          TextSpan(children: [
-                            TextSpan(
-                              text: s.t(
-                                  'خصم ${offer.discountPercent.round()}٪ — بدلاً من ',
-                                  '${offer.discountPercent.round()}% off — was '),
-                            ),
-                            TextSpan(
-                              text:
-                                  'OMR ${offer.referencePrice.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                  decoration: TextDecoration.lineThrough),
-                            ),
-                          ]),
-                          style: TextStyle(
+                        Builder(builder: (context) {
+                          final style = TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
-                              color: ak.dangerText),
-                        ),
+                              color: ak.dangerText);
+                          return Text.rich(
+                            TextSpan(style: style, children: [
+                              TextSpan(
+                                text: s.t(
+                                    'خصم ${offer.discountPercent.round()}٪ — بدلاً من ',
+                                    '${offer.discountPercent.round()}% off — was '),
+                              ),
+                              rialAmountSpan(
+                                amount: offer.referencePrice,
+                                style: style.copyWith(
+                                    decoration: TextDecoration.lineThrough),
+                              ),
+                            ]),
+                          );
+                        }),
                         const SizedBox(height: 2),
                         Text(
                           s.t(
@@ -648,13 +650,18 @@ class ServiceDetailScreen extends ConsumerWidget {
                     style: TextStyle(fontSize: 11, color: ak.inkSub),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    o.price != null
-                        ? 'OMR ${o.price!.toStringAsFixed(2)}'
-                        : s.t('عرض سعر', 'Quote'),
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w800),
-                  ),
+                  o.price != null
+                      ? RialAmount(
+                          o.price!,
+                          bold: true,
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w800),
+                        )
+                      : Text(
+                          s.t('عرض سعر', 'Quote'),
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w800),
+                        ),
                 ],
               ),
             ),
@@ -688,14 +695,21 @@ class ServiceDetailScreen extends ConsumerWidget {
             if (!offering.quoteOnly && addOnTotal > 0) ...[
               Row(
                 children: [
-                  Text(
-                    s.t('الخدمة ${offering.price!.toStringAsFixed(2)} + إضافات ${addOnTotal.toStringAsFixed(2)}',
-                        'Service ${offering.price!.toStringAsFixed(2)} + extras ${addOnTotal.toStringAsFixed(2)}'),
-                    style: TextStyle(fontSize: 11.5, color: ak.inkSub),
-                  ),
+                  Builder(builder: (context) {
+                    final style = TextStyle(fontSize: 11.5, color: ak.inkSub);
+                    return Text.rich(
+                      TextSpan(style: style, children: [
+                        TextSpan(text: s.t('الخدمة ', 'Service ')),
+                        rialAmountSpan(amount: offering.price!, style: style),
+                        TextSpan(text: s.t(' + إضافات ', ' + extras ')),
+                        rialAmountSpan(amount: addOnTotal, style: style),
+                      ]),
+                    );
+                  }),
                   const Spacer(),
-                  Text(
-                    'OMR ${total.toStringAsFixed(2)}',
+                  RialAmount(
+                    total,
+                    bold: true,
                     style: const TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w800),
                   ),
@@ -711,14 +725,18 @@ class ServiceDetailScreen extends ConsumerWidget {
                 if (!ensureRegistered(context, ref)) return;
                 context.push('/book/${offering.id}');
               },
-              child: Text(
-                offering.quoteOnly
-                    ? s.t('اطلب فحصاً وعرض سعر', 'Request inspection & quote')
-                    : s.t('اختر الوقت والمكان — ${total.toStringAsFixed(2)} ${s.omr}',
-                        'Choose time & place — OMR ${total.toStringAsFixed(2)}'),
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w800),
-              ),
+              child: offering.quoteOnly
+                  ? Text(
+                      s.t('اطلب فحصاً وعرض سعر', 'Request inspection & quote'),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w800),
+                    )
+                  : RialAmount(
+                      total,
+                      prefix: s.t('اختر الوقت والمكان — ', 'Choose time & place — '),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w800),
+                    ),
             ),
           ],
         ),
@@ -795,10 +813,13 @@ class _AddOnRow extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Flexible(
-                child: Text('+ ${s.omr} ${a.price.toStringAsFixed(2)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: ak.inkFaint)),
+                child: RialAmount(
+                  a.price,
+                  prefix: '+ ',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: ak.inkFaint),
+                ),
               ),
               const SizedBox(width: 4),
               isSelected

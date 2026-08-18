@@ -1,13 +1,12 @@
 import 'package:ak_cars_mobil_app/config/app_config.dart';
 import 'package:ak_cars_mobil_app/config/app_environment.dart';
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_service_data.dart';
-import 'package:ak_cars_mobil_app/data/services/service_marketplace_service.dart';
+import 'fakes/data/mock_service_data.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/features/operations/admin_screen.dart';
-import 'package:ak_cars_mobil_app/features/operations/workshop_screen.dart';
 import 'package:ak_cars_mobil_app/features/services/approval_screen.dart';
+import 'package:ak_cars_mobil_app/features/workshop_dashboard/orders_screen.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -15,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/test_harness.dart';
+import 'fakes/fakes.dart';
 
 const _car = Car(id: 'c1', make: 'Toyota', model: 'Camry', year: 2019);
 
@@ -30,13 +30,10 @@ Future<ProviderContainer> _container() => createTestContainer(
     appConfigProvider.overrideWithValue(
       AppConfig.forEnvironment(
         AppEnvironment.development,
-      ).copyWith(simulateProviderLifecycle: false),
+      ),
     ),
     serviceMarketplaceServiceProvider.overrideWith(
-      (ref) => MockServiceMarketplaceService(
-        config: ref.watch(appConfigProvider),
-        seeded: false,
-      ),
+      (ref) => MockServiceMarketplaceService(seeded: false),
     ),
   ],
 );
@@ -94,7 +91,7 @@ void main() {
     // The panel's headline figure.
     expect(find.textContaining('Held in escrow'), findsOneWidget);
     // Nothing is held until it is confirmed.
-    expect(find.text('OMR 0.00'), findsOneWidget);
+    expect(find.textContaining('0.00', findRichText: true), findsOneWidget);
 
     // A new booking is waiting on the founder to confirm the transfer landed.
     // It sits below the (empty) disputes queue, so scroll to it.
@@ -109,25 +106,41 @@ void main() {
     expect(find.text('Start work'), findsNothing);
   });
 
-  testWidgets('the workshop panel picks up a job once the funds are held', (
-    tester,
-  ) async {
-    final container = await _container();
-    final request = await _book(container);
-    await container
-        .read(requestsProvider.notifier)
-        .fire(
-          request.id,
-          EscrowEvent.confirmFundsHeld,
-          actor: EscrowActor.founder,
-        );
+  testWidgets(
+    'the workshop dashboard\'s orders screen offers the workshop\'s own '
+    'buttons once the funds are held',
+    (tester) async {
+      final container = await _container();
+      final request = await _book(container);
+      await container
+          .read(requestsProvider.notifier)
+          .fire(
+            request.id,
+            EscrowEvent.confirmFundsHeld,
+            actor: EscrowActor.founder,
+          );
+      final held = container
+          .read(requestsProvider)
+          .firstWhere((r) => r.id == request.id);
 
-    await _pump(tester, container, const WorkshopScreen());
+      // `OrdersScreen` reads `/my-workshop/requests` (`workshopServiceProvider`
+      // / `WorkshopRepository`) — a real, separate service from
+      // `requestsProvider`'s `ServiceMarketplaceService`, because that is what
+      // the real backend is: `/my-workshop/*` resolves ownership from the JWT,
+      // `/service-marketplace/*` does not. Seeding the same booking, once it
+      // has been placed and funded through the real escrow flow above, into
+      // the workshop double's own store is what stands in for "the same row,
+      // read through the other endpoint".
+      (container.read(workshopServiceProvider) as MockWorkshopService)
+          .seedRequest(held);
 
-    expect(find.text('Accept job'), findsOneWidget);
-    expect(find.text('Reject job'), findsOneWidget);
-    expect(find.text('Start work'), findsNothing);
-  });
+      await _pump(tester, container, const OrdersScreen());
+
+      expect(find.text('Accept job'), findsOneWidget);
+      expect(find.text('Reject job'), findsOneWidget);
+      expect(find.text('Start work'), findsNothing);
+    },
+  );
 
   testWidgets('the approval screen shows the real proof, never a placeholder', (
     tester,
@@ -208,8 +221,11 @@ void main() {
     // A dispute moves the booking out of "in flight" and into its own
     // section, but not out of escrow — the customer was told the funds stay
     // held, so the founder's total has to say the same.
-    expect(find.text('OMR ${disputed.total.toStringAsFixed(2)}'), findsWidgets);
-    expect(find.text('OMR 0.00'), findsNothing);
+    expect(
+        find.textContaining(disputed.total.toStringAsFixed(2),
+            findRichText: true),
+        findsWidgets);
+    expect(find.textContaining('0.00', findRichText: true), findsNothing);
 
     container.dispose();
   });

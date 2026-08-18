@@ -128,7 +128,11 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
 
     if (widget.isEditing) {
       final updated = _compose(widget.carId!);
-      ref.read(garageProvider.notifier).update(updated);
+      _watchWrite(
+        ref.read(garageProvider.notifier).update(updated),
+        messenger,
+        s,
+      );
       _syncOdometer(updated);
       context.pop(true);
       messenger.showSnackBar(SnackBar(
@@ -140,7 +144,7 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
 
     final wasEmpty = ref.read(garageProvider).isEmpty;
     final car = _compose(newGuid());
-    ref.read(garageProvider.notifier).add(car);
+    _watchWrite(ref.read(garageProvider.notifier).add(car), messenger, s);
     _syncOdometer(car);
     // Only the first car sets the service region — registering a second car
     // used to silently move the region the whole app searches in.
@@ -176,7 +180,48 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
     if (km == ref.read(maintenanceBookProvider(car.id)).currentOdometerKm) {
       return;
     }
-    ref.read(garageProvider.notifier).setOdometer(car.id, km);
+    _watchWrite(
+      ref.read(garageProvider.notifier).setOdometer(car.id, km),
+      ScaffoldMessenger.of(context),
+      S.of(context),
+    );
+  }
+
+  /// Keeps a failed save from being the one thing nobody hears about.
+  ///
+  /// The garage writes are deliberately not awaited: this screen pops on the
+  /// same frame it saves, and `GarageNotifier` documents why awaiting would
+  /// cost a frame. Left unhandled, though, a rejected write reached the user as
+  /// nothing at all — the success snackbar stayed on screen and the failure was
+  /// a red trace in a console they will never open. That is worse than a slow
+  /// save: the app claimed the car was in the garage when it was not.
+  ///
+  /// Does not roll the optimistic state back. The car stays on screen until the
+  /// next warm-up reconciles it, which is the app's existing optimistic style —
+  /// yanking a row out from under someone who has already navigated away would
+  /// be its own surprise.
+  /// `try`/`catch` rather than `.catchError(...)`: the handler form only works
+  /// when the future's *runtime* type argument really is `void`, and a
+  /// `Future<void>`-declared method whose body hands back a future of some
+  /// other type does not satisfy that — the handler then throws instead of
+  /// handling. See `AuthNotifier._warmAuthenticatedData`.
+  Future<void> _watchWrite(
+    Future<void> write,
+    ScaffoldMessengerState messenger,
+    S s,
+  ) async {
+    try {
+      await write;
+    } catch (_) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(s.t(
+            'تعذّر حفظ السيارة. تحقّق من اتصالك وحاول مرة أخرى.',
+            'Could not save the car. Check your connection and try again.',
+          )),
+        ));
+    }
   }
 
   Future<void> _confirmDelete() async {

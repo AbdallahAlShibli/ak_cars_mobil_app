@@ -370,13 +370,19 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
                 Text(s.t('نطاق السعر', 'Price range'),
                     style: const TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w700)),
-                Text(
-                  '${s.omr} ${_draft.minPrice.round()} — ${_draft.maxPrice.round()}',
-                  style: TextStyle(
+                Builder(builder: (context) {
+                  final style = TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
-                      color: AkColors.of(context).ink),
-                ),
+                      color: AkColors.of(context).ink);
+                  return Text.rich(TextSpan(style: style, children: [
+                    rialAmountSpan(
+                        amount: _draft.minPrice, style: style, decimals: 0),
+                    const TextSpan(text: ' — '),
+                    rialAmountSpan(
+                        amount: _draft.maxPrice, style: style, decimals: 0),
+                  ]));
+                }),
               ],
             ),
             RangeSlider(

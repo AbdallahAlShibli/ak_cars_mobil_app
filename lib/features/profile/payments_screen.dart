@@ -101,9 +101,9 @@ class PaymentsScreen extends ConsumerWidget {
                           ],
                         ),
                         const SizedBox(height: 6),
-                        Text(
-                          s.t('${heldTotal.toStringAsFixed(2)} ${s.omr}',
-                              'OMR ${heldTotal.toStringAsFixed(2)}'),
+                        RialAmount(
+                          heldTotal,
+                          bold: true,
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
@@ -134,9 +134,9 @@ class PaymentsScreen extends ConsumerWidget {
                           ],
                         ),
                         const SizedBox(height: 6),
-                        Text(
-                          s.t('${releasedTotal.toStringAsFixed(2)} ${s.omr}',
-                              'OMR ${releasedTotal.toStringAsFixed(2)}'),
+                        RialAmount(
+                          releasedTotal,
+                          bold: true,
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
@@ -210,9 +210,9 @@ class PaymentsScreen extends ConsumerWidget {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text(
-                              s.t('${e.$3.toStringAsFixed(2)} ${s.omr}',
-                                  'OMR ${e.$3.toStringAsFixed(2)}'),
+                            RialAmount(
+                              e.$3,
+                              bold: true,
                               style: const TextStyle(
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w800),

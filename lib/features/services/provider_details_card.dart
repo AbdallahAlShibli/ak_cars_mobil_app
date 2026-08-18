@@ -140,18 +140,19 @@ class ProviderDetailsCard extends ConsumerWidget {
                       children: [
                         Icon(f.icon, size: 13, color: ak.inkSub),
                         const SizedBox(width: 5),
-                        Text(
-                          f == Fulfillment.pickup && provider.pickupFee > 0
-                              ? isolateNumbers(
-                                  '${f.label(s)} · '
-                                  '${provider.pickupFee.toStringAsFixed(0)} '
-                                  '${s.omr}',
-                                  rtl: s.isAr,
-                                )
-                              : f.label(s),
-                          style: const TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w600),
-                        ),
+                        f == Fulfillment.pickup && provider.pickupFee > 0
+                            ? RialAmount(
+                                provider.pickupFee,
+                                decimals: 0,
+                                prefix: '${f.label(s)} · ',
+                                style: const TextStyle(
+                                    fontSize: 11, fontWeight: FontWeight.w600),
+                              )
+                            : Text(
+                                f.label(s),
+                                style: const TextStyle(
+                                    fontSize: 11, fontWeight: FontWeight.w600),
+                              ),
                       ],
                     ),
                   ),

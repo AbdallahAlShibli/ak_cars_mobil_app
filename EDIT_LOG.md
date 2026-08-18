@@ -17,6 +17,2085 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-08-17 (2) · The services section had no offerings because of a bad migration default on the API, and a sign-out that failed its own logout call skipped every clear
+
+**Baseline:** `7cf6a5f` (HEAD). Request, verbatim: "the services section not
+loading any data from the api. it show no data... add seed data... the
+logout when user click on should clear current user data from all sections.
+like notifications, cars... but now not deleting." Two unrelated bugs, one on
+each side of the stack.
+
+### Bug 1 — every `ServiceOffering` row was `IsActive = 0`, so `GET /service-marketplace/offerings` always returned `[]`
+
+Not a data-source problem: `AKCarsMobileAPI` (`C:\Projects\Cars
+Project\AKCarsMobilApp\AKCarsMobileAPI`, see [[backend-api-path]]) was up,
+`/providers`, `/categories`, `/promotions` and `/offers` all returned real
+seeded rows (43 offerings' worth of providers, categories and discounts —
+`DemoMarketplaceSeed.cs`, opt-in via `AKCARS_SEED_DEMO_DATA=true`), but
+`/offerings` itself came back `[]`, confirmed with `sqlcmd`:
+`SELECT COUNT(*), SUM(CASE WHEN IsActive=1 THEN 1 ELSE 0 END) FROM
+ServiceOfferings` → `43, 0`.
+
+**Root cause:** migration `20260812134135_AddServiceOfferingIsActive.cs`
+added the column with `defaultValue: false`. SQL Server used that default to
+backfill every *pre-existing* row — all 43 of them — to `IsActive = 0`, even
+though `ServiceOffering.cs`'s own C# default is `= true` and nothing had ever
+deliberately unpublished any of them.
+`GetOfferingsQuery`/`GetOfferingQueryHandler` (`AKCars.Application/
+Marketplace/GetOfferings/GetOfferingsQuery.cs`) filter on `.Where(o =>
+o.IsActive)`, so the whole catalogue silently disappeared from every
+customer-facing read while `providers`/`categories`/`offers`/`promotions`
+(unaffected tables) stayed visible — which is exactly the "categories show,
+nothing inside them does" shape the user described.
+
+**Fix, in `AKCarsMobileAPI`** (separate, non-git repo — nothing to commit
+there, recorded here since this session's fix lives on the app's actual data
+source):
+- New migration `20260816202114_FixServiceOfferingIsActiveBackfill.cs`
+  (`src/AKCars.Infrastructure/Persistence/Migrations/`) — a data-only `Up()`:
+  `UPDATE [ServiceOfferings] SET [IsActive] = 1 WHERE [IsActive] = 0`. `Down()`
+  is deliberately a no-op — there is no record of which rows were genuinely
+  `false` before this ran versus backfilled-false, so it cannot be reversed
+  correctly, only re-run forward.
+- Generated with `dotnet ef migrations add ... --no-build` (the API was
+  running under a live Visual Studio debug session, which locks
+  `AKCars.Api`'s build output — a plain `dotnet build`/`dotnet ef migrations
+  add` fails on `MSB3027: file locked`; `--no-build` reuses the already-built
+  assembly instead of recompiling, which is safe here since nothing in the
+  model changed).
+- `dotnet ef database update --no-build` reported `Done` but **did not
+  actually apply it** — confirmed via `SELECT MigrationId FROM
+  __EFMigrationsHistory`, the new migration was absent. `--no-build` reuses
+  the *previously compiled* assembly to enumerate migrations, and that
+  assembly predates the new migration file's own compilation, so it never
+  saw it. Applied the fix directly instead: `sqlcmd -S .\SQLEXPRESS -d
+  AKCarsMobileDb -E -Q "UPDATE [ServiceOfferings] SET [IsActive] = 1 WHERE
+  [IsActive] = 0;"` — idempotent, so the migration will still apply cleanly
+  (as a no-op) the next time someone runs `dotnet ef database update` from a
+  real build.
+
+**Verified:** `sqlcmd` re-query showed `43, 43`;
+`GET https://localhost:7291/api/v1/service-marketplace/offerings` went from
+`[]` to the full 43-row catalogue, each with the discounted price where an
+offer applies (spot-checked Al Noor Workshop's "صيانة شاملة" at 45→36, matching
+the seeded `Offer` row). Not re-verified inside the Flutter app itself beyond
+that — see the notes under bug 2 for why (the same session used the app to
+investigate bug 2 and this offering fix was visible on the home page's offers
+rail while doing so, but no dedicated screenshot pass was made of the
+Services tab specifically after the fix).
+
+### Bug 2 — `AuthNotifier.signOut()` skipped `SessionRefresh.clearAfterSignOut()` entirely whenever the server logout call failed
+
+Read `session_refresh.dart`, `notifications_state.dart`,
+`garage_repository.dart`, `session_routed_services.dart`, `token_store.dart`
+and `api_auth_service.dart` end to end first — the sign-out clearing
+mechanism (clear `requests`/`orders`/`notifications`/`reviews`/
+`operatorQueue`, invalidate `garage`/`maintenance`/`challenge`/`myAds`/`chat`
+and the workshop-dashboard providers) was already correct on paper and
+already covered by four passing tests in `session_refresh_test.dart` from
+the 2026-08-15 fixes. Two things were missing from that coverage:
+notifications and the garage, neither of which had a test.
+
+Added both as new tests. The notifications one passed immediately — that
+half of the mechanism is fine. The garage one failed at first for an
+unrelated reason (the test's own `AuthService` double didn't round-trip a
+token through login the way `ApiAuthService` really does, so `hasSession()`
+was already wrong before sign-out was even reached) — fixed the double, and
+the real bug then reproduced cleanly.
+
+**Root cause:** `AuthNotifier.signOut()` (`lib/state/auth_state.dart`) called
+`await ref.read(authRepositoryProvider).signOut()` with no `try`/`catch`.
+`ApiAuthService.signOut()` clears the token in its own `finally` regardless
+of whether `POST /auth/logout` succeeded, but the exception itself — an
+ordinary `401` from `RequireAuthorization()` when the access token had
+already expired before the user tapped "sign out" — still propagates out.
+Since the very next line is `unawaited(sessionRefreshProvider
+.clearAfterSignOut(...))`, an uncaught throw on the line above meant that
+line never ran: the token was gone, `AuthState.profile` was already `null`
+(set synchronously at the top of the method, before any of this), but
+`requestsProvider`/`ordersProvider`/`notificationsProvider`/`reviewsProvider`
+/`operatorQueueProvider` were never told to clear and `garageProvider`/
+`maintenanceProvider`/etc. were never invalidated — every one of those
+screens kept showing the departed account's data indefinitely. This matches
+the report exactly: the profile screen would have correctly shown "Guest"
+(state flips synchronously) while garage/notifications/bookings stayed
+stale.
+
+**Fix:** wrapped that one call in `try`/`catch`, logging via `developer.log`
+(same rule `SessionRefresh._bestEffort` already follows — never fail
+silently) and falling through to `clearAfterSignOut` regardless.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/state/auth_state.dart` | `AuthNotifier.signOut()`: wrapped `authRepositoryProvider.signOut()` in `try`/`catch` so a failed server round trip can no longer skip `clearAfterSignOut()` |
+| `test/session_refresh_test.dart` | new tests: notifications clear on sign-out; a signed-in account's garage is not shown to the guest left on the device afterward (via a real `SessionGarageService`, not the harness's usual direct-to-`LocalGarageStore` override — see the new `_AuthServiceThatClearsTokensOnSignOut` double for why that needed its own token round-trip); a sign-out whose server call throws still clears the app (`_AuthServiceThatFailsToSignOut`) |
+
+### Verified
+- `flutter analyze lib/state/auth_state.dart test/session_refresh_test.dart`
+  — clean.
+- `flutter test test/session_refresh_test.dart` — all 12 tests pass,
+  including the 3 new ones. Confirmed the garage test actually exercises the
+  bug by watching it fail first against an incomplete test double (token
+  never restored on login), then pass once the double correctly mirrored
+  `ApiAuthService`'s login/signOut token lifecycle.
+- `flutter test` (whole suite) — 522 passed, 0 failed.
+- **Not** reproduced against the live app end to end — attempted via the
+  `ak_cars_web` Chrome preview, but the OTP login step requires reading a
+  server-logged one-time code this session had no way to retrieve without
+  either the Visual Studio debug console (not accessible from here) or
+  brute-forcing the code against its stored SHA-256 hash, which was
+  correctly refused as an auth-bypass pattern regardless of whose database it
+  is. The fix is verified against the mechanism (a Riverpod test that
+  reproduces the exact failure and confirms the fix resolves it) and against
+  the real `ApiAuthService`/`SessionGarageService` source, not against an
+  actual expired-token round trip through the live API.
+
+---
+
+## 2026-08-17 · Booking a workshop/pickup slot sent a localized display string as `slot` instead of the raw key the server contract expects, against availability fetched for the wrong day; three screens also printed a customer's full GUID booking id instead of its short reference
+
+**Baseline:** `7cf6a5f` (HEAD), with the in-flight mock→API migration on
+`lib/features/services/*` and `lib/data/services/api/api_service_marketplace_service.dart`
+already uncommitted in the working tree. Request: "the service section has
+real bugs and issues. it's not working as expected" — read cold, no repro
+steps given, so this was found by comparing the customer-facing service
+screens against `docs/api_contract.md`, not from a reported symptom.
+
+**Bug 1 — `BookingScreen._confirm()` sent `_slotLabel(s)` (a translated
+"Tue 5 Aug · 9:00 AM"-style string) as `CreateServiceRequestDraft.slot`.**
+`docs/api_contract.md`'s own example for `POST /service-marketplace/requests`
+is `"slot": "10:30"` — the raw `"HH:mm"` key `GET .../slots` returns, the same
+convention `QuoteScreen._accept()` already follows for
+`applyEscrowEvent(..., slot: _slot)`. A workshop/pickup booking would submit
+a value the server has no way to parse as the slot it was chosen for; a
+roadside/ASAP booking (`_needsSlot == false`) sent a full sentence
+("ASAP · provider heads to you") into the same field. `_slotLabel` is still
+used for the on-screen "When" summary row — only the submitted payload
+changed, to the raw `_slot` (empty string for the no-slot fulfillments,
+matching the `slot: ''` convention `ServiceRequest.partInstall` already uses
+for "not scheduled yet").
+
+**Bug 2 — the slots shown/booked against were fetched for *today*, under a
+UI that unconditionally labels them "Tomorrow".** `ApiServiceMarketplaceService.
+fetchAvailability` resolves a null `date` to `DateTime.now()` (today);
+`ServiceMarketplaceRepositoryImpl._warmProvider` called it with no date at
+all. `BookingScreen` has no date picker — every slot chip and the "Tomorrow ·
+{date}" heading above them assume the grid is for tomorrow, and `_slotLabel`
+hardcodes `DateTime.now().add(Duration(days: 1))` for the date half of the
+string it builds. So a chip shown as "full" could really be free tomorrow (or
+vice versa), independent of bug 1. Fixed by warming availability for
+`DateTime.now().add(Duration(days: 1))` instead of leaving `date` null — the
+UI's fixed "Tomorrow" copy is the one place that already commits to a single
+day, so the data now matches it.
+
+**Bug 3 — three screens printed the customer's raw GUID request id.**
+`shortRef()` (`lib/core/utils/guid.dart`) exists specifically because a full
+id "pushed the booking's status pill off the edge of the screen" (its own doc
+comment) — used correctly in `TrackingScreen`, `ChatScreen`, `NotificationRepository`,
+and even `ReviewScreen`'s own subject line one screen up. Three call sites
+missed it: `RequestsScreen._RequestCard` (the "#<id> · <name>" line on every
+card in the main bookings list — the single most-visible instance),
+`QuoteScreen`'s app bar title, and `ReviewScreen`'s "<offering> · #<id>"
+subtitle. All three now go through `shortRef(request.id)`.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/features/services/booking_screen.dart` | `_confirm()`: `slot: _slotLabel(s)` → `slot: _needsSlot ? _slot : ''` |
+| `lib/data/repositories/service_marketplace_repository.dart` | `_warmProvider`: `fetchAvailability(providerId)` → `fetchAvailability(providerId, date: DateTime.now().add(const Duration(days: 1)))`, with the reasoning inline |
+| `lib/data/models/service_request.dart` | `CreateServiceRequestDraft.slot`'s doc comment corrected — it was still describing the pre-fix "human-readable label" behavior |
+| `lib/features/services/requests_screen.dart` | `_RequestCard`: `'#${request.id}'` → `'#${shortRef(request.id)}'` |
+| `lib/features/services/quote_screen.dart` | app bar title: raw `request.id` → `shortRef(request.id)`; added the `guid.dart` import |
+| `lib/features/services/review_screen.dart` | subtitle: raw `request.id` → `shortRef(request.id)` |
+
+### Verified
+- `flutter analyze` on every changed file plus the rest of
+  `lib/features/services` — clean.
+- `flutter test test/services_region_test.dart test/contact_gating_test.dart
+  test/escrow_test.dart test/maintenance_book_test.dart
+  test/operator_panels_test.dart test/part_install_screens_test.dart
+  test/reviews_test.dart test/scenario_integrity_test.dart
+  test/session_refresh_test.dart test/tracking_back_test.dart
+  test/translation_coverage_test.dart` — all 135 passed; the fake service's
+  `fetchAvailability` ignores `date` entirely, so bug 2's fix is a no-op
+  against the test double and was checked by reading, not by a test that
+  would fail without it.
+- **Not** exercised against the real backend (no live API in this
+  environment) — bug 1 and bug 2 are verified against `docs/api_contract.md`
+  and the codebase's own established conventions (`QuoteScreen`, `shortRef`'s
+  other call sites), not against an actual server round-trip. No automated
+  test asserts the raw `slot` value `CreateServiceRequestDraft.toJson()`
+  produces; worth adding if this area gets touched again.
+
+---
+
+## 2026-08-15 · The workshop-dashboard fix two entries below was itself firing nine spurious `/my-workshop/*` requests — for every account, on every sign-in and sign-out — and very likely the actual cause of "the services page has no data"
+
+**Baseline:** the "Signing out was resetting the selected region" entry
+immediately below. Request: the user pasted a live browser console from a
+debug web run — nine `GET .../service-marketplace/my-workshop*` calls
+answering `403 (Forbidden)`, one stack frame reading `session_refresh.dart:211`
+— alongside "the services page not containing any data."
+
+**Root cause: `Ref.invalidate()` on a never-built provider is not a no-op in
+a debug build, and the fix two entries below relied on it being one.** That
+entry added `_ref.invalidate(...)` for all 13 `provider_dashboard_state.dart`
+providers to `_announce()`, reasoning that invalidating an unbuilt provider
+does nothing. True in `--release` (`assert`s are stripped), false everywhere
+else: `ProviderElementBase.invalidate` (`riverpod` 2.6.1,
+`element.dart:287`) runs `assert(_debugAssertCanDependOn(provider), '')`
+*before* invalidating, and that assertion's own body — a debug-only
+circular-dependency check — calls `_container.readProviderElement(listenable)`
+on the target, with the comment "Initializing the provider, to make sure its
+dependencies are setup." For a plain `Provider`, "initializing" is a cheap
+synchronous read (which is all the five pre-existing invalidations in this
+method ever were — `garageProvider` et al., all `Notifier`s deriving from an
+already-warmed cache). For an `AsyncNotifierProvider` that has never been
+built, "initializing" means actually running its `build()` — a real
+`await ref.read(workshopRepositoryProvider).loadOfferings()` (or `.getMy
+Workshop()`, `.getInventory()`, …), i.e. a genuine network request — purely
+so the assertion has something to inspect before discarding the result. Nine
+of the thirteen providers added two entries below are plain (non-`.family`)
+`AsyncNotifierProvider`s, and every one of them fired its request on *every*
+sign-in and sign-out, for *every* account — a guest, a customer, a founder —
+regardless of whether that account has ever owned a workshop, because
+`_announce()` runs unconditionally. The other four (`workshopCustomerDetail
+Provider`, `workshopScheduleProvider`, `workshopDashboardEarningsProvider`,
+`workshopDashboardMetricsProvider`) are `.family` providers invalidated as
+bare families (no argument) — confirmed safe by reading
+`ProviderContainer.invalidate`: a bare-`Family` target loops over *already-
+existing* `_stateReaders` rather than creating one, so those four were never
+at risk.
+
+Whether this alone explains "the services page has no data" was not directly
+provable, but the mechanism fits: nine extra failing requests fired
+concurrently with the real warm-up calls (`_refillWarmCaches`'s own
+`Future.wait`) on every sign-in/out is exactly the kind of thing that
+crowds out or delays the requests a screen is actually waiting on, especially
+against a browser's per-origin connection cap — and removing the cause
+removes both symptoms at once rather than chasing the services page
+separately.
+
+**Fix:** `Ref.exists(provider)` performs the same "does an element already
+exist" check `_debugAssertCanDependOn` needs — via
+`ProviderContainer._getOrNull`, confirmed by reading its source — without
+the `assert` and without ever creating one. New `SessionRefresh._ifBuilt`
+wraps the nine single-provider invalidations in `if (_ref.exists(provider))`;
+the four family ones are untouched, since they were already safe. A
+provider that really was built (a workshop owner's dashboard was actually
+opened this session) is still invalidated exactly as before — this only
+skips the ones nobody ever asked for in the first place.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/state/session_refresh.dart` | `_announce()`: 9 single-provider `_ref.invalidate` calls → `_ifBuilt(...)`; new `_ifBuilt` helper (`Ref.exists` guard) with the full mechanism documented inline; the 4 family invalidations left as-is with a comment explaining why |
+| `test/fakes/mock_workshop_service.dart` | `MockWorkshopService.callCount` — overrides the shared `respond()` mixin method once, so it counts every call to the fake regardless of which method, without instrumenting each individually |
+| `test/session_refresh_test.dart` | new test: a plain customer who never opens the workshop dashboard causes zero `/my-workshop/*` calls across a full sign-in→sign-out cycle. Verified this test fails against the pre-fix code (temporarily bypassed the `exists()` guard: got exactly 9, matching the 9 affected providers) before confirming it passes restored |
+
+### Verified
+- `flutter analyze lib test` — clean apart from the pre-existing
+  `use_null_aware_elements` info in `lib/core/utils/contact.dart:23`.
+- `flutter test` — 519 passed (518 from the entry below + 1 new).
+- Temporarily replaced `_ifBuilt`'s body with a bare `_ref.invalidate(provider)`
+  (bypassing the `exists()` guard), re-ran the new test alone, confirmed it
+  fails with `callCount` at exactly 9 — reproducing the reported symptom
+  under the same test harness that will catch it if it regresses — then
+  restored the guard and confirmed the full suite passes again.
+- **Not** re-run against the live backend the user's console log came
+  from — the fix is verified against the mechanism (Riverpod's own debug-
+  assert source, read directly) and against a test that reproduces the exact
+  request count from that log, but the actual browser session was not
+  re-checked.
+
+---
+
+## 2026-08-15 · Signing out was resetting the selected region — a device preference, not account data — because `regionProvider` `watch`ed a repository just to seed its default
+
+**Baseline:** the "Signing out still left the workshop dashboard showing the
+departed owner's data" entry immediately below. Request, verbatim: "the
+services page and other other default data cleared with the current user
+data when logout. clear only user info and his cars data and booked
+services and related data only."
+
+**Not a data-clearing bug — a `StateProvider` losing its `.state`.**
+`regionProvider` (`lib/state/settings_state.dart`) is a `StateProvider<String>`
+the Services page, Home, the Garage's add-car form and Register all filter
+by. Its create closure did `ref.watch(catalogRepositoryProvider)
+.serviceRegions` to pick a default ("the first governorate") — but `watch`
+inside a `StateProvider`'s closure does not just seed the initial value once,
+it makes the *whole provider* rebuild — discarding any `.state =` write made
+since — every time the watched dependency's element notifies its listeners.
+`SessionRefresh._announce()` calls `WarmCacheNotice.announce()` on **both**
+sign-in and sign-out (the public catalogues are re-warmed either way, per the
+2026-08-13 entry two below), and `WarmCacheNotice` works by calling
+`ref.notifyListeners()` directly on `catalogRepositoryProvider`'s own
+registered ref — so every sign-out silently snapped whatever region the user
+had picked back to `regions.first`. The Services page (and everything else
+region-filtered) then genuinely showed a different, often emptier list —
+which is exactly what "the services page and other default data cleared"
+describes, even though not one byte of the actual catalogue had been
+touched.
+
+Checked every other provider that `ref.watch`es one of `SessionRefresh`'s
+seven `WarmCacheNotice`-registered repositories
+(`catalog`/`shop`/`cars`/`serviceMarketplace`/`garage`/`maintenance`/
+`challenge`Repository`Provider`): `regionProvider` is the only one that is
+both (a) a `StateProvider`/`Notifier`-style provider holding externally
+mutable `.state` and (b) `watch`ing rather than `read`ing in its initializer.
+Every other consumer (`platformListingsProvider`, `productsProvider`,
+`rosterProvider`, `homePromotionsProvider`, …) is a plain derived `Provider`
+with no state of its own to lose — recomputing them on every announce is the
+whole point. `favoritesProvider`/`savedPartsProvider`/
+`selectedMaintenanceCarIdProvider` are `StateProvider`s too but seed from a
+constant (`{}`, `null`), not a watched repository, so they were never at
+risk.
+
+**Fix:** `ref.watch` → `ref.read` in `regionProvider`'s initializer. It still
+picks a sensible default the first time anything reads it (the catalogue is
+already warmed by then, at bootstrap or at the first screen that touches
+this provider); it just never again does so out from under a value the user
+or a previous default-pick already set. No other change needed — the
+region's own writers (`settings_screen.dart`'s region sheet,
+`services_screen.dart`'s picker) already write via `.notifier.state =`
+directly and are unaffected.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/state/settings_state.dart` | `regionProvider`: `ref.watch(catalogRepositoryProvider)` → `ref.read(...)`, with the reasoning recorded in a doc comment so it is not "corrected" back by a future edit that does not know why |
+| `test/session_refresh_test.dart` | new group "signing out must not reset device preferences that are not account data" — sets a non-default region, signs an account in then out, asserts it survived both. Verified this test fails against the pre-fix `watch` (region snapped from the chosen 'Dhofar' back to 'Muscat') before confirming it passes against the fix |
+
+### Verified
+- `flutter analyze lib test` — clean apart from the pre-existing
+  `use_null_aware_elements` info in `lib/core/utils/contact.dart:23`.
+- `flutter test` — 518 passed (517 from the entry below + 1 new).
+- Manually reverted the fix, re-ran the new test alone, confirmed it fails
+  with the exact symptom reported (`Muscat` where `Dhofar` was expected),
+  then restored the fix and confirmed it passes again — the test is proven
+  to catch the regression, not just to pass by construction.
+- **Not** run on a device or emulator — same limitation as every entry
+  above this one.
+
+---
+
+## 2026-08-15 · Signing out still left the workshop dashboard showing the departed owner's data — two real state leaks found and fixed
+
+**Baseline:** `7cf6a5f` (working tree already carried the 2026-08-12/13 role
+and dashboard work, uncommitted). Request: "logout ends session but not
+deleting the current user data. the account types and their dashboards
+ideas not working as I expected." — a review of the sign-out and
+owner/workshop-dashboard work already in the tree, against exactly that
+complaint.
+
+**Confirmed first: the backend and the client's own auth/session state are
+both correct.** `LogoutCommandHandler` (`AKCarsMobileAPI`) properly revokes
+the caller's whole refresh-token family and deletes their device
+registrations; `AuthState.profile` is cleared synchronously on
+`AuthNotifier.signOut()`; `SessionRefresh.clearAfterSignOut` already dropped
+`requestsProvider`/`ordersProvider`/`notificationsProvider`/`reviewsProvider`
+and invalidated `garageProvider`/`maintenanceProvider`/`challengeProvider`/
+`myAdsProvider`/`chatProvider`. None of that was the bug.
+
+**Bug 1 — the workshop dashboard's `AsyncNotifierProvider`s were never
+invalidated by anything, ever.** `lib/state/provider_dashboard_state.dart`
+(`workshopSummaryProvider`, `myWorkshopProfileProvider`,
+`workshopOfferingsProvider`, `workshopAddOnsProvider`,
+`workshopInventoryProvider`, `workshopStaffProvider`,
+`workshopRequestsProvider`, `workshopCustomersProvider`,
+`workshopCustomerDetailProvider`, `workshopScheduleProvider`,
+`workshopScheduleConfigProvider`, `workshopDashboardEarningsProvider`,
+`workshopDashboardMetricsProvider`) all read through `workshopRepositoryProvider`
+with `ref.read`, not `ref.watch` — so `WarmCacheNotice.announce()` (which
+works by calling `notifyListeners()` on each *registered repository's own
+ref*, reaching only its `watch`ers) never touched them, and
+`SessionRefresh` never listed them at all. A non-`autoDispose`
+`AsyncNotifierProvider` keeps its resolved `AsyncData` forever once built,
+so once one workshop owner opened `/workshop/dashboard`, every one of these
+screens (summary KPIs, offerings, add-ons, inventory, staff, orders,
+customers, schedule, earnings, the workshop's own profile) went on showing
+that owner's data — through a sign-out, and through a *different* workshop
+owner signing in on the same device — until something unrelated happened to
+invalidate them. Fixed by adding all thirteen to
+`SessionRefresh._announce()`, which now runs on both `refreshEverything`
+(sign-in) and `clearAfterSignOut` (sign-out), the same as the five
+account-scratch providers already there.
+
+**Bug 2 — `OperatorQueueNotifier._marketplace` is a plain field, and a field
+is not what `clearAfterSignOut`'s existing reasoning accounted for.** The
+method's own doc comment claimed `operatorQueueProvider` "needs no entry
+here: it derives from `requestsProvider` via `ref.watch`, so clearing that
+clears it too" — true that `build()` reruns, false that rerunning resets
+`_marketplace`: that field holds every account's bookings as last fetched by
+`refresh()` (most recently at sign-in), and `_merged(mine)` folds it into
+`state` regardless of what `mine` is. So the founder/operator queue kept
+showing every booking on the platform from the last signed-in session,
+through a sign-out, until the *next* sign-in's own `loadSessionLists()`
+happened to call `refresh()` again — a narrow but real window, and the
+comment describing why it was safe was simply wrong once checked against the
+field it was describing. Added `OperatorQueueNotifier.clear()` (resets
+`_marketplace` to `const []`, same shape as `_replace`) and call it from
+`clearAfterSignOut`.
+
+**Bug 3 — stale UI copy, not a state bug but the same complaint's territory.**
+`ProfileScreen`'s `_WorkshopApplicationCard` told every approved workshop
+owner: *"If the panel does not open, switch your role to 'Workshop' in
+Settings."* That device-local role switcher was removed in the 2026-08-12
+"Removed the demo role switcher" entry — Settings has had no such control
+since. An owner for whom `/workshop/dashboard` failed to open for any other
+reason would have followed instructions for a feature that no longer exists.
+Deleted the paragraph; the `/workshop` → `/workshop/dashboard` redirect
+either works (real ownership + approval, checked by `_guardOperatorPanels`
+on every navigation) or it doesn't, and there is nothing left for the user
+to toggle either way. Also corrected three doc comments
+(`provider_dashboard_state.dart` ×2, `dashboard_home_screen.dart`) still
+describing the deleted `workshop_state.dart`/`isStandingInForDemoProvider`
+mechanism.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/state/session_refresh.dart` | `_announce()` invalidates all 13 `provider_dashboard_state.dart` providers; `clearAfterSignOut` calls `operatorQueueProvider.notifier.clear()`; doc comments corrected |
+| `lib/state/operator_queue_state.dart` | new `OperatorQueueNotifier.clear()` |
+| `lib/features/profile/profile_screen.dart` | removed the stale "switch role in Settings" paragraph from `_WorkshopApplicationCard` |
+| `lib/state/provider_dashboard_state.dart` | two doc comments no longer describe the deleted role-switcher/`workshop_state.dart` mechanism |
+| `lib/features/workshop_dashboard/dashboard_home_screen.dart` | doc comment now names the real guard (`_guardOperatorPanels`) instead of the deleted `isStandingInForDemoProvider` |
+| `test/fakes/mock_workshop_service.dart` | `MockWorkshopService.provider` setter, so a test can simulate a second owner's workshop without a second fake |
+| `test/session_refresh_test.dart` | two new tests in "signing out clears the whole app": the workshop dashboard reflects a different workshop after sign-out (proved via the fake answering a different `ServiceProvider.id`, not a call count — `ref.invalidate` on a never-yet-built provider triggers an immediate debug-mode build via `_debugAssertCanDependOn`, which made a naive call-count assertion flaky), and the operator queue drops marketplace-wide bookings on sign-out |
+
+### Verified
+- `flutter analyze lib test` — clean apart from the pre-existing
+  `use_null_aware_elements` info in `lib/core/utils/contact.dart:23`.
+- `flutter test` — 517 passed (515 pre-existing + 2 new).
+- Backend: read-only review of `LogoutCommandHandler`, `TokenService`, and
+  `CurrentUser.IsFounder` — all three already correct, not touched.
+- **Not** run on a device or emulator — same limitation as every entry
+  above this one.
+
+### Known-adjacent, left alone
+- The founder/admin panel's own providers (`rosterProvider`,
+  `payoutsProvider`, `auditLogProvider`, `onboardingPipelineProvider`) were
+  checked and are fine: they read `serviceMarketplaceRepositoryProvider`
+  with `ref.watch`, so `WarmCacheNotice.announce()` does reach them — the
+  same mechanism that does not reach `provider_dashboard_state.dart`'s
+  providers, because those use `ref.read`. Not a second version of bug 1.
+
+---
+
+## 2026-08-13 · Added a real, log-in-able demo founder account (backend: `AKCarsMobileAPI`)
+
+**Baseline:** the "Signing out now refreshes app data" entry immediately
+below. Request: manual testing needed a workshop owner login (already
+seeded, but its `ServiceProvider.OwnerUserId` link had never actually been
+inserted — filled in directly against the local SQLEXPRESS dev DB, no code
+change needed there), then a way to actually approve a workshop, which needs
+a founder login — and none existed anywhere in this backend.
+
+`DemoMarketplaceSeed.cs` gained `DemoFounderId`/`FounderPhone`
+(`+968 9200 0000`) and a `FounderUser` singleton (`IsFounder = true`, `Kind =
+Customer` — founder is orthogonal to account kind, same as in production).
+`DemoDataSeeder.cs` inserts it under its own per-id check, same pattern as
+the existing workshop-owner/technician logins, so a database that already has
+real users still gets this one login on the next `AKCARS_SEED_DEMO_DATA=true`
+run. Same OTP flow as every other demo login (`LoggingOtpSender` logs the
+code to the server console in dev — no real SMS gateway wired up yet).
+
+Also inserted directly into the current local dev DB (SQLEXPRESS,
+`AKCarsMobileDb`) so it's usable immediately without restarting the already-
+running backend process: the founder user row, computed with the exact same
+`DeterministicGuid.From("DemoUser:founder")` the new code produces, so a
+future seeder run recognises it as already present rather than inserting a
+duplicate.
+
+**Verified:** `POST /auth/login` against the live local backend found the
+account and returned `kind: "customer"` as expected (founder status is
+JWT-only, not visible on the profile — see the 2026-08-12 role-derivation
+entry). Did not run `dotnet build`/`dotnet test` — every attempt to build
+the `AKCars.Infrastructure` project to a scratch output path hit an MSBuild
+duplicate-`AssemblyInfo` error unrelated to this change (the live `dotnet
+run` process already holds the project's normal build output open); verified
+by close inspection against `User.cs`'s actual properties and the existing,
+already-compiling `WorkshopUsers`/`DemoDataSeeder` code this mirrors instead.
+Worth a real `dotnet build` next time the backend process is stopped anyway.
+
+---
+
+## 2026-08-13 · Signing out now refreshes app data, and a real Riverpod race that hid a booking after a fast sign-out→sign-in was found and fixed along the way
+
+**Baseline:** the "Removed the demo role switcher" entry immediately below.
+Request: "when user log out refresh app data" — signing in already re-read the
+whole app (`SessionRefresh.refreshEverything`, see the 2026-08-11-era work);
+signing out just cleared `AuthState` and left every warm cache and every
+per-account list holding the departed account's data. The garage tab kept
+showing that account's cars, "My orders"/"My bookings" kept their contents,
+and a founder's payout ledger stayed cached for whoever used the app next on
+the same device.
+
+**`SessionRefresh.clearAfterSignOut`** — the mirror image of
+`refreshEverything`: refills every warm cache (public catalogues included,
+same reasoning as sign-in — they may be stale by the time someone signs out)
+but with `includeFounderLedger: false`, so a founder's payouts/audit-log
+cache is dropped rather than refetched; announces the refill so
+`garageProvider`/`maintenanceProvider`/`challengeProvider`/`myAdsProvider`/
+`chatProvider` re-derive (garage/maintenance correctly fall back to this
+device's own local guest store, since the token is already cleared by the
+time this runs); and clears the per-account lists (`requestsProvider`,
+`ordersProvider`, `notificationsProvider`, `reviewsProvider`) since there is
+nobody left to reload them for. `AuthNotifier.signOut` awaits the token clear
+first, then fires this off unawaited — same fire-and-forget shape as
+sign-in's own refresh, so "sign out" never blocks on a network round trip.
+
+**The bug this surfaced, not one anticipated:** `flutter test` immediately
+failed an *existing, untouched* test (`session_refresh_test.dart`'s "the
+account's own bookings and orders arrive") once `clearAfterSignOut` invalidated
+`requestsProvider`/`ordersProvider` via `ref.invalidate`. Traced with a
+throwaway debug build to `RequestsNotifier.load()` finding `_disposed == true`
+on a notifier instance obtained *fresh* from `ref.read(requestsProvider.notifier)`
+moments earlier in a completely separate, later `SessionRefresh` call — i.e.
+`ref.invalidate()` on a `NotifierProvider`, read via `.notifier` from a plain
+`Provider`'s `Ref` (never from a widget's `watch`), can leave the provider
+disposed rather than rebuilt by the time the next unrelated call goes looking
+for it. Fixed by not invalidating these four providers at all: each notifier
+(`RequestsNotifier`, `OrdersNotifier`, `NotificationsNotifier`,
+`ReviewsNotifier`) gained a `clear()` method that just writes
+`state = const []` directly — the same plain `state =` mutation every other
+method on these classes already uses, with no disposal/rebuild cycle to race.
+`NotificationsNotifier.load()`'s own doc comment had already flagged half of
+why invalidating it specifically is wrong (a second push subscription opened
+without closing the first) — this was the second, independent reason.
+
+**A second, real race, caught by the same failing test once the first fix
+landed:** signing out and immediately signing back in — the pattern
+`session_refresh_test.dart`'s own `_createAccountThenSignOut` helper uses —
+runs two fire-and-forget `SessionRefresh` calls back to back. Nothing stopped
+the sign-out's tail (clearing `requestsProvider`) from finishing *after* the
+following sign-in's tail (loading it), which would have silently dropped the
+new session's freshly-loaded bookings. Fixed with `AuthNotifier.generation`,
+an `int` bumped by `register`/`login`/`signOut` and threaded into
+`refreshEverything`/`clearAfterSignOut`; each checks, right after its one slow
+step (the network refill), whether a newer generation has since started, and
+if so stops before touching any provider — so only the most recently started
+call is ever allowed to apply its effects, regardless of which one finishes
+first.
+
+**Verified:** `flutter analyze` (clean, one pre-existing unrelated info-level
+lint), `flutter test` (515 passed). Added two tests to
+`session_refresh_test.dart`'s new "signing out clears the whole app" group:
+bookings/orders are dropped on sign-out, and the founder-ledger fetch is not
+repeated (a call-count field, `MockServiceMarketplaceService
+.fetchPayoutsCallCount`, added to the fake to observe it). Not run: a live
+device pass (same limitation as every entry above this one).
+
+---
+
+## 2026-08-12 · Removed the demo role switcher — roles are real account facts now, and workshops get a statistics screen with charts
+
+**Baseline:** the "Workshop Dashboard follow-up" entry immediately below.
+Request: "I dont want a demo view or using mode. make it real... when user
+login as a workshop role then the workshop dashboard will [enable] in the
+settings menu if the workshop is approved. also the owner dashboard will
+display only if the user role is owner... use charts for statistics."
+
+**The demo mechanism, gone.** `lib/state/role_state.dart`'s `RoleNotifier`
+used to be a `Notifier<AppRole>` backed by a SharedPreferences key — a
+device-local switch, changeable from Settings, that let any signed-in account
+preview the workshop or founder panel regardless of what it actually owned or
+was. `activeRoleProvider` is now a plain derived `Provider<AppRole>` with no
+`setRole` at all:
+
+- `AppRole.founder` ⟸ a new `AuthState.isFounder` flag, decoded off the
+  stored JWT's own role claim by a new `lib/core/utils/jwt_claims.dart`. The
+  backend (`TokenService.GenerateAccessToken`) has minted a real
+  `ClaimTypes.Role: "founder"` claim all along; nothing on the client ever
+  read it before. `jwt_claims.dart`'s doc comment records the one non-obvious
+  fact this needed: the claim's actual JSON key in the token is the long
+  `http://schemas.microsoft.com/ws/2008/06/identity/claims/role` URI, not the
+  short `"role"` string — confirmed empirically by minting a token with the
+  real `TokenService` in a throwaway console probe and decoding its payload,
+  since `JwtPayload.AddClaims` writes `Claim.Type` verbatim and the
+  short-name remapping only exists on the inbound/validation side.
+  `AuthState.isFounder` is decoded once per `restore()`/`login()`/`register()`
+  — same caching shape as `AuthState.profile` — so router guards read it
+  synchronously.
+- `AppRole.workshop` ⟸ `providerOwnedBy(userId)?.isApproved == true` — real
+  ownership (keyed on `ServiceProvider.ownerUserId`, so a staff member linked
+  to the roster but not the owner does not get this), already-existing data,
+  just no longer bypassable by a role switch. This is also the direct answer
+  to "owner dashboard only if the user role is owner": since the role itself
+  is now defined as ownership, there is no separate check to add.
+- `activeRoleProvider` watches the founder panel's own `adminRevisionProvider`
+  (bumped after every founder write) and registers with `WarmCacheNotice`, so
+  an approval made from the founder's panel is picked up on the account's
+  next read rather than freezing at whatever it first resolved to — this was
+  a real bug caught by a test (see below), not a hypothetical one.
+
+**`/workshop` retired as a second panel — it redirects.** The old read-only
+`lib/features/operations/workshop_screen.dart` and its
+`lib/state/workshop_state.dart` (`activeWorkshopProvider`,
+`isStandingInForDemoProvider` — the "first approved workshop" stand-in that
+made the demo view possible) are deleted. `GoRoute(path: '/workshop',
+redirect: (_, __) => '/workshop/dashboard')` sends every old deep link into
+the real dashboard, gated by the same real ownership+approval check
+`_guardOperatorPanels` already applied there — simplified now that there is
+no demo tolerance branch to carve an exception around. This was not just a
+cleanup: the old panel's Jobs tab read `operatorQueueProvider`
+(`GET /operator/requests`), which is founder-only on the real backend, so it
+could never have worked for a genuine (non-founder) workshop owner in the
+first place — it only ever worked against the demo stand-in or the test
+fakes, which don't enforce that boundary. `AppRole` itself
+(`data/models/app_role.dart`) lost `key`/`fromKey`/`hasPanel`/`panelRoute`/
+`label`/`description` — all switcher-only members with no other caller once
+the switcher was gone.
+
+**Settings' "How you're using this" section → "My business".** The
+`_RoleSwitcher` widget (three tappable rows, one per role, a checkmark on
+whichever was picked) is replaced by `_businessSection`: a "Workshop
+dashboard" row, shown only when the account's `kind == AccountKind.workshop`
+— tappable straight into `/workshop/dashboard` once approved, or showing the
+real `ProviderOnboardingStage.label` (e.g. "Documents submitted") and routing
+to `/profile` instead while it's not; and a "Founder panel" row, shown only
+when `AuthState.isFounder`. Neither row exists for a plain customer — no
+section renders at all, matching the old "customer has no panel" invariant
+but now because there is genuinely nothing to show, not because a switch
+defaults to hidden.
+
+**Statistics, with real charts.** `workshopDashboardEarningsProvider`/
+`workshopDashboardMetricsProvider` (`provider_dashboard_state.dart`) existed
+since the original dashboard build but had no screen reading them anywhere —
+a named gap nobody had come back to. New
+`lib/features/workshop_dashboard/statistics_screen.dart`: a 7/30/90-day
+window selector, an `fl_chart` (new dependency) bar chart of net earnings
+bucketed from `WorkshopEarnings.lines` by day (capped at 14 bars regardless
+of window length — a 90-day view groups into roughly weekly buckets rather
+than rendering ninety illegible slivers), and the acceptance/completion/
+dispute rate cards the old panel's Performance tab used to show, now backed
+by the server-computed metrics endpoint. Added as a quick-action tile on the
+dashboard home screen; regenerated the dashboard home's 3 golden baselines
+since the KPI/quick-action grid gained a row.
+
+**A real bug the tests caught mid-implementation:** the first version of
+`activeRoleProvider` only watched `authProvider` and
+`serviceMarketplaceRepositoryProvider` — since the repository's *identity*
+never changes when a founder approves a workshop (only its internal roster
+does), Riverpod never recomputed the provider, and a freshly-approved
+workshop kept reading back as `AppRole.customer` until something unrelated
+invalidated it. Caught by `scenario_integrity_test.dart`'s rewritten scenario
+8 failing with exactly that stale value; fixed by watching
+`adminRevisionProvider`, the same mechanism `rosterProvider`/
+`pendingApplicationsProvider` already use for the identical reason.
+
+**Verified:** `flutter analyze` (clean, one pre-existing unrelated info-level
+lint), `flutter test` (513 passed). Rewrote `test/scenario_integrity_test.dart`
+scenario 8, `test/focus_flags_test.dart`'s "roles" group and
+`test/operator_panels_test.dart`'s workshop-panel test (now pumps the real
+`OrdersScreen` with a booking seeded into the workshop fake, rather than the
+deleted `WorkshopScreen`) to assert the derived roles instead of a switch;
+added `test/settings_business_section_test.dart` (4 tests: customer sees no
+section, pending applicant sees a status row, approved owner sees a real
+link, founder JWT shows the founder row) and a `StatisticsScreen` smoke test
+in `test/workshop_dashboard_test.dart`. Not run: a live device pass (same
+limitation as every entry above this one — this is a Flutter mobile app, not
+a web dev server).
+
+---
+
+## 2026-08-12 · Workshop Dashboard follow-up — closed the four named gaps from the previous entry
+
+**Baseline:** the "Workshop (Provider) Dashboard" entry immediately below.
+That entry shipped with four gaps named rather than silently stubbed; this
+entry closes all four.
+
+**1. Quote submission wired into the new orders screen.** Extracted the
+private `_QuoteSheet`/`_QuoteSheetState` out of
+`lib/features/operations/workshop_screen.dart` into a public
+`lib/features/operations/quote_sheet.dart` (`QuoteSheet` widget, verbatim
+logic, no behaviour change) so both the old panel's Jobs tab and the new
+`lib/features/workshop_dashboard/orders_screen.dart` show the same sheet.
+`orders_screen.dart`'s escrow-transition handler now branches on
+`EscrowEvent.submitQuote` the same way it already branched on
+`submitProof`: opens `QuoteSheet`, then calls
+`ServiceMarketplaceRepository.submitQuote` directly (not through
+`EscrowActionBar`, for the same founder-only-endpoint reason the rest of that
+screen already avoids it). `OperatorShell` gained an optional `actions` param
+so the dashboard's app bar can carry the same icon-button chrome the old
+panel used.
+
+**2. Founder audit-log entries for inventory/staff/customer writes.**
+`WorkshopRepositoryImpl` now takes a second constructor dependency
+(`ServiceMarketplaceService`, for its existing `appendAudit` — no new
+service, reusing the same audit log the escrow/payout flows already write
+to) and a private `_audit()` helper mirroring
+`ServiceMarketplaceRepositoryImpl._audit()`'s shape: called once after each
+successful mutation, best-effort (an `AppException` from the audit call
+itself is swallowed rather than failing the write it's describing).
+Wired after `createInventoryItem`/`updateInventoryItem`/
+`deleteInventoryItem`/`recordInventoryMovement`/`createStaff`/`updateStaff`/
+`deactivateStaff`/`addCustomerNote`. `AuditSubjectType` gained `inventory`,
+`staff`, `customer` (with `label(S s)` cases) since none of those existed as
+audit subjects before — `payout`/`booking`/etc. were the only prior
+subjects. `di/providers.dart`'s `workshopRepositoryProvider` updated to pass
+the new dependency.
+
+**3. HTTP-level integration tests for `/my-workshop/*`.** New
+`Microsoft.AspNetCore.Mvc.Testing` 8.0.10 dependency in
+`AKCars.Tests.csproj` — no `WebApplicationFactory` existed anywhere in that
+repo before this. `tests/AKCars.Tests/Integration/MyWorkshopApiFactory.cs`
+boots the real `Program` against an InMemory EF database (one per test, via
+`IAsyncLifetime`, not a shared `IClassFixture` — a shared fixture would leak
+state between the ownership-boundary tests this suite exists to catch) and
+mints real JWTs through `ITokenService` for a seeded owner or staff account.
+Two bugs found and fixed while building the harness, both now documented
+inline: `Program.cs`'s unconditional `UseHttpsRedirection()` combined with
+`SocketsHttpHandler` stripping `Authorization` across a scheme-changing
+redirect (fixed by pointing `ClientOptions.BaseAddress` at `https://`), and a
+signing-key mismatch between `AddJwtBearer`'s eager config read and
+`ITokenService`'s lazy `IOptions<JwtSettings>` read when a
+`ConfigureAppConfiguration` override was in play (fixed by dropping the
+override and using `UseEnvironment("Development")` so both paths read the
+same file-backed key). 6 new tests in
+`MyWorkshopEndpointsIntegrationTests.cs` covering a real create+read round
+trip, cross-workshop isolation, the non-approved-workshop 422, the
+technician-403 and manager-201 authorization cases, and an unauthenticated
+401 — all passing.
+
+**4. Pixel golden tests for the dashboard home screen.** No golden-file infra
+existed anywhere in this repo before this. `AppTheme` gained a test-only
+static flag, `debugDisableGoogleFonts` (default `false`, never read in
+production — same pattern as Flutter's own `debugDisableShadows`-style
+flags): when set, both `GoogleFonts.*` call sites in `_build()`/`numeric()`
+are skipped in favour of the base Material text theme. This exists because
+`google_fonts` fetches its `.ttf` files over the network on first use, which
+made a golden test's pixels depend on network reachability — and this
+sandboxed environment could not reach `fonts.gstatic.com` at all, so runtime
+fetching failed outright; the alternative (`allowRuntimeFetching = false`)
+just traded that failure for a different one, since it requires the font to
+already be a bundled local asset, which this app has never needed before
+now. New `test/dashboard_home_golden_test.dart` sets the flag in
+`setUpAll`/clears it in `tearDownAll`, pumps `DashboardHomeScreen` at a fixed
+402×1400@3x viewport in three configurations (Arabic/light, English/light,
+Arabic/dark), and asserts against 3 new baseline PNGs under `test/goldens/`
+generated on this machine with `flutter test --update-goldens`. As documented
+in the test file's own header: these intentionally do not exercise the real
+app fonts, so they catch layout/colour drift, not a font-rendering
+regression — if the goldens ever need regenerating on a different
+machine/CI image, `--update-goldens` is the way, same as any Flutter golden
+suite.
+
+**Verified:** Flutter — `flutter analyze` (clean, one pre-existing unrelated
+info-level lint in `lib/core/utils/contact.dart`), `flutter test` (509
+passed, including the 3 new golden tests, the audit-trail test added to
+`workshop_dashboard_test.dart`'s "Founder audit trail" group, and no
+regressions in the pre-existing 505). Backend — `dotnet build`, `dotnet test`
+(the 6 new integration tests plus the existing 933 unit/handler tests, all
+passing). Not run: a live device pass (same limitation as the previous
+entry — this is a Flutter mobile app, not a web dev server).
+
+---
+
+## 2026-08-12 · Workshop (Provider) Dashboard — real CRUD for a workshop's offerings, add-ons, inventory, staff, customers and schedule
+
+**Baseline:** `7cf6a5f`. Request: `docs/prompts/provider_dashboard_prompt.md`
+— build a modern operational home for a workshop owner (reachable from
+Settings) backed by real endpoints, replacing the fact that
+`lib/features/operations/workshop_screen.dart` only ever *displayed* derived
+data and a provider could not create, edit or delete anything.
+
+Two corrections to the prompt's own assumptions, confirmed by direct audit
+before any code was written: (1) its backend path
+(`C:\Projects\Cars Project\AKCarsMobileAPI`) does not exist — the real API is
+`C:\Projects\Cars Project\AKCarsMobilApp\AKCarsMobileAPI` (Clean Architecture,
+CQRS/MediatR, minimal APIs, confirmed accurate once pointed at the right
+path); (2) the demo pilot's client-side "role switcher" fallback
+(`activeWorkshopProvider` standing in with the first approved workshop when
+the signed-in account owns none) cannot extend to real, per-owner endpoints —
+`/my-workshop/*` resolves ownership from the JWT server-side with no roster
+to fall back into, so an account standing in for a workshop it does not own
+gets `403 workshop_not_owned` on the first call. The new dashboard is
+therefore **additive**, not a replacement for `/workshop`: reachable at
+`/workshop/dashboard`, gated on real ownership
+(`!isStandingInForDemoProvider`), linked from an app-bar button on the old
+panel once that gate passes. The old panel is untouched and still serves the
+pilot/demo role-switch case.
+
+### Backend (`AKCarsMobileAPI`)
+
+New entities `InventoryItem`, `InventoryMovement` (append-only stock ledger —
+`InventoryItem.QuantityOnHand` is a projection over it, never written
+directly), `WorkshopStaff`, `WorkshopCustomerNote`, plus
+`ServiceRequest.AssignedStaffId` and `ServiceOffering.IsActive` (the public
+catalogue read now filters on it). Three migrations
+(`AddWorkshopDashboard`, `AddServiceOfferingIsActive`,
+`AddWorkshopScheduleConfig`). 24 endpoints under
+`/api/v1/service-marketplace/my-workshop/*` (profile, summary, offerings,
+add-ons, inventory + movements, staff + assign, requests, customers + notes,
+schedule, earnings, metrics) in `MyWorkshopEndpoints.cs`, every handler
+resolving the caller's workshop from `ICurrentUser.ProviderId` — never a
+route parameter — via a new shared `WorkshopAccess` gate
+(owned → approved → owner-or-manager). New `WorkshopFinanceCalculator`
+computes held/released/commission figures server-side for the first time
+(previously entirely client-computed). 8 new `ErrorCodes`. Seed data extended
+with a real, log-in-able demo workshop owner (`DemoMarketplaceSeed.
+WorkshopOwnerPhone`) plus a technician account, staff roster and inventory —
+none of the seeded providers had an owner account before this. 933 backend
+tests pass (26 new: `WorkshopAccess`, `CreateOffering`,
+`RecordInventoryMovement`, `DeleteOffering`, `AssignRequest`), covering the
+three authorisation cases the spec named: another workshop's id, a
+non-approved workshop, and a technician attempting an owner/manager-only
+write.
+
+### Flutter app
+
+New models (`inventory_item`, `inventory_movement`, `workshop_staff`,
+`workshop_customer`, `workshop_summary`, `workshop_schedule`) plus
+`fromJson`/`toJson` added to the previously wire-less `WorkshopEarnings`/
+`EarningsLine` now that earnings are server-computed; `ServiceOffering` and
+`ServiceRequest` gained `isActive`/`assignedStaffId`. New `WorkshopService`/
+`ApiWorkshopService`/`WorkshopRepository` (kept separate from
+`ServiceMarketplaceService`, which already sits at ~24 members — this adds
+~30 more). New `lib/state/provider_dashboard_state.dart` —
+`AsyncNotifier`-based (deliberately, unlike `operator_queue_state.dart`'s
+plain `Notifier` + manual `refresh()`: this screen starts with nothing loaded
+and needs real loading states). New `lib/features/workshop_dashboard/` — home
+(KPI cards, alerts, quick actions), offerings, add-ons, inventory (+ stock
+movement sheet), orders (filterable queue, fires escrow transitions directly
+through `ServiceMarketplaceRepository` rather than
+`EscrowActionBar`/`operatorQueueProvider`, because that pair's list source is
+founder-only on the real backend and would silently no-op for a real
+workshop owner), staff, customers (+ detail with notes and gated contact),
+schedule, profile (+ completeness meter). Added the Settings role-switcher
+section that `role_state.dart`/`app_router.dart` both referenced but that did
+not actually exist in `settings_screen.dart`.
+
+**Known gaps, named rather than hidden:** quote submission for a
+part-install request is not wired into the new orders screen (still on the
+`/workshop` panel's Jobs tab); founder audit-log entries are not written for
+inventory/staff/customer mutations (would require coupling
+`WorkshopRepository` to `ServiceMarketplaceService` purely to call
+`appendAudit`); no HTTP-level integration tests for the new backend routes
+(unit tests drive the handlers directly against an InMemory EF context — no
+`WebApplicationFactory` exists yet anywhere in that repo to build on); no
+pixel golden tests (no golden-file infra exists anywhere in this repo either
+— the "RTL/LTR golden" test is a build/content smoke test in both
+directions, not a pixel comparison).
+
+**Verified:** backend — `dotnet build`, `dotnet test` (933 passed), `dotnet
+ef database update` applied against the local dev database. Flutter —
+`flutter analyze` (clean project-wide), `dart format`, `flutter test` (505
+passed, including 6 new: dashboard smoke in Arabic/English, offering
+create/edit/publish/delete, inventory movement math including the
+insufficient-stock rejection, staff deactivation). Not run: a live device/
+simulator pass against the real API (`preview_tools` are web-browser-based
+and do not apply to this Flutter mobile app).
+
+---
+
+## 2026-08-11 · Booking slot time showed as raw "09:00" text instead of a formatted clock time
+
+**Baseline:** `7cf6a5f`. Request: "edit any date and time as date and time
+format not as text — see the [Slot] in the services request table" —
+`request.slot` itself (`lib/data/models/service_request.dart`) is a free-text
+label composed once at booking time, and its *date* portion already went
+through `DateFormat('EEE d MMM', …)` — but the *time* portion was the raw
+`"HH:mm"` string straight from `GET .../slots` (backend's fixed slot list:
+`09:00`, `10:30`, `12:00`, …), concatenated as plain text with no locale
+formatting. That produced labels like `"Fri 15 Aug · 09:00"` — half formatted,
+half literal — and the same raw `"09:00"`/`"10:30"` strings were also shown
+verbatim on the slot-picker chips in `booking_screen.dart`.
+
+### Fix
+
+Added `_formatSlotTime(raw, isAr)` in `lib/features/services/booking_screen.dart`
+— parses the `"HH:mm"` key and renders it with `DateFormat('h:mm a', isAr ?
+'ar' : 'en')` (e.g. `"9:00 AM"`), falling back to the raw string if it isn't in
+the expected shape. Wired into `_slotLabel()` (the string sent to the backend
+as `ServiceRequest.Slot` and shown on `requests_screen.dart` /
+`tracking_screen.dart` / `escrow_action_bar.dart`, all of which just echo that
+already-composed string) and into the `_SlotChip` picker labels. The raw
+`"HH:mm"` value is still what's compared for selection/availability and stored
+as `_slot` — only the *displayed* text changed. Also renamed the chip-loop's
+loop variable from `s` (shadowing the outer `S.of(context)` instance) to
+`slot`, which is what made reaching `s.isAr` inside the loop possible.
+
+**Verified:** `dart analyze` on both changed files — no issues. Not run
+in the simulator/device — this is a display-string change with no new state
+or network calls, and the existing `DateFormat(pattern, 'ar')` call one line
+above (already in the codebase, unchanged by this edit) uses the same
+locale-string pattern this one follows, so it carries no new risk beyond what
+already shipped.
+
+---
+
+## 2026-08-11 · Chat's REST fallback was polling every 5s for up to 5 minutes per message
+
+**Baseline:** `7cf6a5f`. Request: server logs showed `GetThreadMessagesQuery`
+firing every 5 seconds right after a chat message was sent — flagged as a
+server-cost concern.
+
+### The mechanism
+
+`ApiChatService.awaitProviderReply` (`lib/data/services/api/api_chat_service.dart`)
+already treats SignalR as the fast path and REST polling as a fallback that's
+only supposed to run "while the hub is disconnected" — that part was already
+correct. What wasn't accounted for: once the hub failed to connect for a given
+message (any transient network hiccup, cold start, etc.), the old
+`Timer.periodic(Duration(seconds: 5), …)` kept firing at a flat 5s cadence for
+the entire `_replyTimeout` (5 minutes) with no attempt to reconnect the hub in
+between — worst case 60 REST calls to `GET
+/chat/threads/{id}/messages` for a single sent message if the provider was
+slow to reply.
+
+### Fix
+
+Replaced the flat-interval `Timer.periodic` with a self-rescheduling `Timer`
+that (a) retries `_hub.join(threadId)` on every tick before falling back to
+REST, so a transient drop can heal mid-wait instead of polling for the rest of
+the 5-minute window, and (b) doubles the poll interval each time REST is
+actually used (5s → 10s → 20s → capped at 30s), resetting to 5s the moment the
+hub reconnects. Worst case over 5 minutes drops from 60 requests to roughly
+12-13 with the hub down the whole time, while a reply in the first few seconds
+still gets picked up at the original 5s latency.
+
+**Verified:** `dart analyze lib/data/services/api/api_chat_service.dart` —
+no issues. Not verified against a live disconnected-hub scenario (would need a
+device/environment where the SignalR hub genuinely fails to connect to
+reproduce the original log pattern) — the diagnosis is why the client was
+capable of running the REST endpoint 5x more than intended, not a claim about
+why the hub was disconnected in the first place; that would need infra-level
+investigation (proxy/websocket support, TLS, auth) if it recurs.
+
+---
+
+## 2026-08-11 · Reserving a service failed with a 500, twice over
+
+**Baseline:** `7cf6a5f`. Request: "I was trying to reserve a service and the
+app crushed" with a Flutter console dump ending in `POST
+/service-marketplace/requests 500` and `ApiException(500): An error occurred
+while saving the entity changes.`
+
+### The real bug: booking any add-on a second time crashed the save
+
+`CreateServiceRequestCommandHandler`
+(`AKCarsMobileAPI/src/AKCars.Application/Marketplace/CreateServiceRequest/CreateServiceRequestCommand.cs`)
+built each `RequestAddOn` row with `Id = addOn.Id` — the **catalogue** add-on's
+own id, reused as the primary key of the new snapshot row.
+`RequestAddOnConfiguration` keys `RequestAddOns` on `Id` alone (not composite
+with `RequestId`), so the first booking of a given add-on inserted fine, and
+every booking of that same add-on by anyone, ever, after that hit a primary-key
+collision on `SaveChangesAsync` — exactly the "error occurred while saving the
+entity changes" the user hit. Since the DB has carried real data since
+2026-08-10 (`[[no-demo-seeder-decision]]`), most add-ons had already been
+booked at least once, so this was not an edge case — it reproduced on most
+bookings that included an add-on. Fixed by generating a fresh `Guid.NewGuid()`
+for `RequestAddOn.Id` instead; nothing reads it expecting it to equal the
+catalogue add-on's id (`ServiceRequestMapper.ToDto` only echoes it back as a
+snapshot id).
+
+### A second, real but separate bug in the same flow
+
+`BookingScreen._confirm` (`lib/features/services/booking_screen.dart`) built a
+placeholder `Car(id: 'adhoc', …)` when the signed-in customer had no primary
+car, a leftover from when this screen wrote a fake local `ServiceRequest`
+instead of calling the API (see `819d58c`, `228e1d2`). `carId` is a required
+`Guid` foreign key on the server
+(`CreateServiceRequestCommand`/`CreateServiceRequestBody`), so `"adhoc"` cannot
+bind as a `Guid` at all — this path fails before reaching the handler above,
+not with the same 500, but it is a real dead end with no way forward for the
+customer. `PartRequestScreen._send` already handles the equivalent case
+correctly: stop and send the customer to `/add-car`. `BookingScreen._confirm`
+now does the same instead of fabricating an id, and the actual
+`requests.place(...)` call is wrapped in try/catch — previously an API error of
+any kind (this 500 included) left `_confirming` stuck `true` forever with no
+feedback, matching the "crashed" report even though nothing in Flutter itself
+threw uncaught. Same recovery pattern as `AddCarScreen._watchWrite`: reset the
+button, heavy-impact haptic, a translated snackbar.
+
+### File-by-file
+
+| File | Change |
+|---|---|
+| `AKCarsMobileAPI/src/AKCars.Application/Marketplace/CreateServiceRequest/CreateServiceRequestCommand.cs` | `RequestAddOn.Id` is now `Guid.NewGuid()`, not the catalogue add-on's id |
+| `lib/features/services/booking_screen.dart` | `_confirm` now requires a real primary car (redirects to `/add-car` if none) and wraps `requests.place(...)` in try/catch with a reset + snackbar on failure |
+
+### Verified
+
+- `dotnet build src/AKCars.Application/AKCars.Application.csproj` — 0 warnings,
+  0 errors.
+- `flutter analyze lib/features/services/booking_screen.dart` and
+  `flutter analyze lib` — clean (one pre-existing unrelated info in
+  `core/utils/contact.dart`).
+- `flutter test test/translation_coverage_test.dart` — 26 passed, including
+  both booking-screen cases (the new strings have Arabic/English pairs).
+- **Not run:** the full `flutter test` suite, and no live end-to-end booking
+  against a running `AKCarsMobileAPI` instance (no dev server/DB available in
+  this session) — the add-on-collision fix in particular should be exercised
+  against a real database before this is called closed, since nothing in
+  `AKCars.Tests` currently covers `CreateServiceRequestCommandHandler` at all.
+
+---
+
+## 2026-08-11 · Signing in refreshes the whole app, not four repositories
+
+**Baseline:** the entry below, same working tree. Request: "when user login the
+whole app data should be refreshed".
+
+### What signing in used to do
+
+`AuthNotifier._warmAuthenticatedData` re-warmed exactly four repositories — the
+garage, the maintenance books, the challenge board and the service marketplace.
+That list was not chosen as "what a new session needs"; it was "what
+`AppBootstrap` had to skip because nobody was signed in yet". Two consequences:
+
+- **Everything bootstrap *had* warmed kept the guest's copy.** The catalogues,
+  the parts shop and the cars feed were fetched before sign-in and never fetched
+  again, however long the app had been open.
+- **The lists that belong to an account were never fetched at all.**
+  `OrderRepository.fetchOrders` and `ServiceMarketplaceRepository.fetchRequests`
+  had no caller anywhere in `lib/` — "طلباتي" and "حجوزاتي" showed only what had
+  been placed since the app was last opened, and after a cold start, nothing.
+
+### The part that was not obvious
+
+Re-warming alone fixes nothing visible. A `WarmCache` is a field on a
+long-lived repository, and Riverpod compares provider values by identity — so
+refilling one is silent to every `ref.watch(…RepositoryProvider)` above it, in
+~20 providers under `lib/state/` and ~15 widgets that read the marketplace
+directly. That is why the old four-repository warm-up appeared to work in the
+places it covered: those screens are rebuilt for other reasons on the way out of
+the auth flow.
+
+Invalidating the repository providers would announce the change and *also* throw
+the caches away, blanking every synchronously-read screen until the network
+answered. `Ref.notifyListeners` is Riverpod's own answer for this shape — it
+tells a provider's dependents to read again without rebuilding the provider — so
+each cache-holding repository now registers its `ref` with `WarmCacheNotice`
+(`lib/di/providers.dart`) and one `announce()` reaches all of them. Nothing has
+to remember to watch a revision counter, including code written later.
+
+A first attempt did use a counter (`dataRevisionProvider`, watched by each
+reader). It worked, needed ~35 one-line edits, and would have been silently
+wrong the first time somebody added a provider without it. Backed out.
+
+### What is new
+
+- **`lib/state/session_refresh.dart`** — `SessionRefresh`, the single place that
+  says what a session refresh is: refill all seven warm caches (the public
+  catalogues included), announce, then load bookings, orders, inbox, reviews and
+  the operator queue. Every step best-effort and logged; `401`/`403` as plain
+  lines, everything else with its stack. The session is committed before this
+  runs, so nothing here can strand a user on the auth screen.
+- **`RequestsNotifier.load` / `OrdersNotifier.load`** — the missing readers.
+  Deliberately *not* started from `build()`: both lists are mutated
+  optimistically while the user works, and a fetch begun on an earlier frame
+  landing on top of that would undo a transition they just watched happen.
+- **`NotificationsNotifier._loadFromServer` → `load`** — public, because
+  sign-in needs to call it. Invalidating that provider instead would open a
+  second push subscription without closing the first.
+- **`AppBootstrap`** now calls `loadSessionLists(includeSelfLoading: false)` for
+  a cold start with a stored token, which is what fixes the empty bookings and
+  orders on relaunch. The flag leaves out the inbox and the reviews, which load
+  themselves from their own `build()`. `_optionalForFounder` moved into
+  `SessionRefresh._bestEffort` and is gone from `bootstrap.dart`.
+
+Ads posted and chat threads opened are cleared rather than reloaded — on this
+phone they may belong to whoever was signed in before. The **cart is
+deliberately left alone**: a guest who fills a basket and signs in to check out
+must not lose it.
+
+### Verified
+
+`flutter analyze` clean (one pre-existing `use_null_aware_elements` info in
+`lib/core/utils/contact.dart`, untouched). `flutter test` — 488 passing,
+including three new ones in `test/session_refresh_test.dart`: a workshop
+suspended behind the app's back is visible after sign-in, an account's existing
+booking and order arrive, and a refresh whose network fails leaves the session
+intact with the old feed still on screen. The first was confirmed to fail
+without the `announce()` line, so it is a real regression test rather than a
+tautology.
+
+**Not verified:** nothing was run against the live API — the fakes were the only
+server. Worth watching on a real sign-in: `_refillWarmCaches` now issues every
+catalogue request a second time, and `ServiceMarketplaceRepositoryImpl.warmUp`
+fans out one `addOns` + one `availability` call per provider on top of that.
+
+---
+
+## 2026-08-11 · A clean launch that looked like a wall of crashes
+
+**Baseline:** the entry above, same working tree. Request: a `flutter run -d
+chrome` log, "check this logs if there any issues then fix them".
+
+### There were no failures in it
+
+Every request succeeded. The only non-2xx was `403` on `/payouts`, `/audit`
+and `/operator/requests` — founder-only, warmed once after sign-in, caught by
+`_optionalForFounder`. `Firebase.initializeApp() failed` is the documented
+no-native-config path. Nothing was broken.
+
+**The issue was that none of that was visible.** An ordinary launch printed
+roughly forty 25-line stack traces, and a real failure would have been
+indistinguishable from the wallpaper. That is a defect in its own right — a
+log nobody can read is a log nobody checks.
+
+### Two sources
+
+**Dio's web adapter warns, per request, that the call will trigger a CORS
+preflight** — with `StackTrace.current` attached. It is right about the
+mechanism and useless as a signal here: this client sends `application/json`
+and an `Authorization` header on nearly every call, so *every* request is a
+non-simple one. The preflights are fine — the API answers `OPTIONS` with
+`204` and the requests succeed.
+
+Silenced on web via `BrowserHttpClientAdapter.enableCORSWarning`, reached
+through a conditional import (`browser_cors_warning.dart` /
+`_web.dart`) so the native build never sees `package:dio/browser.dart`.
+
+**`AppBootstrap._optional` / `_optionalForFounder` attached `error` and
+`stackTrace` to their `developer.log` calls** — for conditions their own doc
+comments call "the ordinary answer, not a failure". `developer.log` renders
+that as a full exception dump. Now a plain line each; the two genuine failure
+logs in `auth_state.dart` keep their stacks, because those are real.
+
+### Not fixed, and not ours
+
+`dwds/src/injected/client.js` raises `TypeError: Instance of '_JsonMap': type
+'_JsonMap' is not a subtype of type 'List<Object?>'`. That is Flutter's own
+debug tooling (the webdev injected client), it exists only under `flutter run`
+on web, and its own message asks that it be filed against `dart-lang/webdev`.
+No app code is involved.
+
+### Files
+
+- **New:** `lib/core/network/browser_cors_warning.dart`,
+  `lib/core/network/browser_cors_warning_web.dart`.
+- `lib/core/network/dio_api_client.dart` — conditional import + one call.
+- `lib/app/bootstrap.dart` — four `developer.log` calls lose `error`/`stack`.
+
+### Verified
+
+- `flutter analyze` clean; `flutter test` — **485 passed, 0 failed**.
+- **Ran on web against the live API, both states.** Guest cold start: 31
+  requests, all `200`, and the console holds **nothing** from Dio,
+  `AppBootstrap` or `PushService`. Signed in: `/user/profile`,
+  `/user/vehicles`, `/user/vehicles/maintenance` and both `/challenges/board`
+  all `200`, founder-only `403`, every `OPTIONS` `204` — and again no console
+  output from any of the three.
+- The conditional import genuinely compiles on web: the run above *is* the web
+  build, and the warnings it was written to suppress are gone from it.
+- **Not checked:** a native (Android/iOS) build. The stub is a one-line no-op
+  and `flutter analyze` covers that path, but no device was available to run
+  it on.
+
+---
+
+## 2026-08-11 · "Could not log in — try again" was the wrong advice four times out of five
+
+**Baseline:** the entry below, same working tree. Request: a console log full of
+`POST /auth/login/verify 401`, "why do these errors happen?", then "yes" to
+making the messages specific.
+
+### The 401s were not a bug
+
+`/auth/login/verify` answers `401 otp_invalid_or_expired` for four cases: no
+challenge, expired (>5 min), five attempts used up, or **the wrong code**. The
+database said which one it was — the challenge created at 16:29 had
+`Attempts = 3`, then a fresh one at 16:32 was `Consumed = 1`. Three wrong codes,
+then a correct one. Working exactly as designed.
+
+Almost certainly `7391` was typed: the mock backend's fixed code, deleted
+yesterday. The real code is random per request and only appears in the API's
+console (`LoggingOtpSender`).
+
+The `/payouts` and `/audit` `403`s in the same log are the founder-only
+endpoints, warmed once after sign-in and swallowed by `_optionalForFounder`.
+Expected; a guest no longer fires them at all since yesterday's gate.
+
+### What *was* wrong: the screen said the same thing to everyone
+
+Both handlers on `login_screen.dart` were bare `on AppException` with one
+sentence each. So "wrong code", "expired", "five attempts used", "rate
+limited" and "you are offline" all read **"Could not log in — try again"** —
+advice that is actively wrong for three of them. `POST /auth/login` is capped
+at five per minute per IP, so "try again" there is the one thing guaranteed to
+fail.
+
+Worse, the information to do better was already on the wire and being thrown
+away: `_translate` parsed the envelope's `code` and then dropped it for a
+`401`, and `429` fell through to the `ApiException` catch-all.
+
+### The fix
+
+- `UnauthorizedException` gained `code`, and `_translate` now passes the
+  envelope's through. Every existing `on UnauthorizedException` catcher is
+  unaffected — they ignore it and still mean "no session".
+- `RateLimitedException` for `429`, its own type rather than a magic status,
+  because it is the one failure whose correct advice is "wait, then retry the
+  identical thing". Nothing caught `ApiException` before, so nothing changed
+  shape underneath it.
+- `_verifyMessage` / `_sendMessage` on the login screen, both bilingual:
+  wrong-or-expired code → *"That code is wrong or has expired — request a new
+  one"*; rate limited → *"wait a minute"*; unreachable → *"check your
+  connection"*; anything else keeps the old generic line.
+
+**Deliberately not distinguished:** wrong vs. expired vs. attempts-exhausted.
+The server collapses all three into one code so the message cannot be used to
+learn whether a code was ever right, and the client respects that — the copy
+names what the user can *do*, not which of the three happened.
+
+### Files
+
+- `lib/core/error/app_exception.dart` — `UnauthorizedException.code`,
+  `RateLimitedException`.
+- `lib/core/network/dio_api_client.dart` — carry the code on `401`, map `429`.
+- `lib/features/auth/login_screen.dart` — `_verifyMessage`, `_sendMessage`.
+- **New:** `test/login_error_messages_test.dart` (4),
+  `test/api_error_translation_test.dart` (4).
+
+### Verified
+
+- `flutter analyze` clean (the `core/utils/contact.dart` info predates this).
+- `flutter test` — **485 passed, 0 failed** (477 before, 8 new).
+- **The transport tests fail on the old code** — reverting the two `_translate`
+  lines fails "a 401 carries the envelope code" and "a plain-text 429 is a rate
+  limit", which are the two that matter.
+- The transport tests drive a **real socket**, not a stubbed adapter, because
+  the shapes are the real API's and they differ: problem+json for the `401`,
+  **plain text** from the rate limiter for the `429`. Both were captured from
+  the live server first (`curl` against `localhost:7291`) and reproduced
+  verbatim in the test.
+- **Not checked:** the UI was not driven by hand — Flutter web renders to a
+  canvas and its accessibility tree could not be enabled here. The widget tests
+  do pump the real `LoginScreen` and assert the rendered text, so the copy
+  itself is covered; what is untested is a human tapping through it.
+
+---
+
+## 2026-08-10 · Registration succeeded and then every request answered 401
+
+**Baseline:** the entry below, same working tree. Request: a browser console
+log full of `401`s and one uncaught `DartError`, then "check the register
+account scenario and test all cycle and fix the bugs and errors".
+
+**One root cause under almost all of it, and it was in storage, not in auth.**
+
+### The bug
+
+`TokenStore.save()` wrote its three fields with `Future.wait` — three
+concurrent `flutter_secure_storage` writes.
+
+On web that plugin AES-GCM-encrypts every value under a **single key it creates
+lazily**: `if (localStorage.containsKey(k)) import else generate-and-store`.
+That read-then-write is not atomic. Three writes starting together against a
+store with no key yet all see "no key", all generate a **different** key, and
+each overwrites the last. Two of the three values end up encrypted under a key
+that is no longer there, and every later read of them rejects with WebCrypto's
+`OperationError`.
+
+The symptom was not "storage is broken". `DioApiClient`'s request interceptor
+reads the token through `tryReadAccessToken()`, which — correctly, for its own
+reasons — turns a read failure into `null`. So the app sent **no
+`Authorization` header at all** and could not tell that apart from being signed
+out:
+
+- `POST /auth/register` → `201`, tokens stored, user registered.
+- `POST /user/vehicles` (guest-data adoption) → `401`.
+- `GET /user/vehicles`, `/user/vehicles/maintenance`, `/challenges/board` → `401`.
+- `PUT /user/profile` → `401`.
+- `TokenStore.hasSession()` threw, so `mayHaveSession()` guessed `true`, so the
+  next cold start fired the auth-gated warm-ups too — more `401`s.
+- One `401` triggered `_doRefresh()`, whose `POST /auth/refresh` also failed,
+  and its `on DioException` calls `tryClear()` — **silently deleting a session
+  that was perfectly valid.**
+
+Device platforms never had this: the keystore has no shared key to race over.
+It only ever showed on web.
+
+### The fix
+
+`save()` and `clear()` write **one value at a time**. The first call creates
+the key, the rest import it. Nothing else changed — the tokens, the endpoints
+and the interceptor were all fine.
+
+An existing corrupt store heals itself at the next successful register or
+login, because by then the key exists and all three writes import it.
+
+### Two more, found while testing the cycle
+
+**`ReviewsNotifier.load()` threw uncaught for every guest.** `build()` ran it
+from a bare `Future.microtask(load)` with nothing catching it, and `GET
+/reviews` is `[Authorize]`d — so the moment a guest opened any screen reading
+that provider (a workshop's details page), the `UnauthorizedException` escaped
+into the zone. That is the `Uncaught (in promise) DartError` at the top of the
+reported log. Now guarded on the session and swallowing `UnauthorizedException`,
+the same shape `NotificationsNotifier._loadFromServer` already used.
+
+**Both of those notifiers could read a disposed container.** Each starts an
+unawaited load from `build()` and touches `ref` after an `await`; a container
+disposed mid-load (sign-out, hot restart) made them throw a bare `StateError`
+into the zone. Both now carry the `_disposed` flag `AuthNotifier` grew earlier
+today, set from `ref.onDispose`.
+
+**The founder's ledger was warmed for everyone.**
+`ServiceMarketplaceRepositoryImpl.warmUp()` fetched `/payouts` and `/audit` on
+every launch. They are founder-only — `403` for a signed-in customer, `401` for
+a guest — and `_optionalForFounder` correctly swallowed both, so this was noise
+rather than breakage: two red lines in every visitor's console, on every cold
+start, forever. `warmUp` now takes `includeFounderLedger`, and bootstrap passes
+`signedIn`. A signed-in non-founder still asks and still gets its `403` — the
+client has no founder claim to check — but a guest provably cannot be one.
+
+**Not a bug:** `[PushService] Firebase.initializeApp() failed` is expected and
+already handled. There is no native Firebase config in this repo; push is
+additive and its absence must never block sign-in, which is exactly what that
+log line shows working.
+
+### Files
+
+- `lib/data/services/token_store.dart` — sequential `save`/`clear`.
+- `lib/state/reviews_state.dart` — session guard, `UnauthorizedException`
+  swallow, disposal guard.
+- `lib/state/notifications_state.dart` — disposal guard.
+- `lib/data/repositories/service_marketplace_repository.dart`,
+  `lib/app/bootstrap.dart`, `lib/state/auth_state.dart` —
+  `warmUp({includeFounderLedger})`.
+- **New:** `test/token_store_write_race_test.dart`,
+  `test/web/token_store_browser_test.dart`.
+
+### Verified
+
+- `flutter analyze` clean (the one remaining `info` in
+  `core/utils/contact.dart` predates this work).
+- `flutter test` — **477 passed, 0 failed.**
+- **The regression test fails on the old code**, which is the only thing that
+  makes it worth having: reverting `save()` to `Future.wait` gives
+  `maxConcurrentWrites: 3` and an `OperationError` on read-back.
+- **Reproduced and fixed in the real browser, against the live API.** Writing
+  the token store the racy way (three keys) reproduces the reported log exactly
+  — `/user/profile`, `/challenges/board`, `/user/vehicles` all `401`, a
+  `/auth/refresh` attempt, then the tokens deleted. Writing the same tokens the
+  way the fixed `save()` writes them (one shared key) gives:
+  `GET /user/profile` **200**, `/user/vehicles` **200**,
+  `/user/vehicles/maintenance` **200**, both `/challenges/board` **200**,
+  founder-only **403**, no refresh, no clearing.
+- **Guest cold start is now silent**: 31 requests, all `200`, no `401`, no
+  `403`, no uncaught exception. Before: `/payouts`, `/audit`, `/reviews`,
+  `/user/vehicles`, `/user/vehicles/maintenance` and both `/challenges/board`
+  all `401`, plus the uncaught `UnauthorizedException`.
+- **Not checked:** `test/web/token_store_browser_test.dart` — the real
+  `TokenStore` against the real `flutter_secure_storage_web` — is written and
+  committed but **has not been run to completion**: `flutter test --platform
+  chrome` did not finish compiling in this environment. Run it with
+  `flutter test test/web --platform chrome`. Its coverage is otherwise
+  reproduced by the pure-Dart race test plus the live browser A/B above.
+- **Also not checked:** the UI path into registration. Flutter web renders to a
+  canvas and the accessibility tree could not be enabled here, so the register
+  *form* was not driven by hand; the account was created through the same
+  `POST /auth/register` the form calls, and the session behaviour after it was
+  exercised in full.
+
+---
+
+## 2026-08-10 · The demo data left the app; the API is the only data source
+
+**Baseline:** `7cf6a5f`, working tree already dirty with the API/currency work.
+Request: "remove the whole demo data from the frontend
+`lib/data/datasources/mock` · force app to use the api only · test the app when
+you make sure is fully connected with the api", against
+`C:\Projects\Cars Project\AKCarsMobilApp\AKCarsMobileAPI` on
+`Server=.\SQLEXPRESS;Database=AKCarsMobileDb`, running at
+`https://localhost:7291/api/v1`.
+
+### What was there
+
+The app shipped **two complete data layers**. Every service had an `Api*`
+implementation and a `Mock*` one reading a 185 KB seeded world under
+`lib/data/datasources/mock/`, and `di/providers.dart` chose between them on
+`AppConfig.dataSource` (`DataSourceMode { mock, api }`, overridable with
+`--dart-define=AK_DATA_SOURCE`). Every environment already shipped
+`useMockData: false`, so the demo half was dead weight in the binary — but it
+was reachable weight, and several screens still branched on which half was live.
+
+### What was done
+
+**The demo world left `lib/` entirely.** The nine seed files moved to
+`test/fakes/data/` (as a git rename, so history follows), and the ten demo
+`Mock*Service` classes were cut out of the interface files they shared and
+rewritten as test doubles in `test/fakes/`. `lib/data/datasources/` is gone.
+
+**`DataSourceMode`, `useMockData`, `mockLatency` and `AppConfig.forTests` are
+gone**, along with `UnconfiguredApiClient` — with one arm there is nothing to
+guard against a misconfigured second arm. `apiClientProvider` is always a
+`DioApiClient`; every service binding is its `Api*` implementation, no
+condition.
+
+**Two classes named `Mock*` were not mocks and stayed**, renamed:
+`MockGarageService` → `LocalGarageStore`, `MockMaintenanceService` →
+`LocalMaintenanceStore`. They are SharedPreferences-backed device stores, and
+they are half of the *live* API path — `SessionGarageService` writes a guest's
+cars to the device because registering one is step 3 of 3 of first launch while
+`/user/vehicles` is `[Authorize]`d. Deleting them with the rest of the "mocks"
+would have broken first launch.
+
+**Client-side pretending was removed, not relocated:**
+
+- `RequestsNotifier._simulateLifecycle` / `OrdersNotifier._simulateStoreLifecycle`
+  — timers that walked a booking or order along its happy path — and the
+  "Demo build — the state advances on its own · Skip ahead" row on the tracking
+  screen, with `AppConfig.simulateProviderLifecycle` that gated them.
+- The registration OTP. `RegisterScreen` demanded a 4-digit code and compared
+  it to `_stagingCode = '7391'` compiled into the app. `POST /auth/register`
+  and `PUT /user/profile` have no OTP step, so that gate could only ever be
+  satisfied by a code the real server never issued. The whole verification
+  block, the channel picker and the constant are gone; the submit button says
+  "Continue". **Login still verifies a real, server-issued code** —
+  `/auth/login/verify` exists and is rate-limited — only its `isMock`
+  shortcut around `_stagingCode` was removed.
+- `ChallengeNotifier._writeMaintenanceRecord`. The server writes that record in
+  the same transaction as the award (`CompleteChallengeCommand.
+  FeedMaintenanceRecordAsync`); the client's copy was harmless only while the
+  mock backend wrote none, and a duplicate entry against the real one.
+
+### The trap: the suite hung, and the mock path had been hiding why
+
+Removing the mock branch made 26 of 39 test files hang for their full
+ten-minute deadline. The cause was not the change — it was something the change
+stopped concealing. `AppBootstrap._signedIn` used to short-circuit to `true` on
+the mock source and never touch `TokenStore`. Now every warm-up asks it, and
+`flutter_secure_storage` under `flutter_tester` does not throw — **it never
+completes**. Every widget test sat on an unresolvable future before its first
+`pump()`.
+
+`test/fakes/memory_token_store.dart` fixes it, and two more floors were added
+under the harness for the same class of problem: `OfflineApiClient` refuses
+every request loudly (a service the harness forgets to double now fails at the
+call site instead of opening a socket), and `SilentPushService` keeps
+`NotificationsNotifier.build` away from Firebase.
+
+`AuthNotifier` also grew a `_disposed` guard: `_adoptGuestDataThenWarm` is
+fire-and-forget and now always has adopters to run, so it could read `ref` after
+the container went away and throw a bare `StateError` into the zone.
+
+### Found on the way, and fixed — unrelated to this work
+
+`RialGlyph` renders the rial sign as an `Image.asset` inside a baseline-aligned
+`WidgetSpan`. `RenderImage` does not implement `computeDryBaseline`, so **any**
+ancestor that dry-lays-out its children asserted rather than laid out — and
+`UrgencyCard` wraps its content in an `IntrinsicHeight` for the leading edge
+bar. Every escrow card and status pill that printed a price threw in debug: the
+tracking screen, both operator panels, the quote screen, the services region
+cards, the home offer rail. Reproduced in isolation with no providers, no
+services and no data source involved, so it predates this change and came in
+with the currency work.
+
+Fixed by aligning that one inner span `middle` instead of `baseline`. The glyph
+is drawn at 0.72em (cap height, per the guideline) and centred on the text
+midline, within a fraction of a pixel of where it was; the *outer* span still
+baseline-aligns the whole sign+numeral cluster with the sentence around it, and
+that one is a `RenderParagraph`, which computes a dry baseline perfectly well.
+**Flagged rather than assumed:** if the sub-pixel shift matters, the other fix
+is to stop `UrgencyCard` using `IntrinsicHeight`.
+
+Six test assertions still expected the old literal `'OMR 45.00'` string that
+the currency work replaced with a glyph; they now match on the numeral with
+`findRichText: true`.
+
+### Files
+
+- **Moved:** `lib/data/datasources/mock/*` (9 files) → `test/fakes/data/`.
+- **New:** `test/fakes/fakes.dart` (the `fakeServiceOverrides` seam), ten
+  `test/fakes/mock_*_service.dart`, `fake_service_base.dart`,
+  `memory_token_store.dart`, `offline_api_client.dart`.
+- **Deleted:** `lib/core/network/unconfigured_api_client.dart`,
+  `lib/data/services/mock_service_base.dart`, `lib/data/datasources/`.
+- **lib:** `config/app_config.dart`, `di/providers.dart`, `app/bootstrap.dart`,
+  the ten `data/services/*_service.dart` interface files,
+  `data/repositories/notification_repository.dart`, `state/auth_state.dart`,
+  `state/challenge_state.dart`, `state/notifications_state.dart`,
+  `state/orders_state.dart`, `state/requests_state.dart`,
+  `features/auth/login_screen.dart`, `features/auth/register_screen.dart`,
+  `features/services/tracking_screen.dart`, `core/widgets/rial_symbol.dart`.
+- **Docs:** `ARCHITECTURE.md` §1/§3/§4, `docs/api_contract.md` scope section.
+  The Arabic phase-2 instruction files were left alone — they are a record of
+  what was planned, not a description of what is.
+
+### Verified
+
+- `flutter analyze` — clean. The one remaining `info`
+  (`core/utils/contact.dart:23`, `use_null_aware_elements`) predates this work.
+- `flutter test` — **474 passed, 0 failed**, 42s. It was 432/42 with hangs when
+  the work started.
+- **The app, running against the live API.** `flutter run -d web-server`, loaded
+  in a browser: 33 requests to `https://localhost:7291/api/v1`, **all 200**
+  except `GET /service-marketplace/payouts` and `/audit`, which are founder-only
+  and correctly `401` for an anonymous session. Zero requests to anything else.
+  `GET /service-marketplace/providers` returned the eight approved workshops
+  from `AKCarsMobileDb` (Al Noor, Gulf Auto Care, Qurum Auto Experts, Nizwa Car
+  Care, Rustaq Motor Works, Saham Auto Centre, Salalah Motors Hub, Barka Quick
+  Fix), and the app then fetched add-ons and slots for each of those eight ids —
+  so it parsed and used them, not just received them.
+- **Not checked:** no Android or iOS device was available (no emulator
+  configured, and the project has no `windows/` target), so the run above was
+  the web target. The signed-in half of the app — anything behind
+  `/auth/login/verify` — was not exercised end to end; only its `401` behaviour
+  as a guest was.
+
+---
+
+## 2026-08-09 · The whole service marketplace was behind auth; only one route needed it
+
+**Baseline:** the entry below, same working tree. Request: the user's own
+diagnosis — "the getting data from other endpoints asks authentication for each
+request, but no need that for all endpoints" — then study it and fix.
+
+**They were right, and this is the actual root of the very first symptom in this
+log's session: "no data displayed on the screens".** Earlier that was put down to
+an empty database. The database *is* empty, but it was not the only reason a
+guest saw nothing — even fully seeded, the Services tab, the home offers rail
+and every provider page would still have rendered empty, because the API refused
+to serve them without a session.
+
+### The problem
+`MarketplaceEndpoints` put `RequireAuthorization()` on the whole
+`/service-marketplace` group. Twelve routes; **eleven are public catalogue
+data** — categories, providers, offerings, promotions, offers, category and
+workshop demand, ratings, add-ons, slots. Only `PATCH /offers/{id}`, the
+founder's approval switch, is a write.
+
+That contradicts the rule the app states outright — "browsing is open, but
+transactions (booking, checkout, publishing an ad) require a completed
+registration" — and it contradicts the rest of this same API, where `/cars`,
+`/cars/{id}`, `/products` and the whole catalogue are already `AllowAnonymous`.
+`GET /service-marketplace/providers/{id}/reviews` had the same problem: the
+ratings that decide whether to book were invisible until after registering.
+
+Two things made it safe to open, and both were checked rather than assumed:
+`CurrentUser` is null-safe on every member, so an anonymous caller yields
+`IsFounder == false` — which is exactly what `GetProvidersQuery` needs to narrow
+the roster to approved workshops. And `GetProviderReviewsQuery` takes no
+`ICurrentUser` at all.
+
+### The fix, and the trap in it
+Two `MapGroup`s on the same prefix — one `AllowAnonymous`, one
+`RequireAuthorization` — rather than one group with a per-route override.
+
+That is not stylistic. ASP.NET's authorization middleware short-circuits when it
+finds **any** `IAllowAnonymous` in an endpoint's metadata, so
+`group.AllowAnonymous()` plus `.RequireAuthorization()` on one route inside it
+leaves that route **open**: the override silently loses, and the founder's
+approval switch would have shipped unauthenticated. Separate groups cannot
+express the mistake. It is also the shape `CarsMarketplaceEndpoints` already
+uses for its `cars` / `cars/my-ads` split.
+
+The client had the mirror image of the same gate. `AppBootstrap.warmUp` skipped
+the marketplace for guests, so opening the API alone would have changed nothing.
+Moved out of the `if (signedIn)` block — and `_optionalForFounder` had to grow
+an `UnauthorizedException` arm, because `/payouts` and `/audit` are the only
+calls in that warm-up still needing a session and they answer a guest `401`, not
+`403`. Catching only `403` would have failed the whole `Future.wait` and left
+the guest with the empty categories this change exists to fill.
+
+### Files
+| File | Change |
+|---|---|
+| `AKCarsMobileAPI/…/Endpoints/MarketplaceEndpoints.cs` | group split: public browse + founder-only `PATCH /offers/{id}` |
+| `AKCarsMobileAPI/…/Endpoints/ReviewEndpoints.cs` | `providers/{id}/reviews` → `AllowAnonymous` |
+| `lib/app/bootstrap.dart` | marketplace warm-up moved out of the signed-in block |
+| `lib/data/repositories/service_marketplace_repository.dart` | `_optionalForFounder` also swallows `UnauthorizedException` |
+
+### Verified
+- **Both directions, against a running server, with no token.** The API was
+  built to a temp output and started as a *second* instance on `:7399` rather
+  than restarting the user's own — which holds a lock on `bin/` and may have a
+  debugger attached.
+- 14 browse routes now answer **200** anonymously: all ten marketplace reads,
+  provider reviews, plus `/cars`, `/products`, `/locations`, `/cars/catalog` as
+  controls.
+- **19 protected routes still answer 401** anonymously — including
+  `PATCH /service-marketplace/offers/{id}`, the one sharing the opened prefix,
+  which is the direct check that the two-group split beat the `IAllowAnonymous`
+  trap. Also `/requests`, `/operator/requests`, `/part-requests`,
+  `/applications`, `/providers/{id}/stage`, `/payouts`, `/audit`, `GET /reviews`
+  (the caller's own, unlike the provider's), `/user/*`, `/cart`, `/orders`,
+  `/notifications`, `/chat/*`, `/challenges/board`, `/cars/my-ads`.
+- `dotnet build`: 0 warnings, 0 errors. `flutter analyze` on `lib/`: clean
+  apart from the pre-existing `core/utils/contact.dart` info.
+- Client tests: `bootstrap`, `home`, `home_offers`, `guest_garage`,
+  `token_store_unreadable`, `warm_up_error_handling`, `data_source_switch`,
+  `onboarding`, `account` — **78 passed, 0 failed**.
+- **One pre-existing failure, measured not assumed:** `services_region_test` →
+  "Package cards count and price the selected region only" fails identically
+  with the bootstrap hunk applied and reverted by hand. Unrelated to this
+  change.
+- **Full suite, finally measured: 398 passed / 61 failed** (9m27s, API running).
+  The comparable figure recorded three entries below was **77 failures with the
+  server up** — so the session's changes take the suite down by ~16 failures and
+  add none. It took this long to get a number because the first full run had
+  been moved to the background after its timeout instead of being killed, and
+  kept competing with every later run; once it and its successor were stopped,
+  the suite completed normally. No verification claimed earlier depended on it —
+  every other figure came from targeted runs read directly.
+- **Not verified in the browser.** The user's API instance still runs the old
+  binary — this needs their server restarted and the Flutter app hot-restarted
+  before a guest's Services tab will actually fill.
+
+---
+
+## 2026-08-09 · An unreadable token store was reported as an unreachable server
+
+**Baseline:** the entry below, same working tree. Request: a debugger message —
+`Error calculating Dart variables for 1 sync frames` — paused in
+`flutter_secure_storage_web`'s WebCrypto `decrypt`.
+
+### The debugger message itself is not a bug
+"Error calculating Dart variables for N sync frames" comes from the Dart
+debugger, not the app. It is the IDE failing to *render* locals for a frame,
+which it routinely does under DDC when the frame holds JS-interop values —
+`ByteBuffer`, a `CryptoKey`, the `promiseToFuture` machinery in that very
+snippet. Nothing is thrown and nothing is broken by it. No fix, because there
+is nothing there to fix.
+
+### What is a bug is the code it was paused in
+That `decrypt` call is how `flutter_secure_storage` reads a value on web, and
+it can genuinely fail: WebCrypto raises `OperationError` when the key in
+storage no longer matches the ciphertext — a rotated key, a half-cleared
+origin, storage written by another build. On device the same read fails on a
+keystore behind the lock screen or a keychain refusing on a restored backup.
+
+`TokenStore` already knew this. `mayHaveSession()` was written for exactly
+these cases and documents them. **Only that one method was hardened**, and
+three call sites on the request path read the store unguarded:
+
+| Call site | What a throw did |
+|---|---|
+| `DioApiClient` request interceptor | Dio turns an exception out of `onRequest` into a `DioException` with no response → `_translate` sees `DioExceptionType.unknown` → **`NetworkException: Could not reach <host>`**. The network blamed for a storage fault, on *every* request. |
+| `DioApiClient._doRefresh` | The read sits outside the `try`, so it escaped `_refreshAndSave` and surfaced from inside `_send`'s `on DioException` block — replacing the original `401`, and leaking a raw platform error to callers, which this class explicitly promises never to do. |
+| `ChatHub`'s `accessTokenFactory` | Threw out of the SignalR handshake instead of failing as an ordinary unauthorized connection, which the class already swallows. |
+
+The first is the one that matters. It converts a recoverable, correctly
+diagnosable condition into a wrong diagnosis, and it does it on the hot path.
+
+### The fix
+`TokenStore` grows the non-throwing forms the request path needs —
+`tryReadAccessToken()`, `tryReadRefreshToken()`, `tryClear()` — and the three
+call sites use them. An unreadable token now means the same as no token: the
+request goes out unauthenticated and the server's `401` is the answer, which
+the app already handles.
+
+The plain `readAccessToken()` / `readRefreshToken()` / `clear()` stay
+unguarded. Callers that genuinely want to know still get told; only the request
+path opts out.
+
+`_doRefresh` also gained a general `catch` for a refresh response it cannot
+read or a store that will not take the new pair. It deliberately does **not**
+clear the tokens there, unlike the `DioException` branch: a rejected refresh
+proves the stored token is bad, whereas a transient storage fault proves
+nothing, and discarding a good session over it would sign the user out for no
+reason.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/data/services/token_store.dart` | new `tryReadAccessToken`, `tryReadRefreshToken`, `tryClear` |
+| `lib/core/network/dio_api_client.dart` | interceptor and `_doRefresh` use them; `_doRefresh` gains a non-clearing general `catch` |
+| `lib/core/network/chat_hub.dart` | `accessTokenFactory` uses `tryReadAccessToken` |
+| `test/token_store_unreadable_test.dart` | **new** — 4 tests |
+
+### Verified
+- `flutter analyze` on `lib/`: clean apart from the pre-existing
+  `core/utils/contact.dart` info.
+- New tests cover the store failing every operation: the `try…` reads answer
+  `null`, the plain reads still throw (the guard is opt-in, not a blanket
+  swallow), `tryClear` completes, and `mayHaveSession()` still answers `true`.
+  That last one is asserted precisely because it is the **opposite** guess to
+  `tryRead…` and the two must not be "tidied" into agreement: it only decides
+  whether a request is worth making, where guessing "signed out" would drop a
+  real session from its own warm-up.
+- `token_store_unreadable`, `warm_up_error_handling`, `guest_garage`,
+  `data_source_switch`, `bootstrap`, `garage`, `onboarding`, `account`,
+  `profile`: **70 passed, 0 failed**.
+- **Not changed, and flagged rather than fixed:** `ApiAuthService.signOut()`
+  also calls `_tokens.clear()` unguarded, in a `finally`. It is the same shape,
+  but the existing comment there is a security argument — "a logout that leaves
+  a token behind … is the worst kind of bug on a shared phone" — and silently
+  swallowing a failed clear on a shared device is worse than surfacing it.
+  Changing that is a security-relevant decision, so per CLAUDE.md §13.6 it is
+  raised here rather than made quietly.
+
+---
+
+## 2026-08-09 · "That account already exists" reached the console, not the user
+
+**Baseline:** the entry below, same working tree. Request: an uncaught
+`ApiException(409): An account with that phone or email already exists.` from
+`POST /auth/register`.
+
+### The problem
+The `409` was right — that phone *was* already registered. Two things were
+wrong with what the app did about it.
+
+**`_submit()` had no `try`/`catch`.** `AuthNotifier.register` rolls its
+optimistic state back and rethrows, so the screen was the only thing left to
+handle it, and it did not. The result: `_saving` stayed `true` so the button
+span for ever, the screen said nothing, and the reason went to a console the
+user will never open. Every failure mode of that form behaved this way — a
+`409`, an offline phone, a `500` — not just this one.
+
+**The transport could not tell it apart from a crash.** `_translate` mapped
+`400`/`422`-with-a-code to `BusinessRuleException` but left `409` in the
+`ApiException` catch-all, so "that phone is already registered" arrived at the
+call site indistinguishable from a `500`. Even a screen that *did* catch could
+only have shown "something went wrong".
+
+### The fix
+`409` with a code now maps to `BusinessRuleException`, alongside `400`/`422`. A
+conflict carrying a stable documented code is a business rule, not a malformed
+request — the server refused on a condition the client can name and act on.
+
+`_submit()` catches, clears `_saving`, and reports. The one case worth branching
+on is `account_already_exists`: "try again" is the wrong advice, because the
+same phone will be refused every time, so the snackbar carries a **Sign in**
+action instead of leaving the user to find it. It is also the likeliest failure
+here — `/auth` offers registration to anyone not signed in, including someone
+who simply signed out of an account they still have.
+
+The server's own `detail` is deliberately not shown: it is English-only and this
+screen is Arabic by default. A localized line for the case we recognise beats a
+server string the user may not read.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/core/network/dio_api_client.dart` | `_translate`: `400 \|\| 409 \|\| 422 when code != null` → `BusinessRuleException` |
+| `lib/features/auth/register_screen.dart` | `_submit` wrapped in `try`/`catch`; new `_reportSubmitFailure` with the `account_already_exists` branch |
+| `docs/api_contract.md` | `409` added to the status→exception table with the reasoning; `account_already_exists` added to the business-rule code table |
+
+### Verified
+- **The wire format was checked, not assumed** — the whole mapping depends on
+  the body carrying `code` as a ProblemDetails extension member, so a duplicate
+  registration was re-sent to the live API:
+  `{"title":"account_already_exists","status":409,"detail":"An account with
+  that phone or email already exists.","code":"account_already_exists",…}`.
+  `code` is present, so the new arm fires and the screen's
+  `error.code == 'account_already_exists'` matches.
+- `flutter analyze` on `lib/`: clean apart from the pre-existing
+  `core/utils/contact.dart` info.
+- `account`, `profile`, `onboarding`, `warm_up_error_handling`, `guest_garage`,
+  `data_source_switch`: all pass.
+- **`_translate` itself is not unit-tested, and that is a real gap rather than
+  an oversight I am glossing over.** `DioApiClient` builds its own `Dio` with no
+  adapter seam, and the suite is required to pass with no server listening, so
+  there is nowhere to inject a canned `409`. The sibling `400`/`422` arm has
+  never been tested either. Adding a seam (an injectable `HttpClientAdapter`)
+  would make this whole error table testable and is worth doing on its own.
+- **One pre-existing failure, diagnosed rather than waved away:**
+  `contact_gating_test` → "tracking offers the thread until the funds are held"
+  fails with `The RenderImage class does not implement "computeDryBaseline"` in
+  `IntrinsicHeight` at `core/widgets/status_indicator.dart:121`. That file is
+  **unmodified since the last commit** and none of this change's files are in
+  that render path. It is an image widget (the new `RialSymbol`, from the
+  currency work already in the tree) inside a committed `IntrinsicHeight` —
+  a Flutter layout limitation. Not fixed here: it is a separate bug that was
+  not reported, and the fix touches layout. Cheap when wanted — give the image
+  an explicit size, or drop the `IntrinsicHeight`.
+
+---
+
+## 2026-08-09 · The error handler was the error: `warmUp()` lied about its type
+
+**Baseline:** the entry below, same working tree. Request: an uncaught
+`Invalid argument(s) (onError): The error handler of Future.catchError must
+return a value of the future's type`, traced through `warm_cache.dart:25` and
+`api_challenge_service.dart:18`.
+
+### The problem
+`AuthNotifier._warmAuthenticatedData` treats a post-sign-in warm-up as
+best-effort and discarded failures with `warmUp().catchError((_) {})`. When the
+challenge warm-up actually failed, **the discard itself threw** — and the error
+it threw replaced the one it was meant to swallow, so the real cause never
+appeared anywhere.
+
+Five `warmUp()` implementations declared `Future<void>` over a body that
+returns something else:
+
+```dart
+Future<void> warmUp() => Future.wait([...]);   // really Future<List<…>>
+Future<void> warmUp() => _cars.load(...);      // really Future<List<Car>>
+```
+
+This compiles, because `void` accepts anything — but widening at the
+*declaration* does not change the *object*. The future's runtime type argument
+stays `List<…>`, and `catchError`'s contract is that the handler returns a value
+of that type. A handler returning nothing is then an argument error. It is
+invisible until the future rejects, which is exactly when you least want a
+second, unrelated failure.
+
+`cars`, `catalog`, `challenge`, `shop`, `garage` and `maintenance` all had it.
+`service_marketplace` did not — it was already `async`.
+
+### The fix
+Both halves, because either alone leaves the trap armed.
+
+- The six `warmUp()`s are now `async`, so they return a genuine `Future<void>`.
+- `_warmAuthenticatedData` uses `try`/`catch` instead of `.catchError`, and
+  **logs** rather than discarding — a warm-up that fails silently is a screen
+  that renders empty with nothing to explain it. That was the second half of why
+  this was hard to see. `_watchWrite` (added in the entry below) moved to
+  `try`/`catch` too; its futures were genuine `Future<void>`, but the form is
+  what made this bug possible and it should not survive anywhere.
+
+The underlying challenge-warm-up failure is a separate question — it was never
+diagnosable while the handler was overwriting it, and it is now logged instead
+of swallowed.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/data/repositories/{cars,catalog,challenge,shop}_repository.dart` | `warmUp()` → `async` body; comment on why the arrow form is a trap |
+| `lib/data/repositories/{garage,maintenance}_repository.dart` | same, one-liners |
+| `lib/state/auth_state.dart` | `_warmAuthenticatedData` is `async` with `try`/`catch` + `developer.log` |
+| `lib/features/garage/add_car_screen.dart` | `_watchWrite` → `try`/`catch` |
+| `test/warm_up_error_handling_test.dart` | **new** — 3 tests |
+
+### Verified
+- **The new test reproduces the original error before the fix, verbatim.**
+  Reverted `garage_repository.warmUp()` to the arrow form by hand and re-ran:
+  `Invalid argument(s) (onError): The error handler of Future.catchError must
+  return a value of the future's type`. Restored → passes. That round trip is
+  the evidence; without it the test only proves the current code works.
+- Note `isA<Future<void>>()` **cannot** catch this — `void` is a top type, so
+  every future satisfies it. The test handles a real error instead, and also
+  asserts the original `StateError` reaches a `try`/`catch` caller rather than
+  being replaced.
+- `flutter analyze` on `lib/`: clean apart from the pre-existing
+  `core/utils/contact.dart` info.
+- `warm_up_error_handling`, `guest_garage`, `data_source_switch`, `bootstrap`,
+  `garage`, `onboarding`: **45 passed, 0 failed**.
+- `garage_persistence` + `first_run`: still exactly 14, unchanged — the same
+  pre-existing `NetworkException` set measured in the entry below.
+
+---
+
+## 2026-08-09 · Registering a car on first launch answered 401 and lost the car
+
+**Baseline:** `7cf6a5f` (working tree already dirty with the API-data-source
+work, including the entry below). Request: a console trace showing
+`POST /user/vehicles` → `401` and an uncaught `UnauthorizedException`, then
+"check and fix".
+
+### The problem
+Tapping Save on the add-car form fired `POST /user/vehicles` and
+`PATCH /user/vehicles/{id}`, both answered `401`, and the rejection escaped as
+an uncaught async error.
+
+The `401` was correct. The *request* was the bug. `/user/vehicles` is
+`[Authorize]`d — reasonably, a vehicle belongs to a user — but the app
+deliberately lets a **guest** register a car: `StartChoiceScreen` is step 3 of 3
+of first launch ("Rule 3 — start with a registered car, or skip"), and
+`AuthState` documents the gate as "browsing is open, but transactions
+(booking, checkout, publishing an ad) require a completed registration". A
+garage entry is none of those, `/add-car` carries no guard, and `ensureRegistered`
+is not on that path. So the API migration bound a deliberately guest-accessible
+feature to an authenticated endpoint.
+
+Three consequences, worst last:
+
+1. Every guest write answered `401`.
+2. The UI claimed otherwise. `_save()` fires `add()` without `await` (deliberate
+   — the screen pops on the same frame), so the failure could only surface as a
+   console trace while the success snackbar said "added to your garage".
+3. **The car was gone by the next launch.** `warmUp` skipped the garage for a
+   guest, so nothing read it back even if it had been stored — precisely the
+   failure `MockGarageService`'s own docstring warns about.
+
+Maintenance had it too: `GarageNotifier.add` opens a book, and
+`/user/vehicles/{id}/maintenance*` is behind the same `RequireAuthorization()`.
+
+### The fix
+A guest's garage lives on the device and is handed to the server at sign-in.
+
+`SessionGarageService` / `SessionMaintenanceService` wrap the local and REST
+services and pick per call: no session → device, session → API. The local half
+is the same prefs-backed store the mock data source uses, deliberately — it *is*
+"the device standing in for the server", and sharing the store means a car
+survives switching `AK_DATA_SOURCE` instead of appearing to vanish.
+
+The session check is strict, unlike `TokenStore.mayHaveSession()`: that one
+guesses "maybe" because its callers only risk a wasted request, whereas this one
+decides where a *write lands*. An unreadable keystore routes to the device — a
+local write is adopted at the next sign-in; a remote write for a session that
+turns out not to exist is a `401` and the user's car on the floor.
+
+`adoptGuestData()` uploads the device's cars and books when a session starts and
+drops the local copy **only after** the upload lands, so a partial failure
+retries rather than loses. `AddVehicleCommand` is idempotent and honours the
+client-chosen id, so re-running is harmless and each maintenance book stays
+attached to its car. Ordered garage-then-maintenance: a book is filed against a
+car that has to exist server-side first.
+
+Bootstrap now warms the garage and maintenance for **everyone**, not only for a
+session — they are session-routed below the repository, so a guest reads the
+device. Leaving them gated was what made the just-registered car unreadable.
+
+`add_car_screen` no longer drops a failed write on the floor: `_watchWrite`
+replaces the success snackbar with a failure one. It does **not** roll the
+optimistic state back — that matches the app's existing style, and yanking a row
+out from under someone who has already navigated away would be its own surprise.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/data/services/session_routed_services.dart` | **new** — `GuestDataAdopter`, `SessionGarageService`, `SessionMaintenanceService` |
+| `lib/di/providers.dart` | garage/maintenance wrap local+REST on the API source; new `guestDataAdoptersProvider` |
+| `lib/state/auth_state.dart` | `_adoptGuestDataThenWarm()` — hand the device's data over *before* warming from the server, or the warm-up pulls an empty garage over it |
+| `lib/app/bootstrap.dart` | garage + maintenance warm-ups moved out of the `if (signedIn)` block |
+| `lib/features/garage/add_car_screen.dart` | `_watchWrite` reports a failed save instead of leaving an uncaught rejection |
+| `test/guest_garage_test.dart` | **new** — 6 tests: guest→device, session→API, unreadable store→device, adoption keeps ids, failed adoption keeps the local copy, empty adoption is a no-op |
+| `test/data_source_switch_test.dart` | garage/maintenance now assert `Session*` rather than `startsWith('Api')`, with the reason; stale `development == mock` assertion corrected (see below) |
+
+### Verified
+- **`flutter analyze` on `lib/`: clean** apart from the one pre-existing info in
+  `core/utils/contact.dart`.
+- The five directly-affected files — `guest_garage`, `data_source_switch`,
+  `bootstrap`, `garage`, `onboarding` — **42 passed, 0 failed**.
+- **No regression, measured rather than assumed.** `garage_persistence` +
+  `first_run` fail 14 tests both with the bootstrap hunk applied and with it
+  reverted by hand — identical, so they are pre-existing. All 14 are
+  `NetworkException: Could not reach https://localhost:7291/api/v1`, thrown by
+  the catalog/shop/cars warm-ups that have always run unconditionally, against
+  a config every environment of which now points at the API. Same family as the
+  56 documented in the entry below.
+- **A stale assertion the previous entry's work left behind, not caused by this
+  change:** `data_source_switch_test` asserted
+  `forEnvironment(development).dataSource == mock`, which stopped being true
+  when `app_config.dart` flipped every environment to `useMockData: false`
+  ("set by the user 2026-08-09 — do not change until told to"). Corrected to
+  `api`, plus a new assertion that `AppConfig.forTests()` is still `mock` —
+  that is what the suite actually runs on. A first stash-based baseline made
+  this look like *my* regression; it reverted the whole dirty tree, not just
+  this change. Re-checked against the real cause before editing.
+- **Not** re-run in Chrome: the running `flutter run` is the user's own and
+  needs a manual hot restart, and the browser pane would not composite frames
+  for a screenshot. The 401 path is proven by unit test, not by observation.
+
+---
+
+## 2026-08-09 · A guest's cold start fired a dozen requests that could only 401
+
+**Baseline:** `7cf6a5f` (working tree already dirty with the API-data-source
+work). Request: diagnose a console log full of errors on start-up, then "fix
+all issues" and verify in Chrome.
+
+### The problem
+Two unrelated things were in that log.
+
+**The fatal one was server-side, not app-side.** Six endpoints answered `500
+Invalid object name 'PartCategories'` — the `AKCarsMobileDb` schema had never
+been created. `Program.cs` deliberately never auto-migrates SQL Server, so the
+migration simply had to be run and never had been. It could not be run, either:
+LocalDB is unrepairable on this machine (all 27 keys under
+`HKCU\…\SQL Server\UserInstances` are missing their `DataDirectory` value, so
+`sqllocaldb create` fails outright). Fixed in the **API** repo by repointing
+`DefaultConnection` at `.\SQLEXPRESS` — a full SQL Server 2022 already running
+and already hosting `MotorzDb` — rather than doing registry surgery on an
+instance that also holds two other projects' databases. All 11 migrations then
+applied: 47 tables, `PartCategories` present, 33 `CarMakes` seeded.
+
+**The noisy one was app-side and is what this entry is really about.** The
+remaining ~17 red lines were auth-gated warm-ups fired on a cold start with no
+session. They were never fatal — `_optional`/`_optionalForFounder` have always
+swallowed them — but every one of them could *only* answer `401` without a
+token, so a guest's launch spent a dozen guaranteed-failed round trips and
+buried any real error in a wall of red on the way.
+
+### The fix
+Skip the calls instead of swallowing their failures. `warmUp` now resolves
+whether a session is even plausible before building the parallel batch, and
+omits the auth-gated warm-ups when it is not. Same treatment for the two
+auth-gated requests that sit outside `warmUp`: `fetchCurrentUser` and the
+notification inbox.
+
+The gate is **not** just "is there a token": mock mode has no token either, and
+gating on that alone would have left the demo world half-built. It short-
+circuits to "attempt" whenever the data source is not the API.
+
+`_optional` stays. A *stored* token is not a *valid* one — an expired session
+still answers `401`, and that still must not be fatal.
+
+### The regression this introduced, and the second fix
+Consulting the token store meant touching `flutter_secure_storage`, which has
+no VM implementation and **is not mocked anywhere in the suite** — so under
+`flutter test` it threw `MissingPluginException` and took `warmUp` down with
+it. Caught by a before/after run: baseline 10 failures, 11 with the change.
+
+`TokenStore.mayHaveSession()` now answers `true` when the store cannot be read
+(no platform channel, a locked keystore, a keychain refusing on a restored
+backup). The failure mode has to be "ask the server anyway" — guessing `false`
+on an unreadable store would silently sign a real session out of its own
+warm-up, while guessing `true` costs at worst the one request that was being
+made before any of this existed. Back to 10 failures after.
+
+### Files
+| File | Change |
+|---|---|
+| `lib/app/bootstrap.dart` | `warmUp` is now `async` and gates the auth-gated warm-ups behind new `_signedIn`; doc comment rewritten to explain the three cases |
+| `lib/data/services/token_store.dart` | added `mayHaveSession()` — `hasSession()` that degrades to `true` when the store is unreadable |
+| `lib/data/services/api/api_auth_service.dart` | `fetchCurrentUser` returns `null` without a request when there is no session |
+| `lib/state/notifications_state.dart` | `_loadFromServer` returns early when there is no session |
+| `AKCarsMobileAPI/src/AKCars.Api/appsettings.json` | `DefaultConnection`: `(localdb)\MSSQLLocalDB` → `.\SQLEXPRESS` (other repo) |
+
+### Verified
+- **Guest cold start against the live API: 7 requests, all `200`, zero `401`.**
+  Was 24 requests (7×`200`, 17×`401`). App boots to title "AK Cars"; browser
+  console clean apart from a DWDS tooling bug in `dwds/src/injected/client.js`
+  (`_JsonMap is not a subtype of List<Object?>` — a known webdev issue, not
+  app code).
+- API server log across a full boot: 0×`500`, 0×`Invalid object name`.
+- `flutter analyze` on all four changed files — clean.
+- Full `flutter test`, **with no server listening**: 460 tests, **384 passed /
+  76 failed** across 13 files. 56 `NetworkException: Could not reach
+  https://localhost:7291/api/v1`, 14 `TimeoutException`, and **zero
+  `MissingPluginException`** — that last count is the load-bearing one, because
+  it is what confirms the `mayHaveSession()` fallback holds across the whole
+  suite rather than only in the files that were re-run by hand.
+- **No regression, measured twice by reverting the change and re-running rather
+  than assumed:** the four bootstrap-related files give 10 failures before and
+  10 after; the three largest failing files (`maintenance_book`, `reviews`,
+  `part_install`) give 50 before and 50 after. Each pair was run in one
+  environment, so the deltas hold even though the absolute totals move with the
+  API's state.
+- Running the API changes the result, but only slightly: 77 failures with the
+  server up against 76 with it down. `data_source_switch_test`'s network-error
+  case does assert the host is *unreachable*, so a test run is only strictly
+  trustworthy with the API stopped — but the API being up was **not** the
+  explanation for the bulk of these failures, and an earlier note in this entry
+  that implied otherwise was wrong.
+- **Not** run on Android/iOS, and no screenshot: the browser pane never
+  composited a frame (`document.visibilityState === "hidden"`), so rendering was
+  verified structurally (glass pane mounted, title set) and by network
+  behaviour, not visually.
+
+### Known-adjacent, left alone
+- **76 pre-existing failures across 13 files, overwhelmingly one root cause** —
+  `maintenance_book` (30), `reviews` (10), `part_install` (10), `first_run` (8),
+  `garage_persistence` (6), `operator_panels` (4), `tracking_back` (2) and six
+  files with one each. 70 of the 76 die on `NetworkException`/`TimeoutException`
+  from booting against the real API instead of the mock harness; the remaining
+  ~6 are plain assertion failures worth looking at separately once the harness
+  noise is gone. This is fallout from every environment moving to
+  `useMockData: false` on 2026-08-09: `AppConfig.forTests()` exists precisely
+  so the suite stays offline-safe, and these tests do not go through it.
+  `data_source_switch_test`'s "explicit `AK_DATA_SOURCE` define wins" is the
+  same root cause seen from the other side — it still expects `mock` to be the
+  default. **This is the single highest-value follow-up in this file:** it is
+  one harness fix, and it is currently hiding real regressions behind noise.
+- `PartCategories` is created but **empty** — no `HasData` seed, unlike
+  `CarMakes`/`Governorates`. `/products/categories` returns `{}`. Nothing 500s,
+  but the shop's category UI has nothing to show.
+- LocalDB is still broken and now unused by this project. `MotorzDb` and
+  `ROMAPI_DEV` on that instance remain unreachable.
+
+---
+
 ## 2026-08-05 · Workshop phone numbers were public before any booking existed
 
 **Baseline:** `238a93d`. Request: implement

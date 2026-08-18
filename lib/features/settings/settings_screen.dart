@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-
-import 'package:go_router/go_router.dart';
 
 import '../../config/app_flags.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/sand_widgets.dart';
-import '../../data/models/app_role.dart';
+import '../../data/models/account_kind.dart';
+import '../../data/models/service_provider.dart';
+import '../../di/providers.dart';
 import '../../state/app_state.dart';
 
 /// Settings (handoff #4a): language segmented pill (Arabic | English),
@@ -65,8 +66,10 @@ class SettingsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              s.t('يتغير اتجاه التطبيق كاملاً (RTL ⇄ LTR) فوراً',
-                  'The whole app flips direction (RTL ⇄ LTR) instantly'),
+              s.t(
+                'يتغير اتجاه التطبيق كاملاً (RTL ⇄ LTR) فوراً',
+                'The whole app flips direction (RTL ⇄ LTR) instantly',
+              ),
               style: TextStyle(fontSize: 10, color: ak.inkFaint),
             ),
             const SizedBox(height: 15),
@@ -101,8 +104,7 @@ class SettingsScreen extends ConsumerWidget {
             // ------------------------------------------------ follow system
             SandCard(
               radius: 16,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
               child: Row(
                 children: [
                   Icon(LucideIcons.sunMedium, size: 15, color: ak.ink),
@@ -111,13 +113,16 @@ class SettingsScreen extends ConsumerWidget {
                     child: Text(
                       s.t('تلقائي حسب النظام', 'Follow system'),
                       style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   Switch(
                     value: settings.themeMode == ThemeMode.system,
                     onChanged: (v) => notifier.setThemeMode(
-                        v ? ThemeMode.system : ThemeMode.light),
+                      v ? ThemeMode.system : ThemeMode.light,
+                    ),
                   ),
                 ],
               ),
@@ -158,20 +163,17 @@ class SettingsScreen extends ConsumerWidget {
                     trailing: Text(
                       'v2.0',
                       style: GoogleFonts.chakraPetch(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: ak.inkSub),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: ak.inkSub,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            if (AppFlags.operatorPanelsEnabled) ...[
-              const SizedBox(height: 15),
-              _sectionLabel(ak, s.t('وضع التشغيل', 'Operating mode')),
-              const SizedBox(height: 10),
-              const _RoleSwitcher(),
-            ],
+            if (AppFlags.operatorPanelsEnabled)
+              ..._businessSection(context, ak, s, ref),
           ],
         ),
       ),
@@ -179,10 +181,89 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Widget _sectionLabel(AkColors ak, String text) => Text(
-        text,
-        style: TextStyle(
-            fontSize: 12.5, fontWeight: FontWeight.w700, color: ak.inkSub),
-      );
+    text,
+    style: TextStyle(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w700,
+      color: ak.inkSub,
+    ),
+  );
+
+  /// The workshop-dashboard and founder-panel rows — real account facts, not
+  /// a switch. Empty when neither applies, so a plain customer sees no
+  /// section here at all (there used to be a device-local "how you're using
+  /// this" role switcher in this exact spot that let any account preview
+  /// either panel; it is gone, and so is the section, for anyone it would not
+  /// have shown a real link to).
+  List<Widget> _businessSection(
+    BuildContext context,
+    AkColors ak,
+    S s,
+    WidgetRef ref,
+  ) {
+    final profile = ref.watch(authProvider).profile;
+    final isFounder = ref.watch(authProvider).isFounder;
+    final ownsWorkshopAccount = profile?.kind == AccountKind.workshop;
+    if (!ownsWorkshopAccount && !isFounder) return const [];
+
+    final workshop = profile?.id == null
+        ? null
+        : ref
+            .watch(serviceMarketplaceRepositoryProvider)
+            .providerOwnedBy(profile!.id!);
+
+    return [
+      const SizedBox(height: 15),
+      _sectionLabel(ak, s.t('عملي', 'My business')),
+      const SizedBox(height: 10),
+      SandCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            if (ownsWorkshopAccount)
+              _workshopRow(context, ak, s, workshop, divider: isFounder),
+            if (isFounder) _founderRow(context, s),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Widget _workshopRow(
+    BuildContext context,
+    AkColors ak,
+    S s,
+    ServiceProvider? workshop, {
+    required bool divider,
+  }) {
+    final approved = workshop?.isApproved ?? false;
+    return _row(
+      context,
+      icon: LucideIcons.store,
+      label: s.t('لوحة الورشة', 'Workshop dashboard'),
+      divider: divider,
+      trailing: approved
+          ? Icon(LucideIcons.chevronLeft, size: 15, color: ak.inkSub)
+          : Text(
+              (workshop?.stage ?? ProviderOnboardingStage.documentsSubmitted)
+                  .label(s),
+              style: TextStyle(fontSize: 10.5, color: ak.inkSub),
+            ),
+      onTap: () => context.go(approved ? '/workshop/dashboard' : '/profile'),
+    );
+  }
+
+  Widget _founderRow(BuildContext context, S s) => _row(
+    context,
+    icon: LucideIcons.shieldCheck,
+    label: s.t('لوحة المؤسس', 'Founder panel'),
+    trailing: Icon(
+      LucideIcons.chevronLeft,
+      size: 15,
+      color: AkColors.of(context).inkSub,
+    ),
+    onTap: () => context.go('/admin'),
+  );
 
   Widget _langSegment(
     BuildContext context, {
@@ -212,14 +293,12 @@ class SettingsScreen extends ConsumerWidget {
               style: chakra
                   ? GoogleFonts.chakraPetch(
                       fontSize: 12.5,
-                      fontWeight:
-                          selected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       color: selected ? ak.onPrimary : ak.inkSub,
                     )
                   : TextStyle(
                       fontSize: 12.5,
-                      fontWeight:
-                          selected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       color: selected ? ak.onPrimary : ak.inkSub,
                     ),
             ),
@@ -241,9 +320,7 @@ class SettingsScreen extends ConsumerWidget {
     final row = Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
       decoration: BoxDecoration(
-        border: divider
-            ? Border(bottom: BorderSide(color: ak.divider))
-            : null,
+        border: divider ? Border(bottom: BorderSide(color: ak.divider)) : null,
       ),
       child: Row(
         children: [
@@ -252,8 +329,7 @@ class SettingsScreen extends ConsumerWidget {
           Expanded(
             child: Text(
               label,
-              style:
-                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
           trailing,
@@ -262,7 +338,10 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (onTap == null) return row;
     return GestureDetector(
-        behavior: HitTestBehavior.opaque, onTap: onTap, child: row);
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: row,
+    );
   }
 
   void _showRegionSheet(BuildContext context, WidgetRef ref, S s) {
@@ -280,7 +359,9 @@ class SettingsScreen extends ConsumerWidget {
               Text(
                 s.t('اختر منطقتك', 'Choose your region'),
                 style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 10),
               for (final r in regions)
@@ -302,6 +383,7 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 }
+
 
 /// Miniature app preview inside the theme picker cards.
 class _ThemePreviewCard extends StatelessWidget {
@@ -394,12 +476,18 @@ class _ThemePreviewCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 11.5, fontWeight: FontWeight.w700)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(subtitle,
-                    style: TextStyle(fontSize: 9.5, color: ak.inkSub)),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 9.5, color: ak.inkSub),
+                ),
               ],
             ),
           ),
@@ -410,100 +498,15 @@ class _ThemePreviewCard extends StatelessWidget {
               child: Container(
                 width: 20,
                 height: 20,
-                decoration:
-                    BoxDecoration(color: ak.primary, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: ak.primary,
+                  shape: BoxShape.circle,
+                ),
                 child: Icon(LucideIcons.check, size: 12, color: ak.onPrimary),
               ),
             ),
         ],
       ),
-    );
-  }
-}
-
-
-/// Switches the device between the pilot's three roles (spec §6).
-///
-/// Lives at the very bottom of Settings and says plainly what it does: this
-/// is an operating tool for the pilot, not a customer-facing feature. When
-/// the backend issues real role claims, this whole widget goes and
-/// [activeRoleProvider] reads the session instead.
-class _RoleSwitcher extends ConsumerWidget {
-  const _RoleSwitcher();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ak = AkColors.of(context);
-    final s = S.of(context);
-    final active = ref.watch(activeRoleProvider);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SandCard(
-          padding: EdgeInsets.zero,
-          child: Column(
-            children: [
-              for (final (i, role) in AppRole.values.indexed)
-                InkWell(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    ref.read(activeRoleProvider.notifier).setRole(role);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 11),
-                    decoration: BoxDecoration(
-                      border: i == AppRole.values.length - 1
-                          ? null
-                          : Border(bottom: BorderSide(color: ak.divider)),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(role.label(s),
-                                  style: const TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w700)),
-                              const SizedBox(height: 2),
-                              Text(role.description(s),
-                                  style: TextStyle(
-                                      fontSize: 10.5, color: ak.inkSub)),
-                            ],
-                          ),
-                        ),
-                        if (role == active)
-                          Icon(LucideIcons.check, size: 17, color: ak.ink),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          s.t('أدوار التشغيل للتجريبي. لا تغيّر ما يراه العميل في تطبيقه — تفتح لك لوحة الورشة أو لوحة المؤسس على هذا الجهاز فقط.',
-              "Pilot operating roles. They change nothing for a customer on their own phone — they open the workshop or founder panel on this device only."),
-          style: TextStyle(fontSize: 10, color: ak.inkFaint, height: 1.7),
-        ),
-        if (active.hasPanel) ...[
-          const SizedBox(height: 10),
-          FilledButton(
-            onPressed: () => context.push(active.panelRoute),
-            child: Text(switch (active) {
-              AppRole.workshop =>
-                s.t('افتح لوحة الورشة', 'Open the workshop panel'),
-              AppRole.founder =>
-                s.t('افتح لوحة المؤسس', 'Open the founder panel'),
-              AppRole.customer => s.navBookings,
-            }),
-          ),
-        ],
-      ],
     );
   }
 }

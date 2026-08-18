@@ -18,7 +18,7 @@ import 'package:ak_cars_mobil_app/features/services/services_screen.dart';
 import 'package:ak_cars_mobil_app/features/shop/product_detail_screen.dart';
 
 import 'helpers/test_harness.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+import 'fakes/data/mock_ids.dart';
 
 /// These screens shipped with hard-coded English text, so they stayed English
 /// no matter which language was selected. Each case pumps the same screen
@@ -157,12 +157,13 @@ void main() {
     en: ['Choose model', 'Choose year'],
   );
 
+  // "Verify with" / "التوثيق عبر" and the verify-and-continue button went
+  // with the OTP block on 2026-08-10 — `POST /auth/register` has no code step.
   bilingualTest(
     'Register screen',
     () => const RegisterScreen(),
-    ar: ['أكمل بياناتك', 'التوثيق عبر', 'الاسم الكامل', 'توثيق ومتابعة'],
-    en: ['Complete your details', 'Verify with', 'Full name',
-        'Verify and continue'],
+    ar: ['أكمل بياناتك', 'الاسم الكامل', 'متابعة'],
+    en: ['Complete your details', 'Full name', 'Continue'],
   );
 
   bilingualTest(

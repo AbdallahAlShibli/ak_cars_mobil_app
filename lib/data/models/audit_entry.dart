@@ -19,7 +19,18 @@ enum AuditSubjectType {
   offer,
 
   /// A payout was marked as transferred.
-  payout;
+  payout,
+
+  /// A workshop's own stock — an item created/edited/deleted, or a stock
+  /// movement recorded (spec: Workshop Provider Dashboard).
+  inventory,
+
+  /// A workshop's own roster — a team member created/edited/deactivated.
+  staff,
+
+  /// A workshop's own annotation on a customer it has actually served — a
+  /// note added.
+  customer;
 
   String get key => name;
 
@@ -37,6 +48,9 @@ extension AuditSubjectTypeX on AuditSubjectType {
         AuditSubjectType.provider => s.t('ورشة', 'Workshop'),
         AuditSubjectType.offer => s.t('عرض', 'Offer'),
         AuditSubjectType.payout => s.t('تحويل', 'Payout'),
+        AuditSubjectType.inventory => s.t('مخزون', 'Inventory'),
+        AuditSubjectType.staff => s.t('فريق', 'Staff'),
+        AuditSubjectType.customer => s.t('عميل', 'Customer'),
       };
 }
 

@@ -4,8 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:ak_cars_mobil_app/app/bootstrap.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
-import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
+
+import 'fakes/fakes.dart';
 
 /// Registering a car has to outlive the launch that did it.
 ///
@@ -33,12 +34,12 @@ void main() {
   /// One launch of the app over storage that persists between calls — the
   /// same container wiring `main()` builds, minus the widget tree.
   Future<ProviderContainer> launch() async {
+    // Doubles for the services, real storage underneath: prefs are not reset
+    // between calls, so the second container genuinely reads what the first
+    // one wrote. `MemoryTokenStore` starts empty, which keeps the garage on
+    // its guest path — `LocalGarageStore`, the object actually under test.
     final container = ProviderContainer(
-      overrides: [
-        sharedPrefsProvider.overrideWithValue(
-          await SharedPreferences.getInstance(),
-        ),
-      ],
+      overrides: fakeServiceOverrides(await SharedPreferences.getInstance()),
     );
     addTearDown(container.dispose);
     await AppBootstrap.warmUp(container);

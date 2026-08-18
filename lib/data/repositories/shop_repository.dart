@@ -36,10 +36,14 @@ class ShopRepositoryImpl implements ShopRepository {
   final _products = WarmCache<List<Product>>(fallback: const []);
 
   @override
-  Future<void> warmUp() => Future.wait([
-        _partCategories.load(_service.fetchPartCategories),
-        _products.load(() => _service.fetchProducts()),
-      ]);
+  // `async` so this really is a `Future<void>` — see `CarsRepositoryImpl.warmUp`
+  // for why a `=> Future.wait(...)` body is a `catchError` trap.
+  Future<void> warmUp() async {
+    await Future.wait([
+      _partCategories.load(_service.fetchPartCategories),
+      _products.load(() => _service.fetchProducts()),
+    ]);
+  }
 
   @override
   Map<String, L> get partCategories => _partCategories.value;

@@ -45,11 +45,17 @@ class ChallengeRepositoryImpl implements ChallengeRepository {
   };
 
   @override
-  Future<void> warmUp() => Future.wait([
-        for (final track in ChallengeTrack.values)
-          _boards[track]!
-              .load(() => _service.fetchBoard(powertrain: _sample[track])),
-      ]);
+  // `async` so this really is a `Future<void>` — see `CarsRepositoryImpl.warmUp`
+  // for why a `=> Future.wait(...)` body is a `catchError` trap. This is the
+  // one that surfaced it: `_warmAuthenticatedData` swallows a failed warm-up,
+  // and the swallow itself threw.
+  Future<void> warmUp() async {
+    await Future.wait([
+      for (final track in ChallengeTrack.values)
+        _boards[track]!
+            .load(() => _service.fetchBoard(powertrain: _sample[track])),
+    ]);
+  }
 
   @override
   ChallengeBoard get board => boardFor(null);

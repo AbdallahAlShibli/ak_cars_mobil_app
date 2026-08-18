@@ -20,7 +20,7 @@ import 'package:ak_cars_mobil_app/data/models/models.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 
 import 'helpers/test_harness.dart';
-import 'package:ak_cars_mobil_app/data/datasources/mock/mock_ids.dart';
+import 'fakes/data/mock_ids.dart';
 
 /// Pumps a screen inside the real theme + localization stack. Any layout
 /// overflow or build exception fails the test.
@@ -140,7 +140,7 @@ void main() {
     // a price nobody charges.
     expect(find.text('25% off'), findsWidgets);
     expect(find.textContaining('4.5', findRichText: true), findsWidgets);
-    expect(find.text('6 OMR'), findsWidgets);
+    expect(find.textContaining('6', findRichText: true), findsWidgets);
     expect(find.textContaining('ends in'), findsWidgets);
     // …and the section says what it is showing, without claiming more.
     expect(

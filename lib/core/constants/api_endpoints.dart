@@ -26,6 +26,34 @@ abstract final class ApiEndpoints {
 
   static String garageVehicle(String vehicleId) => '/user/vehicles/$vehicleId';
 
+  static String primaryVehicle(String vehicleId) =>
+      '${garageVehicle(vehicleId)}/primary';
+
+  // -------------------------------------------------------- maintenance
+  /// Every maintenance book, flattened — each entry carries its own `carId`.
+  static const maintenanceBooks = '/user/vehicles/maintenance';
+
+  static String vehicleMaintenance(String carId) =>
+      '/user/vehicles/$carId/maintenance';
+
+  static String maintenanceOdometer(String carId) =>
+      '${vehicleMaintenance(carId)}/odometer';
+
+  static String maintenanceRecords(String carId) =>
+      '${vehicleMaintenance(carId)}/records';
+
+  static String maintenanceRecord(String carId, String recordId) =>
+      '${maintenanceRecords(carId)}/$recordId';
+
+  static String maintenanceInterval(String carId, String itemKey) =>
+      '${vehicleMaintenance(carId)}/intervals/$itemKey';
+
+  static String maintenanceItems(String carId) =>
+      '${vehicleMaintenance(carId)}/items';
+
+  static String maintenanceItem(String carId, String itemId) =>
+      '${maintenanceItems(carId)}/$itemId';
+
   // --------------------------------------------------------------- catalog
   /// Make/model catalog powering the car pickers.
   static const carCatalog = '/cars/catalog';
@@ -88,9 +116,6 @@ abstract final class ApiEndpoints {
   static String serviceRequestStatus(String requestId) =>
       '/service-marketplace/requests/$requestId/status';
 
-  static String serviceRequestApproval(String requestId) =>
-      '/service-marketplace/requests/$requestId/approve';
-
   /// "Request a part + installation" — a booking that starts without a price
   /// (spec §6). Same collection as [serviceRequests]; a separate path because
   /// the body is a part description rather than an offering id.
@@ -99,6 +124,95 @@ abstract final class ApiEndpoints {
   /// The workshop's itemised quote against a part request.
   static String requestQuote(String requestId) =>
       '/service-marketplace/requests/$requestId/quote';
+
+  static String serviceOffering(String offeringId) =>
+      '$serviceOfferings/$offeringId';
+
+  static String serviceOffer(String offerId) => '$serviceOffers/$offerId';
+
+  static String providerStage(String providerId) =>
+      '$serviceProviders/$providerId/stage';
+
+  static const workshopApplications = '/service-marketplace/applications';
+  static const operatorRequests = '/service-marketplace/operator/requests';
+  static const payouts = '/service-marketplace/payouts';
+  static const auditLog = '/service-marketplace/audit';
+
+  // ---------------------------------------------------------- my workshop
+  // A workshop owner's own dashboard — nested under the resources they
+  // belong to, same convention as `providerAddOns`/`providerSlots` above.
+  // Every route resolves the caller's workshop from the JWT server-side;
+  // none of these paths ever carry a providerId.
+  static const myWorkshop = '/service-marketplace/my-workshop';
+  static const myWorkshopSummary = '$myWorkshop/summary';
+
+  static const myWorkshopOfferings = '$myWorkshop/offerings';
+
+  static String myWorkshopOffering(String offeringId) =>
+      '$myWorkshopOfferings/$offeringId';
+
+  static String myWorkshopOfferingActive(String offeringId) =>
+      '${myWorkshopOffering(offeringId)}/active';
+
+  static const myWorkshopAddOns = '$myWorkshop/add-ons';
+
+  static String myWorkshopAddOn(String addOnId) => '$myWorkshopAddOns/$addOnId';
+
+  static const myWorkshopInventory = '$myWorkshop/inventory';
+  static const myWorkshopLowStock = '$myWorkshopInventory/low-stock';
+
+  static String myWorkshopInventoryItem(String itemId) =>
+      '$myWorkshopInventory/$itemId';
+
+  static String myWorkshopInventoryMovements(String itemId) =>
+      '${myWorkshopInventoryItem(itemId)}/movements';
+
+  static const myWorkshopStaff = '$myWorkshop/staff';
+
+  static String myWorkshopStaffMember(String staffId) =>
+      '$myWorkshopStaff/$staffId';
+
+  static String myWorkshopAssignRequest(String requestId) =>
+      '$myWorkshop/requests/$requestId/assign';
+
+  static const myWorkshopRequests = '$myWorkshop/requests';
+
+  static const myWorkshopCustomers = '$myWorkshop/customers';
+
+  static String myWorkshopCustomer(String userId) =>
+      '$myWorkshopCustomers/$userId';
+
+  static String myWorkshopCustomerNotes(String userId) =>
+      '${myWorkshopCustomer(userId)}/notes';
+
+  static const myWorkshopSchedule = '$myWorkshop/schedule';
+  static const myWorkshopEarnings = '$myWorkshop/earnings';
+  static const myWorkshopMetrics = '$myWorkshop/metrics';
+
+  // ------------------------------------------------------- admin workshop
+  // The founder's CRUD over *any* workshop's profile and catalogue — the
+  // target provider is always in the path, unlike `myWorkshop*` above.
+  static const _adminProviders = '/service-marketplace/admin/providers';
+
+  static String adminProvider(String providerId) =>
+      '$_adminProviders/$providerId';
+
+  static String adminProviderOfferings(String providerId) =>
+      '${adminProvider(providerId)}/offerings';
+
+  static String adminProviderOffering(String providerId, String offeringId) =>
+      '${adminProviderOfferings(providerId)}/$offeringId';
+
+  static String adminProviderOfferingActive(
+    String providerId,
+    String offeringId,
+  ) => '${adminProviderOffering(providerId, offeringId)}/active';
+
+  static String adminProviderAddOns(String providerId) =>
+      '${adminProvider(providerId)}/add-ons';
+
+  static String adminProviderAddOn(String providerId, String addOnId) =>
+      '${adminProviderAddOns(providerId)}/$addOnId';
 
   // --------------------------------------------------------------- reviews
   /// Verified reviews. A `POST` here is only valid for a booking that reached
@@ -136,20 +250,21 @@ abstract final class ApiEndpoints {
   // --------------------------------------------------------- notifications
   static const notifications = '/notifications';
   static const markNotificationsRead = '/notifications/read';
+  static const notificationDevices = '/notifications/devices';
+
+  static String notificationDevice(String token) =>
+      '/notifications/devices/${Uri.encodeComponent(token)}';
 
   // ------------------------------------------------------------------ chat
-  static String requestChat(String requestId) => '/chat/requests/$requestId';
-
-  // ---------------------------------------------------- garage maintenance
-  static const maintenance = '/maintenance';
-  static const maintenanceRecords = '/maintenance/records';
-  static const maintenanceOdometer = '/maintenance/odometer';
-  static const maintenanceIntervals = '/maintenance/intervals';
+  /// `threadId` is a booking GUID **or** `provider:{providerId}` — encoded,
+  /// because the colon must reach the server as `%3A`.
+  static String chatThreadMessages(String threadId) =>
+      '/chat/threads/${Uri.encodeComponent(threadId)}/messages';
 
   // ------------------------------------------------------------ challenges
-  static const challenges = '/challenges';
-  static const currentChallenge = '/challenges/current';
+  static const challengeBoard = '/challenges/board';
+  static const completeCurrentChallenge = '/challenges/current/complete';
 
-  static String completeChallenge(String challengeId) =>
-      '/challenges/$challengeId/complete';
+  static String toggleChallengeStep(String stepId) =>
+      '/challenges/steps/$stepId/toggle';
 }

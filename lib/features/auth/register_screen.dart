@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/error/app_exception.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,10 +27,13 @@ import 'auth_form_widgets.dart';
 /// details" on the profile hub reopened an empty registration form and
 /// re-demanded an OTP just to correct an address.
 ///
-/// Verification is asked for only when it means something: a brand-new
-/// account, or an existing one whose phone or email actually changed. The
-/// channel is then dictated by *which* of the two changed rather than left
-/// as a free choice, since a code sent to the old address proves nothing.
+/// There is no verification step here. `POST /auth/register` and
+/// `PUT /user/profile` both save whatever they are sent, with no OTP on
+/// either — the in-app "prove it" gate that used to live on this screen only
+/// ever had the removed mock backend behind it, and it compared the typed code
+/// against a hardcoded constant. Keeping it would have blocked every real
+/// registration behind a made-up password. Login *does* verify a real,
+/// server-issued code; see `login_screen.dart`.
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
@@ -38,27 +42,17 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
-  /// The code the staging backend always accepts. Real builds swap the mock
-  /// auth service; this screen only ever compares against what it displayed.
-  static const _stagingCode = '7391';
-  static const _resendSeconds = 30;
-
   /// Captured once: the profile must not flip mid-edit if the state changes
   /// underneath (a sign-out elsewhere, a failed optimistic write rolling back).
   UserProfile? _initial;
   bool get _editing => _initial != null;
 
-  AuthChannel _channel = AuthChannel.phone;
-  bool _otpSent = false;
   bool _saving = false;
-  int _resendIn = 0;
-  Timer? _resendTimer;
 
   final _name = TextEditingController();
   final _phone = TextEditingController();
   final _email = TextEditingController();
   final _address = TextEditingController();
-  final _otp = TextEditingController();
 
   /// Canonical English governorate key. Starts empty for a new account —
   /// silently defaulting to the first governorate in the list filed every
@@ -141,12 +135,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   void dispose() {
-    _resendTimer?.cancel();
     _name.dispose();
     _phone.dispose();
     _email.dispose();
     _address.dispose();
-    _otp.dispose();
     _businessNameAr.dispose();
     _businessNameEn.dispose();
     _crNumber.dispose();
@@ -154,74 +146,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     super.dispose();
   }
 
-  // ---------------------------------------------------------- verification
+  // ---------------------------------------------------------------- fields
 
   static String _normEmail(String v) => v.trim().toLowerCase();
 
-  /// Which contact detail still has to be proven, or null when nothing does.
-  ///
-  /// A new account always verifies through the channel the user picked. An
-  /// existing one verifies only what it changed, so editing an address or a
-  /// name saves straight away.
-  AuthChannel? get _pendingChannel {
-    final initial = _initial;
-    if (initial == null) return _channel;
-    if (AuthPhone.local(_phone.text) != AuthPhone.local(initial.phone)) return AuthChannel.phone;
-    final email = _normEmail(_email.text);
-    if (email.isNotEmpty && email != _normEmail(initial.email)) {
-      return AuthChannel.email;
-    }
-    return null;
-  }
-
   /// Full E.164-ish phone as stored and displayed, built from the local field.
   String get _fullPhone => AuthPhone.full(AuthPhone.local(_phone.text));
-
-  String get _otpTarget =>
-      _pendingChannel == AuthChannel.email ? _email.text.trim() : _fullPhone;
-
-  void _startResendCountdown() {
-    _resendTimer?.cancel();
-    setState(() => _resendIn = _resendSeconds);
-    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return timer.cancel();
-      setState(() => _resendIn -= 1);
-      if (_resendIn <= 0) timer.cancel();
-    });
-  }
-
-  /// Sends the code, after checking the destination is actually usable —
-  /// the old screen happily announced "code sent to " with an empty address.
-  void _sendOtp() {
-    final s = S.of(context);
-    final channel = _pendingChannel;
-    if (channel == null) return;
-
-    final error = channel == AuthChannel.phone
-        ? _phoneError(s)
-        : _emailError(s, required: true);
-    if (error != null) {
-      setState(() => _errors[channel == AuthChannel.phone ? 'phone' : 'email'] =
-          error);
-      return;
-    }
-
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _otpSent = true;
-      _errors.remove('otp');
-    });
-    _startResendCountdown();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(channel == AuthChannel.phone
-            ? s.t('أُرسل الرمز عبر SMS إلى $_otpTarget — رمز التجربة: $_stagingCode',
-                'Code sent by SMS to $_otpTarget — staging code: $_stagingCode')
-            : s.t('أُرسل الرمز إلى $_otpTarget — رمز التجربة: $_stagingCode',
-                'Code sent to $_otpTarget — staging code: $_stagingCode')),
-      ),
-    );
-  }
 
   // ------------------------------------------------------------ validation
 
@@ -263,8 +193,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
     final phone = _phoneError(s);
     if (phone != null) errors['phone'] = phone;
-    final channel = _pendingChannel;
-    final email = _emailError(s, required: channel == AuthChannel.email);
+    // Never required: nothing is verified by email any more, so an account
+    // with only a phone number is complete.
+    final email = _emailError(s, required: false);
     if (email != null) errors['email'] = email;
     if (_region == null) {
       errors['region'] = s.t('اختر المحافظة', 'Choose your governorate');
@@ -315,22 +246,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       return;
     }
 
-    if (_pendingChannel != null) {
-      // First tap sends the code and reveals the field. The old screen just
-      // complained about a missing code while no code field was on screen.
-      if (!_otpSent) {
-        _sendOtp();
-        return;
-      }
-      if (_otp.text.trim() != _stagingCode) {
-        HapticFeedback.heavyImpact();
-        setState(() => _errors['otp'] = _otp.text.trim().isEmpty
-            ? s.t('أدخل الرمز المكوّن من 4 أرقام', 'Enter the 4-digit code')
-            : s.t('رمز غير صحيح', 'That code is not right'));
-        return;
-      }
-    }
-
     setState(() => _saving = true);
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
@@ -348,18 +263,30 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
 
     final notifier = ref.read(authProvider.notifier);
-    if (_editing) {
-      await notifier.updateProfile(profile);
-      // A workshop account that edited its submission is re-applying, and §11
-      // step 5 says that puts it back into the founder's pipeline. Doing it
-      // here rather than silently leaving the old application in place is the
-      // difference between "I fixed it and resubmitted" and "I fixed it and
-      // nothing happened".
-      if (_isWorkshop && profile.workshop != null) {
-        await notifier.resubmitWorkshopApplication(profile.workshop!);
+    try {
+      if (_editing) {
+        await notifier.updateProfile(profile);
+        // A workshop account that edited its submission is re-applying, and §11
+        // step 5 says that puts it back into the founder's pipeline. Doing it
+        // here rather than silently leaving the old application in place is the
+        // difference between "I fixed it and resubmitted" and "I fixed it and
+        // nothing happened".
+        if (_isWorkshop && profile.workshop != null) {
+          await notifier.resubmitWorkshopApplication(profile.workshop!);
+        }
+      } else {
+        await notifier.register(profile);
       }
-    } else {
-      await notifier.register(profile);
+    } catch (error) {
+      // `AuthNotifier` rolls its optimistic state back and rethrows, so this is
+      // the only thing standing between a rejected submission and an uncaught
+      // async error. Without it the button span for ever and the screen said
+      // nothing at all — the reason reached a console the user will never open.
+      if (!mounted) return;
+      setState(() => _saving = false);
+      HapticFeedback.heavyImpact();
+      _reportSubmitFailure(error, s);
+      return;
     }
     if (!mounted) return;
 
@@ -393,6 +320,52 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 'Account verified — you can now transact')),
       ),
     );
+  }
+
+  /// Turns a rejected submission into something the user can act on.
+  ///
+  /// The one case worth branching on is an account that already exists. "Try
+  /// again" is the wrong advice there — the same phone will be refused every
+  /// time — so the snackbar carries the way out rather than leaving them to
+  /// find it. It is also the likeliest failure on this screen: `/auth` offers
+  /// registration to anyone who is not signed in, including someone who simply
+  /// signed out of an account they still have.
+  ///
+  /// The server's own `detail` is deliberately not shown. It is English-only,
+  /// and this screen is Arabic by default — a localized line for the case we
+  /// recognise beats a server string the user may not read.
+  void _reportSubmitFailure(Object error, S s) {
+    final code =
+        error is BusinessRuleException ? error.code : null;
+    final exists = code == 'account_already_exists';
+    // The founder deleted this workshop account (see AdminWorkshopDetailScreen's
+    // permanent-delete action) — re-submitting must not silently resurrect it,
+    // so the API refuses and this is the one message worth naming specifically
+    // rather than folding into the generic connection-error copy below.
+    final removed = code == 'workshop_account_removed';
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(
+          exists
+              ? s.t('لديك حساب بهذا الرقم أو البريد الإلكتروني بالفعل.',
+                  'You already have an account with that phone or email.')
+              : removed
+                  ? s.t('أُزيل هذا الحساب من المنصة. تواصل مع الدعم.',
+                      'This account was removed from the platform. Contact '
+                          'support.')
+                  : s.t('تعذّر إتمام العملية. تحقّق من اتصالك وحاول مرة أخرى.',
+                      'Could not complete that. Check your connection and try '
+                          'again.'),
+        ),
+        action: exists
+            ? SnackBarAction(
+                label: s.t('تسجيل الدخول', 'Sign in'),
+                onPressed: () => context.push('/login'),
+              )
+            : null,
+      ));
   }
 
   /// The submission, in [ServiceProvider]'s own field names so approval copies
@@ -552,7 +525,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final locations = ref.watch(locationCatalogProvider);
-    final pending = _pendingChannel;
 
     return Scaffold(
       backgroundColor: ak.bg,
@@ -657,7 +629,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     hint: 'name@example.om',
                     controller: _email,
                     error: _errors['email'],
-                    optional: _channel == AuthChannel.phone && !_editing,
+                    optional: !_editing,
                     keyboardType: TextInputType.emailAddress,
                     onChanged: (_) => _clear('email'),
                   ),
@@ -698,73 +670,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   // page in both flows, so a workshop applicant is not asked
                   // for a code and *then* for six more fields.
                   if (_isWorkshop) _workshopSection(context, s, ak, locations),
-                  // The verification block disappears entirely once there is
-                  // nothing left to prove, so an address edit is one tap.
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 240),
-                    curve: Curves.easeOut,
-                    alignment: Alignment.topCenter,
-                    child: pending == null
-                        ? const SizedBox(width: double.infinity)
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 8),
-                              AuthSectionLabel(s.t('التوثيق عبر', 'Verify with')),
-                              if (_editing)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: AuthNoticeCard(
-                                    icon: LucideIcons.shield,
-                                    background: ak.amberBgSoft,
-                                    foreground: ak.amberText,
-                                    message: pending == AuthChannel.phone
-                                        ? s.t(
-                                            'غيّرت رقم هاتفك — أكّده برمز قبل الحفظ.',
-                                            'You changed your phone number — confirm it with a code before saving.')
-                                        : s.t(
-                                            'غيّرت بريدك الإلكتروني — أكّده برمز قبل الحفظ.',
-                                            'You changed your email — confirm it with a code before saving.'),
-                                  ),
-                                )
-                              else
-                                Row(
-                                  children: [
-                                    AuthChannelCard(
-                                      selected: _channel == AuthChannel.phone,
-                                      icon: LucideIcons.messageSquare,
-                                      title:
-                                          s.t('رمز عبر الهاتف', 'Phone OTP'),
-                                      subtitle: s.t('رمز SMS', 'SMS code'),
-                                      onTap: () => _switchChannel(
-                                          AuthChannel.phone),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    AuthChannelCard(
-                                      selected: _channel == AuthChannel.email,
-                                      icon: LucideIcons.mailCheck,
-                                      title:
-                                          s.t('رمز عبر البريد', 'Email OTP'),
-                                      subtitle:
-                                          s.t('رمز بالبريد', 'Code by email'),
-                                      onTap: () => _switchChannel(
-                                          AuthChannel.email),
-                                    ),
-                                  ],
-                                ),
-                              const SizedBox(height: 10),
-                              AuthOtpBlock(
-                                sent: _otpSent,
-                                controller: _otp,
-                                target: _otpTarget,
-                                error: _errors['otp'],
-                                resendIn: _resendIn,
-                                onSend: _sendOtp,
-                                onChanged: (_) => _clear('otp'),
-                              ),
-                            ],
-                          ),
-                  ),
                   const SizedBox(height: 12),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -962,42 +867,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   String _submitLabel(S s) {
-    if (_editing) {
-      return _pendingChannel != null && !_otpSent
-          ? s.t('إرسال الرمز', 'Send the code')
-          : s.t('حفظ التعديلات', 'Save changes');
-    }
+    if (_editing) return s.t('حفظ التعديلات', 'Save changes');
     // A workshop is not "continuing" anywhere — it is submitting an
     // application that a person will read. The button says so.
     if (_isWorkshop) {
-      return _pendingChannel != null && !_otpSent
-          ? s.t('إرسال الرمز', 'Send the code')
-          : s.t('إرسال طلب الورشة', 'Submit workshop application');
+      return s.t('إرسال طلب الورشة', 'Submit workshop application');
     }
-    return s.t('توثيق ومتابعة', 'Verify and continue');
-  }
-
-  void _switchChannel(AuthChannel channel) {
-    if (_channel == channel) return;
-    HapticFeedback.selectionClick();
-    setState(() {
-      _channel = channel;
-      // The code that was sent proves the *other* address, so it is void.
-      _otpSent = false;
-      _otp.clear();
-      _errors.remove('otp');
-    });
-    _resendTimer?.cancel();
+    return s.t('متابعة', 'Continue');
   }
 
   /// Drops a field's error as soon as the user starts fixing it.
   void _clear(String key) {
-    if (!_errors.containsKey(key)) {
-      // Editing the phone/email can change what still needs verifying, so
-      // the verification block has to be rebuilt either way.
-      setState(() {});
-      return;
-    }
+    if (!_errors.containsKey(key)) return;
     setState(() => _errors.remove(key));
   }
 }
