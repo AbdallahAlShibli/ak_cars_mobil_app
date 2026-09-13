@@ -13,6 +13,7 @@ import '../../data/models/models.dart';
 import '../../data/repositories/service_marketplace_repository.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
+import '../services/service_photo_field.dart';
 import 'admin_category_badges.dart';
 import 'admin_form_widgets.dart';
 import 'admin_panel_widgets.dart';
@@ -607,6 +608,7 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
   late String? _providerId = widget.existing?.providerId;
   late String? _offeringId = widget.existing?.offeringId;
   late final Set<String> _regions = {...?widget.existing?.regions};
+  late MediaAttachment? _image = widget.existing?.image;
   DateTime? _endsAt;
   bool _hasEndDate = false;
   bool _saving = false;
@@ -638,6 +640,22 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
   /// pill for every English reader, which reads as a broken card rather than as
   /// a missing translation. This editor used to accept it silently.
   bool get _badgeBalanced => _badgeArText.isEmpty == _badgeEnText.isEmpty;
+
+  /// Whether either language's body just repeats its own title.
+  ///
+  /// Not a blocker — a founder may genuinely have nothing more to add — but
+  /// the card drops the duplicate line rather than printing it twice
+  /// ([PromotionCardFace]), and an editor that lets that happen silently is an
+  /// editor whose preview looks wrong for no stated reason.
+  bool get _bodyRepeatsTitle {
+    bool same(TextEditingController a, TextEditingController b) {
+      final title = a.text.trim().toLowerCase();
+      final body = b.text.trim().toLowerCase();
+      return title.isNotEmpty && title == body;
+    }
+
+    return same(_titleAr, _bodyAr) || same(_titleEn, _bodyEn);
+  }
 
   /// What is still missing, in the order the form asks for it — or null when it
   /// can be saved.
@@ -677,6 +695,7 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
           body: L(_bodyAr.text.trim(), _bodyEn.text.trim()),
           icon: IconCodec.decode(_iconKey),
           badge: badge,
+          image: _image,
           providerId: _providerId,
           offeringId: _offeringId,
           query: _query.text.trim().isEmpty ? null : _query.text.trim(),
@@ -690,6 +709,7 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
           body: L(_bodyAr.text.trim(), _bodyEn.text.trim()),
           icon: IconCodec.decode(_iconKey),
           badge: badge,
+          image: _image,
           providerId: _providerId,
           offeringId: _offeringId,
           query: _query.text.trim().isEmpty ? null : _query.text.trim(),
@@ -729,8 +749,15 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
     final s = S.of(context);
     final locations = ref.watch(locationCatalogProvider);
     final marketplace = ref.watch(serviceMarketplaceRepositoryProvider);
+    // Every offering when no workshop is chosen, not an empty list.
+    //
+    // This dropdown used to be dead until a workshop was picked, which made
+    // "no destination" the path of least resistance — and a card with no
+    // destination opens the whole Services tab rather than the thing it
+    // advertises. A founder who knows the service but not which workshop
+    // lists it can now simply pick it; the workshop follows from the choice.
     final offeringsForProvider = _providerId == null
-        ? const <ServiceOffering>[]
+        ? marketplace.offerings
         : marketplace.offerings
               .where((o) => o.provider.id == _providerId)
               .toList();
@@ -851,6 +878,34 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
+                if (_bodyRepeatsTitle) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  _InlineWarning(
+                    s.t(
+                      'النص يكرّر العنوان — البطاقة ستعرض العنوان وحده. اكتب '
+                          'في النص ما لا يقوله العنوان.',
+                      'The body repeats the title — the card will show the '
+                          'title alone. Write something the title does not '
+                          'already say.',
+                    ),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.lg),
+                ServicePhotoField(
+                  value: _image,
+                  onChanged: (image) => setState(() => _image = image),
+                  label: s.t(
+                    'صورة خلفية (اختيارية)',
+                    'Background image (optional)',
+                  ),
+                  emptyHint: s.t(
+                    'صورة عريضة تملأ البطاقة، وتُظلَّل تلقائياً ليبقى النص '
+                        'مقروءاً. بدونها تبقى البطاقة بتدرّجها الرملي.',
+                    'A wide photo fills the card and is dimmed automatically so '
+                        'the text stays readable. Without one the card keeps '
+                        'its sand gradient.',
+                  ),
+                ),
                 const SizedBox(height: AppSpacing.lg),
                 _FieldLabel(s.t('الأيقونة', 'Icon')),
                 const SizedBox(height: AppSpacing.sm),
@@ -953,12 +1008,12 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: s.t('الخدمة', 'Service'),
-                    helperText: _providerId == null
-                        ? s.t('اختر ورشة أولاً.', 'Pick a workshop first.')
-                        : s.t(
-                            'تفتح صفحة الخدمة بسعرها الحقيقي.',
-                            'Opens the service page at its real price.',
-                          ),
+                    helperText: s.t(
+                      'تفتح صفحة الخدمة بسعرها الحقيقي — وهي أفضل وجهة '
+                          'للبطاقة.',
+                      'Opens the service page at its real price — the best '
+                          'destination a card can have.',
+                    ),
                   ),
                   items: [
                     DropdownMenuItem(
@@ -969,14 +1024,27 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
                       DropdownMenuItem(
                         value: o.id,
                         child: Text(
-                          o.name.of(s).replaceAll('\n', ' '),
+                          // The workshop is named only while the list is
+                          // unfiltered: two workshops often sell a service of
+                          // the same name, and choosing blind between them is
+                          // how a card ends up pointing at the wrong one.
+                          _providerId == null
+                              ? '${o.name.of(s).replaceAll('\n', ' ')} — '
+                                    '${o.provider.name.of(s)}'
+                              : o.name.of(s).replaceAll('\n', ' '),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                   ],
-                  onChanged: _providerId == null
-                      ? null
-                      : (v) => setState(() => _offeringId = v),
+                  onChanged: (v) => setState(() {
+                    _offeringId = v;
+                    // Picking a service settles which workshop it belongs to,
+                    // so the field above follows it rather than contradicting
+                    // it.
+                    if (v != null) {
+                      _providerId = marketplace.offeringById(v)?.provider.id;
+                    }
+                  }),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
@@ -1001,8 +1069,23 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
                 _DestinationSummary(
                   offeringId: _offeringId,
                   query: _query.text,
+                  providerId: _providerId,
                   marketplace: marketplace,
                 ),
+                if (_offeringId == null &&
+                    _query.text.trim().isEmpty &&
+                    _providerId == null) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  _InlineWarning(
+                    s.t(
+                      'البطاقة بلا وجهة: الضغط عليها يفتح تبويب الخدمات كاملاً، '
+                          'ويترك العميل يبحث من جديد عمّا وعدته به البطاقة.',
+                      'This card has no destination: tapping it opens the whole '
+                          'Services tab and leaves the customer searching again '
+                          'for what the card just promised them.',
+                    ),
+                  ),
+                ],
 
                 // ------------------------------------- 3. audience & window
                 const SizedBox(height: AppSpacing.sectionGap),
@@ -1134,6 +1217,7 @@ class _PromotionEditorSheetState extends ConsumerState<_PromotionEditorSheet> {
 
     return PromotionCardFace(
       icon: IconCodec.decode(_iconKey),
+      image: _image,
       title: title.isEmpty
           ? s.t('العنوان يظهر هنا', 'Your title appears here')
           : title,
@@ -1298,11 +1382,13 @@ class _DestinationSummary extends StatelessWidget {
   const _DestinationSummary({
     required this.offeringId,
     required this.query,
+    required this.providerId,
     required this.marketplace,
   });
 
   final String? offeringId;
   final String query;
+  final String? providerId;
   final ServiceMarketplaceRepository marketplace;
 
   @override
@@ -1327,6 +1413,16 @@ class _DestinationSummary extends StatelessWidget {
         'الضغط يبحث عن "$trimmed" في الخدمات',
         'Tapping searches Services for "$trimmed"',
       );
+    } else if (providerId != null) {
+      // A workshop with no single service picked still has a real destination:
+      // that workshop's own services, which the card opens by searching its
+      // name. Stated here so the founder knows the field is doing something.
+      final provider = marketplace.providerById(providerId!);
+      final name = provider == null
+          ? s.t('ورشة محذوفة', 'a deleted workshop')
+          : provider.name.of(s);
+      icon = LucideIcons.store;
+      text = s.t('الضغط يفتح خدمات $name', "Tapping opens $name's services");
     } else {
       icon = LucideIcons.layoutGrid;
       text = s.t(

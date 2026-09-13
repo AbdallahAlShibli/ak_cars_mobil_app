@@ -17,6 +17,169 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-13 · A tapped announcement card opens what it advertises
+
+**Baseline:** `0636b04` (continues the entry below).
+
+Request, verbatim: "when user click on the service card open the current
+clicked services" — answered as the "من AK Cars" promo card.
+
+### Why it went to the wrong place
+
+Nothing was broken in the offering cards: the offers rail, the recommendation
+rail, search and the services list all already push `/service/<id>`. The card
+that misbehaved was the founder's own announcement, and the reason was in the
+data — of the six rows in `Promotions`, five name a workshop, a service or a
+search, and exactly one ("خدمات فحص الشراء", the card in the screenshot) has
+`ProviderId`, `OfferingId` and `Query` all `NULL`. A card with no destination
+fell through to `context.go('/services')`: the whole tab, unfiltered, leaving
+the customer to search again for the thing they had just tapped.
+
+That empty row was not carelessness. The editor's **Service dropdown was dead
+until a workshop was picked** ("Pick a workshop first"), so a founder who knew
+the service but not which workshop lists it had no way to choose one — and
+leaving both empty was the path of least resistance. Fixing the tap alone would
+have left the next card just as empty.
+
+### What changed
+
+- **`promotionTarget()`** — the destination rule is now one pure function
+  instead of a closure inside `onTap`: named service → its page (pushed);
+  otherwise the card's search; otherwise **the workshop behind it**, opened as
+  `/services?q=<workshop name>`. The services tab searches workshop names as
+  well as service names, so that query cannot land on an empty result the way
+  one built from a card's headline ("مبلغك محفوظ حتى تستلم سيارتك") would.
+  The bare tab is now reachable only by a card with none of the three. It also
+  re-checks that the offering still exists, so a withdrawn service falls
+  through to the search rather than pushing a dead page.
+- **The editor no longer makes emptiness easy.** The Service dropdown lists
+  every offering when no workshop is chosen (each labelled "service —
+  workshop", since two workshops often sell a service of the same name), and
+  picking one back-fills the workshop field. Choosing a destination is now one
+  tap from opening the sheet.
+- **It says when a card has none.** `_DestinationSummary` gained the
+  workshop case ("Tapping opens Al Noor's services"), and an inline warning
+  appears under it while the card has no service, no search and no workshop.
+  Not a blocker: a platform announcement about how escrow works is a legitimate
+  card with nothing to point at.
+
+### Files
+
+| File | Change |
+|---|---|
+| `lib/features/home/home_widgets.dart` | `PromotionTarget` typedef + `promotionTarget()`; `_AnnouncementCard.onTap` reduced to using it |
+| `lib/features/operations/admin_content_screen.dart` | service dropdown always enabled and back-fills the workshop, workshop-qualified labels, destination summary takes `providerId`, no-destination warning |
+| `test/promotion_card_test.dart` | five cases pinning the precedence: service, workshop-only, search-beats-workshop, nothing-at-all, deleted-offering |
+
+### Verified
+
+- `flutter analyze lib test` — clean. `flutter test` — 614 passed.
+- Read the live `Promotions` table to confirm which rows lacked a destination
+  (one, the card in the screenshot).
+- **Not** run on a device: the routes are asserted as strings, not by driving
+  the router.
+
+### Still needs a human
+
+The existing "خدمات فحص الشراء" row still has no destination — code cannot
+invent which service it meant. It now opens the Services tab (as before) until
+someone opens it in Content → announcements and picks the service, which the
+editor now warns about on sight.
+
+---
+
+## 2026-09-13 · Home announcement cards rebuilt, with a founder-set background image
+
+**Baseline:** `0636b04`. Touches both repos — the Flutter app and
+`AKCarsMobileAPI` (schema, DTO, endpoints).
+
+Request, verbatim: "cards need to improve. regenerated again, let admin add
+image as background for", with a screenshot of the Arabic home rail showing one
+card whose badge, title and body were all the same five words
+("خدمات فحص الشراء") over an otherwise empty box.
+
+### What was actually wrong
+
+The screenshot was not a layout bug so much as the card having nothing to hide
+behind: the founder had typed one phrase into three fields, and
+`PromotionCardFace` dutifully printed it three times and left the rest of a
+178 px box empty. Two decisions followed from that:
+
+1. **The card drops a body that only repeats its title** (trim + case
+   insensitive), and gives the title the third line instead. A founder with one
+   sentence to say now gets a card that looks deliberate.
+2. **A card can carry a photograph.** The founder picks one in the content
+   editor; it fills the card under a two-stop scrim (0.30 → 0.68 black), with
+   white text over it. The scrim is unconditional — trusting an uploaded photo
+   to be dark enough behind white text is how one bad picture makes the home
+   page unreadable.
+
+The gradient card and the photo card are both finished looks, chosen from the
+data rather than from a flag, so a founder with no picture to hand never ships
+the visibly worse one.
+
+Also fixed while in there: the forward arrow was hard-coded `arrowRight`, which
+in Arabic points backwards. It now follows `Directionality`.
+
+### How the image travels
+
+`MediaAttachment` on the record, base64, exactly like `ServiceOffering.Photo` —
+no upload endpoint, no bucket, no dangling URL. The editor reuses
+`ServicePhotoField` (same 4 MB cap and downscale as proof photos and CR
+documents), which grew optional `label`/`emptyHint` so it stops calling a card
+background "the service photo".
+
+On the wire the field is **always sent, `null` included**: omitting it on an
+edit is indistinguishable from "keep the old picture", and a founder who cleared
+the field would watch it come back.
+
+### Files
+
+| File | Change |
+|---|---|
+| `lib/core/widgets/promotion_card_face.dart` | rewritten — photo/gradient looks, duplicate-body suppression, badge that repeats the title suppressed, direction-aware arrow, title 14→15 px |
+| `lib/data/models/promotion.dart` | `image` (`MediaAttachment?`), JSON both ways, `copyWith(clearImage:)`, equality/hash |
+| `lib/features/operations/admin_content_screen.dart` | background-image field, `_image` state, preview wiring, non-blocking "the body repeats the title" warning |
+| `lib/features/services/service_photo_field.dart` | optional `label` / `emptyHint` |
+| `lib/features/home/home_widgets.dart` | passes `offer.image`; rail height now reads `PromotionCardFace.railHeight` instead of a second literal 178 |
+| `lib/data/services/service_marketplace_service.dart`, `…/api/api_service_marketplace_service.dart`, `lib/data/repositories/service_marketplace_repository.dart`, `lib/state/admin_content_state.dart`, `test/fakes/mock_service_marketplace_service.dart` | `image` threaded through create/update |
+| `test/promotion_card_test.dart` | **new** — duplicate-body suppression, photo vs gradient, RTL arrow, JSON round-trip incl. clearing, and one case that decodes the server's exact `GET /promotions` shape and asserts the photo reaches the card |
+| API: `Domain/Entities/Promotion.cs`, `Persistence/Configurations/PromotionConfiguration.cs`, `Migrations/20260913105131_AddPromotionImage.cs`, `Marketplace/Common/CatalogueDtos.cs` + `CatalogueMappers.cs`, `CreatePromotion`/`UpdatePromotion` commands, `Api/Endpoints/MarketplaceEndpoints.cs` | owned `Image` columns (`ImageId/Data/MimeType/FileName/Caption`), validated as an image ≤4 MB via the existing `MediaValidation` rules, nested `image` object on `PromotionBody` |
+
+### Verified
+
+- `flutter analyze lib test` — clean.
+- `flutter test` — 608 passed (6 of them new).
+- `dotnet test -c Release` (API) — 984 passed.
+- `dotnet ef database update` — the new nullable columns are applied to the
+  local dev database. The migration is purely additive and has a `Down`.
+- **Not** run on a device or emulator: the photo card has not been seen
+  rendering a real camera photo, only a 1×1 PNG in a widget test. Worth one
+  manual look before it ships.
+- Followed up the same day on "image not displayed on the main page". Checked
+  live, in this order: the row (`Promotions.ImageData` = 61 KB, `image/jpeg`),
+  then the exact URL the app calls
+  (`GET https://localhost:7291/api/v1/service-marketplace/promotions` → the card
+  carries `image.base64Data`, 81,704 chars), then the client decode+render path
+  (new wire-shape test above). All three good, so nothing was changed: what was
+  on screen was an app process older than the change. Note for next time —
+  `WarmCache` is process-lifetime and in-memory, so an app session that started
+  before the API restart holds the imageless copy until it is restarted; a hot
+  reload does not refetch.
+
+### Left alone
+
+- Existing promotion rows keep the gradient look until someone edits them and
+  adds a picture; nothing was backfilled.
+- The offers rail (`_DiscountCard`) has no image support — it was not in the
+  request and its cards are price-led, not picture-led.
+- A 4 MB image now rides inside the cached `GET /promotions` response, which is
+  `public, max-age=300`. Fine for the handful of cards this pilot runs; if the
+  rail ever holds a dozen photo cards, that response wants object storage, not
+  a bigger cache.
+
+---
+
 ## 2026-09-13 · API log triage: two EF warnings fixed, the SQL error was environmental
 
 **Baseline:** `00e1d90` (this repo). **The code changed is in the API repo**

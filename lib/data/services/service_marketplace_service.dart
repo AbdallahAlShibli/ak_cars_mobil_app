@@ -5,6 +5,7 @@ import '../models/add_on.dart';
 import '../models/audit_entry.dart';
 import '../models/car.dart';
 import '../models/escrow.dart';
+import '../models/media_attachment.dart';
 import '../models/offer.dart';
 import '../models/payout_record.dart';
 import '../models/proof_of_work.dart';
@@ -141,6 +142,7 @@ abstract interface class ServiceMarketplaceService {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -154,6 +156,7 @@ abstract interface class ServiceMarketplaceService {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,

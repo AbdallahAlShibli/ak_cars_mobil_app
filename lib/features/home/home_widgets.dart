@@ -313,7 +313,7 @@ class _HomeAnnouncementsRailState extends ConsumerState<HomeAnnouncementsRail> {
         SandSectionHeader(s.announcementsTitle),
         const SizedBox(height: 10),
         SizedBox(
-          height: 178,
+          height: PromotionCardFace.railHeight,
           child: PageView.builder(
             controller: _controller,
             padEnds: false,
@@ -342,6 +342,59 @@ class _HomeAnnouncementsRailState extends ConsumerState<HomeAnnouncementsRail> {
   }
 }
 
+/// A route, and whether it stacks on top of the current page or replaces the
+/// tab. A service page is pushed (the customer comes back to Home); the
+/// services tab is a `go`, because it *is* a tab.
+typedef PromotionTarget = ({String route, bool push});
+
+/// Where tapping an announcement card lands, in the order the founder's editor
+/// states: the service it names, then the search it carries, then the workshop
+/// behind it.
+///
+/// The whole Services tab is the last resort, not the default. A customer taps
+/// a card because of what it said; dropping them on the unfiltered tab makes
+/// them search again for the thing they just tapped. Only a card with no
+/// service, no search and no workshop can land there now — and the editor says
+/// so in as many words while it is being written.
+///
+/// A pure function rather than a closure inside `onTap` so the precedence can
+/// be tested without driving a router, and so the editor's own "where tapping
+/// goes" sentence can be checked against the same rules.
+PromotionTarget promotionTarget(
+  Promotion promotion,
+  ServiceMarketplaceRepository marketplace,
+  S s,
+) {
+  final offeringId = promotion.offeringId;
+  if (offeringId != null && marketplace.offeringById(offeringId) != null) {
+    return (route: '/service/$offeringId', push: true);
+  }
+
+  final query = promotion.query?.trim();
+  if (query != null && query.isNotEmpty) {
+    return (
+      route: '/services?q=${Uri.encodeQueryComponent(query)}',
+      push: false,
+    );
+  }
+
+  // A workshop's own campaign with no single service attached opens that
+  // workshop's services. Searching its name is guaranteed to match them — the
+  // services tab searches the workshop's name as well as the service's — so
+  // this cannot land on the empty result a search built from the card's
+  // headline would.
+  final providerId = promotion.providerId;
+  final provider = providerId == null
+      ? null
+      : marketplace.providerById(providerId);
+  if (provider != null) {
+    final name = provider.name.of(s);
+    return (route: '/services?q=${Uri.encodeQueryComponent(name)}', push: false);
+  }
+
+  return (route: '/services', push: false);
+}
+
 class _AnnouncementCard extends ConsumerWidget {
   const _AnnouncementCard({required this.offer, this.fade = 1});
 
@@ -361,19 +414,12 @@ class _AnnouncementCard extends ConsumerWidget {
     final price = offering?.price;
     final days = offer.daysLeft(DateTime.now());
 
+    final target = promotionTarget(offer, marketplace, s);
+
     return SandPressable(
-      onTap: () {
-        if (offering != null) {
-          context.push('/service/${offering.id}');
-          return;
-        }
-        final query = offer.query;
-        context.go(
-          query == null
-              ? '/services'
-              : '/services?q=${Uri.encodeQueryComponent(query)}',
-        );
-      },
+      onTap: () => target.push
+          ? context.push(target.route)
+          : context.go(target.route),
       // The card itself is [PromotionCardFace], shared verbatim with the
       // founder's content editor so the preview there cannot drift from what a
       // customer is actually shown. Everything resolved from data — the
@@ -381,6 +427,7 @@ class _AnnouncementCard extends ConsumerWidget {
       child: PromotionCardFace(
         fade: fade,
         icon: offer.icon,
+        image: offer.image,
         title: offer.title.of(s),
         body: offer.body.of(s),
         badge: offer.badge?.of(s),

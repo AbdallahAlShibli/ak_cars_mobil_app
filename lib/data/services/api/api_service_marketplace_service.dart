@@ -8,6 +8,7 @@ import '../../models/add_on.dart';
 import '../../models/audit_entry.dart';
 import '../../models/car.dart';
 import '../../models/escrow.dart';
+import '../../models/media_attachment.dart';
 import '../../models/offer.dart';
 import '../../models/payout_record.dart';
 import '../../models/promotion.dart';
@@ -185,6 +186,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -198,6 +200,10 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
     'icon': IconCodec.encode(icon),
     'badgeAr': ?badge?.ar,
     'badgeEn': ?badge?.en,
+    // Always sent, `null` included: omitting it on an edit is indistinguishable
+    // from "keep the old picture", and the founder who cleared the field would
+    // get it back.
+    'image': image?.toJson(),
     'providerId': ?providerId,
     'offeringId': ?offeringId,
     'query': ?query,
@@ -211,6 +217,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -224,6 +231,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
         body: body,
         icon: icon,
         badge: badge,
+        image: image,
         providerId: providerId,
         offeringId: offeringId,
         query: query,
@@ -240,6 +248,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -253,6 +262,7 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
         body: body,
         icon: icon,
         badge: badge,
+        image: image,
         providerId: providerId,
         offeringId: offeringId,
         query: query,

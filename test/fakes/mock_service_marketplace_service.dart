@@ -5,6 +5,7 @@ import 'package:ak_cars_mobil_app/data/models/add_on.dart';
 import 'package:ak_cars_mobil_app/data/models/audit_entry.dart';
 import 'package:ak_cars_mobil_app/data/models/car.dart';
 import 'package:ak_cars_mobil_app/data/models/escrow.dart';
+import 'package:ak_cars_mobil_app/data/models/media_attachment.dart';
 import 'package:ak_cars_mobil_app/data/models/offer.dart';
 import 'package:ak_cars_mobil_app/data/models/payout_record.dart';
 import 'package:ak_cars_mobil_app/data/models/promotion.dart';
@@ -277,6 +278,7 @@ class MockServiceMarketplaceService
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -289,6 +291,7 @@ class MockServiceMarketplaceService
       body: body,
       icon: icon,
       badge: badge,
+      image: image,
       providerId: providerId,
       offeringId: offeringId,
       query: query,
@@ -306,6 +309,7 @@ class MockServiceMarketplaceService
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -322,6 +326,7 @@ class MockServiceMarketplaceService
       body: body,
       icon: icon,
       badge: badge,
+      image: image,
       providerId: providerId,
       offeringId: offeringId,
       query: query,

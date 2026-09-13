@@ -22,10 +22,21 @@ class ServicePhotoField extends StatefulWidget {
     super.key,
     required this.value,
     required this.onChanged,
+    this.label,
+    this.emptyHint,
   });
 
   final MediaAttachment? value;
   final ValueChanged<MediaAttachment?> onChanged;
+
+  /// Heading above the box. Defaults to the offering wording this field was
+  /// written for; the founder's announcement editor passes its own, because a
+  /// field that calls a card's background "the service photo" is a field an
+  /// admin will fill in with the wrong picture.
+  final String? label;
+
+  /// What the empty box says. Defaults to the offering wording.
+  final String? emptyHint;
 
   @override
   State<ServicePhotoField> createState() => _ServicePhotoFieldState();
@@ -77,7 +88,8 @@ class _ServicePhotoFieldState extends State<ServicePhotoField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          s.t('صورة الخدمة (اختياري)', 'Service photo (optional)'),
+          widget.label ??
+              s.t('صورة الخدمة (اختياري)', 'Service photo (optional)'),
           style: TextStyle(fontSize: 12, color: ak.inkSub),
         ),
         const SizedBox(height: AppSpacing.xs + 2),
@@ -109,10 +121,11 @@ class _ServicePhotoFieldState extends State<ServicePhotoField> {
                         ),
                         const SizedBox(height: AppSpacing.xs),
                         Text(
-                          s.t(
-                            'أضف صورة، أو اتركها للصورة الافتراضية',
-                            'Add a photo, or leave the default',
-                          ),
+                          widget.emptyHint ??
+                              s.t(
+                                'أضف صورة، أو اتركها للصورة الافتراضية',
+                                'Add a photo, or leave the default',
+                              ),
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 11, color: ak.inkFaint),
                         ),

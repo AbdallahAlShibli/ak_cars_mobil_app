@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/json/icon_codec.dart';
 import '../../core/json/json_utils.dart';
+import 'media_attachment.dart';
 
 /// A promoted offer — a workshop's own campaign, or a platform announcement.
 ///
@@ -27,6 +28,7 @@ class Promotion {
     required this.body,
     required this.icon,
     this.badge,
+    this.image,
     this.providerId,
     this.offeringId,
     this.query,
@@ -43,6 +45,16 @@ class Promotion {
 
   /// Short ribbon — the workshop's own claim, shown verbatim.
   final L? badge;
+
+  /// Optional background photograph, chosen by the founder in the content
+  /// editor and carried with the record as base64 bytes — the same convention
+  /// every other attachment in the app follows (see [MediaAttachment]).
+  ///
+  /// When it is set the card paints the photo edge to edge under a scrim and
+  /// [icon] becomes a small mark on top of it; when it is not, the card keeps
+  /// the sand gradient it has always had. Both are finished designs, so a
+  /// founder with no picture to hand is never forced to ship a worse card.
+  final MediaAttachment? image;
 
   /// The workshop running the campaign, when it is a workshop's own. Null on a
   /// platform announcement.
@@ -90,6 +102,9 @@ class Promotion {
         body: L.fromJson(json['body']),
         icon: IconCodec.decode(json.stringOrNull('icon')),
         badge: json['badge'] == null ? null : L.fromJson(json['badge']),
+        image: json['image'] == null
+            ? null
+            : MediaAttachment.fromJson(json.requireObject('image')),
         providerId: json.stringOrNull('providerId'),
         offeringId: json.stringOrNull('offeringId'),
         query: json.stringOrNull('query'),
@@ -103,6 +118,7 @@ class Promotion {
         'body': body.toJson(),
         'icon': IconCodec.encode(icon),
         'badge': badge?.toJson(),
+        'image': image?.toJson(),
         'providerId': providerId,
         'offeringId': offeringId,
         'query': query,
@@ -116,6 +132,8 @@ class Promotion {
     L? body,
     IconData? icon,
     L? badge,
+    MediaAttachment? image,
+    bool clearImage = false,
     String? providerId,
     String? offeringId,
     String? query,
@@ -128,6 +146,7 @@ class Promotion {
         body: body ?? this.body,
         icon: icon ?? this.icon,
         badge: badge ?? this.badge,
+        image: clearImage ? null : (image ?? this.image),
         providerId: providerId ?? this.providerId,
         offeringId: offeringId ?? this.offeringId,
         query: query ?? this.query,
@@ -143,6 +162,7 @@ class Promotion {
       other.body == body &&
       other.icon == icon &&
       other.badge == badge &&
+      other.image == image &&
       other.providerId == providerId &&
       other.offeringId == offeringId &&
       other.query == query &&
@@ -157,6 +177,7 @@ class Promotion {
         body,
         icon,
         badge,
+        image,
         providerId,
         offeringId,
         query,

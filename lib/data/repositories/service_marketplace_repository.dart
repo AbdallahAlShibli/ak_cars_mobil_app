@@ -10,6 +10,7 @@ import '../models/add_on.dart';
 import '../models/audit_entry.dart';
 import '../models/car.dart';
 import '../models/escrow.dart';
+import '../models/media_attachment.dart';
 import '../models/offer.dart';
 import '../models/payout_record.dart';
 import '../models/powertrain.dart';
@@ -285,6 +286,7 @@ abstract interface class ServiceMarketplaceRepository {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -298,6 +300,7 @@ abstract interface class ServiceMarketplaceRepository {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -1061,6 +1064,7 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -1072,6 +1076,7 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       body: body,
       icon: icon,
       badge: badge,
+      image: image,
       providerId: providerId,
       offeringId: offeringId,
       query: query,
@@ -1089,6 +1094,7 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -1101,6 +1107,7 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       body: body,
       icon: icon,
       badge: badge,
+      image: image,
       providerId: providerId,
       offeringId: offeringId,
       query: query,

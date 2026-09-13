@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart' show IconData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/i18n/strings.dart';
+import '../data/models/media_attachment.dart';
 import '../data/models/offer.dart';
 import '../data/models/promotion.dart';
 import '../data/models/service_category.dart';
@@ -250,6 +251,7 @@ class AdminPromotionsNotifier extends AsyncNotifier<List<Promotion>> {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -263,6 +265,7 @@ class AdminPromotionsNotifier extends AsyncNotifier<List<Promotion>> {
           body: body,
           icon: icon,
           badge: badge,
+          image: image,
           providerId: providerId,
           offeringId: offeringId,
           query: query,
@@ -280,6 +283,7 @@ class AdminPromotionsNotifier extends AsyncNotifier<List<Promotion>> {
     required L body,
     required IconData icon,
     L? badge,
+    MediaAttachment? image,
     String? providerId,
     String? offeringId,
     String? query,
@@ -294,6 +298,7 @@ class AdminPromotionsNotifier extends AsyncNotifier<List<Promotion>> {
           body: body,
           icon: icon,
           badge: badge,
+          image: image,
           providerId: providerId,
           offeringId: offeringId,
           query: query,
