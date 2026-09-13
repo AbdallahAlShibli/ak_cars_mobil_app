@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/error/app_exception.dart';
 import '../data/models/app_notification.dart';
+import '../data/repositories/notification_repository.dart';
 import '../di/providers.dart';
 
 /// The notification inbox, mirrored from the repository.
@@ -35,8 +36,9 @@ class NotificationsNotifier extends Notifier<List<AppNotification>> {
   ///
   /// Public because [build] is not the only caller any more: [SessionRefresh]
   /// calls it again at sign-in. The alternative — invalidating this provider —
-  /// would rebuild the notifier and open a *second* push subscription without
-  /// closing the first, so the same message would be adopted twice.
+  /// would rebuild the notifier; [_subscribeToPush] now cancels on dispose so
+  /// that no longer doubles every push, but a reload is still the cheaper of
+  /// the two and keeps the inbox on screen while it runs.
   Future<void> load() async {
     if (_disposed) return;
     if (!await ref.read(tokenStoreProvider).mayHaveSession()) return;
@@ -54,22 +56,30 @@ class NotificationsNotifier extends Notifier<List<AppNotification>> {
 
   /// Drops this account's inbox on sign-out.
   ///
-  /// A direct `state =` write, for the same reason [load]'s own doc comment
-  /// gives for not invalidating this provider: invalidating would rebuild the
-  /// notifier and open a second push subscription without closing the first.
-  /// `SessionRefresh.clearAfterSignOut` also hit a second, independent problem
-  /// invalidating a `NotifierProvider` read via `.notifier` outside a widget's
-  /// `watch` — see `RequestsNotifier.clear`'s doc comment — so this is the
-  /// fix for both at once.
+  /// A direct `state =` write, not an invalidate.
+  /// `SessionRefresh.clearAfterSignOut` hit a real problem invalidating a
+  /// `NotifierProvider` read via `.notifier` outside a widget's `watch` — see
+  /// `RequestsNotifier.clear`'s doc comment. (It also used to leak a second
+  /// push subscription; [_subscribeToPush] cancels on dispose now, so that
+  /// half is fixed at the source rather than avoided here.)
   void clear() => state = const [];
 
   void _subscribeToPush() {
     // A push and a fetched inbox row decode from the same JSON shape, so
     // this never renders a differently-worded copy of an event already on
     // screen.
-    ref.read(pushServiceProvider).dataMessages().listen(
-          (data) => adopt(AppNotification.fromJson(data)),
-        );
+    //
+    // The subscription is held and cancelled on dispose. Dropping it — which
+    // is what this did — outlives the notifier that owns it: a rebuilt
+    // notifier leaves the old subscription live, so every push is adopted
+    // once per orphaned listener, and the orphan's `adopt` writes `state` on
+    // a disposed notifier. Same shape, same reason, as [RequestsNotifier]'s
+    // timer cleanup.
+    final subscription = ref
+        .read(pushServiceProvider)
+        .dataMessages()
+        .listen((data) => adopt(AppNotification.fromJson(data)));
+    ref.onDispose(subscription.cancel);
   }
 
   /// Adds a notification the repository has just raised to the inbox.
@@ -78,13 +88,50 @@ class NotificationsNotifier extends Notifier<List<AppNotification>> {
   /// every lifecycle event lives there, not in a widget — so this notifier
   /// only ever adopts the result.
   void adopt(AppNotification? notification) {
-    if (notification == null) return;
+    // Reachable after teardown: a push frame already in flight, or one of
+    // the repository's `await`ed callers resuming past a sign-out.
+    if (_disposed || notification == null) return;
     state = [notification, ...state];
   }
 
-  Future<void> markAllRead() async {
-    state = [for (final n in state) n.copyWith(read: true)];
-    await ref.read(notificationRepositoryProvider).markAllRead();
+  Future<void> markAllRead() => _apply((repo) => repo.markAllRead());
+
+  /// Marks one notification read — what tapping a card does, and what the
+  /// card's own menu offers for one the reader does not want to open.
+  Future<void> markRead(String id) => _apply((repo) => repo.markRead(id));
+
+  /// Takes one notification off this user's list.
+  ///
+  /// **Hidden, not destroyed.** The server keeps the row and stops returning
+  /// it; see `NotificationService.dismiss` for why that record outlives the
+  /// reader's housekeeping.
+  Future<void> dismiss(String id) => _apply((repo) => repo.dismiss(id));
+
+  /// The same for the whole visible inbox.
+  Future<void> dismissAll() => _apply((repo) => repo.dismissAll());
+
+  /// Runs one inbox write and adopts whatever the server says is left.
+  ///
+  /// **Deliberately not optimistic.** It used to apply the change locally
+  /// first and roll back on failure, and that was wrong twice over. The list
+  /// mutating mid-gesture is what `Dismissible` explicitly forbids — a refused
+  /// dismissal put the same key back into a tree that had already recorded it
+  /// as dismissed, which asserts — and the rollback did not actually restore
+  /// the card, so a failed swipe silently lost a notification until the next
+  /// fetch. The screen holds the swipe open across this call instead (see
+  /// `confirmDismiss`), which is both correct and better feedback: the card
+  /// stays under the finger until the server has actually agreed.
+  ///
+  /// The response *is* the new state — every one of these routes answers with
+  /// the remaining visible inbox precisely so the screen cannot drift from it.
+  /// Errors propagate; the screen reports them.
+  Future<void> _apply(
+    Future<List<AppNotification>> Function(NotificationRepository) call,
+  ) async {
+    if (_disposed) return;
+    final inbox = await call(ref.read(notificationRepositoryProvider));
+    if (_disposed) return;
+    state = inbox;
   }
 }
 

@@ -61,8 +61,8 @@ class HomeScreen extends ConsumerWidget {
     // a brand-new marketplace with no approved workshop at all.
     final hasWorkshopsToShow =
         ref.watch(topRatedWorkshopsProvider).items.isNotEmpty ||
-            ref.watch(mostRequestedWorkshopsProvider).items.isNotEmpty ||
-            ref.watch(approvedWorkshopsProvider).isNotEmpty;
+        ref.watch(mostRequestedWorkshopsProvider).items.isNotEmpty ||
+        ref.watch(approvedWorkshopsProvider).isNotEmpty;
 
     // Each section is included only when it has something to say. The page asks
     // rather than letting the section render an empty box, because a hidden
@@ -87,129 +87,152 @@ class HomeScreen extends ConsumerWidget {
       backgroundColor: ak.bg,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, AppSpacing.md,
-              AppSpacing.screenMargin, AppSpacing.xxl),
-          children: [
-            // ------------------------------------------------ greeting row
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration:
-                      BoxDecoration(color: ak.primary, shape: BoxShape.circle),
-                  child: Center(
-                    child: Text(
-                      firstName?.characters.first.toUpperCase() ??
-                          s.t('أ', 'A'),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: ak.onPrimary,
+        child: SandRefresh(
+          onRefresh: () =>
+              ref.read(sessionRefreshProvider).refreshVisibleData(),
+          child: ListView(
+            // The page can be shorter than the viewport — an empty garage with
+            // every optional section hidden is two cards — and a list that
+            // does not overscroll cannot be pulled.
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenMargin,
+              AppSpacing.md,
+              AppSpacing.screenMargin,
+              AppSpacing.xxl,
+            ),
+            children: [
+              // ------------------------------------------------ greeting row
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: ak.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        firstName?.characters.first.toUpperCase() ??
+                            s.t('أ', 'A'),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: ak.onPrimary,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          firstName != null
+                              ? s.greeting(firstName)
+                              : s.t('أهلاً بك!', 'Welcome!'),
+                          style: context.text.cardTitle,
+                        ),
+                        Text(s.greetingSub, style: context.text.bodySecondary),
+                      ],
+                    ),
+                  ),
+                  _BellButton(
+                    hasUnread: ref.watch(unreadCountProvider) > 0,
+                    onTap: () => context.push('/notifications'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              // ------------------------------------------------ search pill
+              GestureDetector(
+                onTap: () => context.push('/search'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.md + 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: ak.surface,
+                    border: Border.all(color: ak.border),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
                     children: [
-                      Text(
-                        firstName != null
-                            ? s.greeting(firstName)
-                            : s.t('أهلاً بك!', 'Welcome!'),
-                        style: context.text.cardTitle,
+                      Icon(LucideIcons.search, size: 16, color: ak.inkSub),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Text(
+                          s.searchHint,
+                          style: context.text.bodySecondary,
+                        ),
                       ),
-                      Text(s.greetingSub, style: context.text.bodySecondary),
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: ak.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          LucideIcons.arrowRight,
+                          size: 14,
+                          color: ak.onPrimary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                _BellButton(
-                  hasUnread: ref.watch(unreadCountProvider) > 0,
-                  onTap: () => context.push('/notifications'),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            // ------------------------------------------------ search pill
-            GestureDetector(
-              onTap: () => context.push('/search'),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.lg, vertical: AppSpacing.md + 2),
-                decoration: BoxDecoration(
-                  color: ak.surface,
-                  border: Border.all(color: ak.border),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.search, size: 16, color: ak.inkSub),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Text(s.searchHint,
-                          style: context.text.bodySecondary),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              // ------------------------------------------------ quick actions
+              Row(
+                children: [
+                  _ActionTile(
+                    icon: LucideIcons.wrench,
+                    label: s.bookService,
+                    onTap: () => context.go('/services'),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  _ActionTile(
+                    icon: LucideIcons.zap,
+                    label: s.roadside,
+                    sos: true,
+                    onTap: () => context.go(
+                      '/services?q=${Uri.encodeQueryComponent('roadside')}',
                     ),
-                    Container(
-                      width: 30,
-                      height: 30,
-                      decoration: BoxDecoration(
-                          color: ak.primary, shape: BoxShape.circle),
-                      child: Icon(LucideIcons.arrowRight,
-                          size: 13, color: ak.onPrimary),
+                  ),
+                  // Phase-2 shortcuts, hidden with their pillars.
+                  if (AppFlags.partsStoreEnabled) ...[
+                    const SizedBox(width: AppSpacing.md),
+                    _ActionTile(
+                      icon: LucideIcons.shoppingBag,
+                      label: s.parts,
+                      onTap: () => context.go('/shop'),
                     ),
                   ],
-                ),
+                  if (AppFlags.carMarketplaceEnabled) ...[
+                    const SizedBox(width: AppSpacing.md),
+                    _ActionTile(
+                      icon: LucideIcons.car,
+                      label: s.sellCar,
+                      onTap: () {
+                        if (!ensureRegistered(context, ref)) return;
+                        context.push('/post-ad');
+                      },
+                    ),
+                  ],
+                ],
               ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            // ------------------------------------------------ quick actions
-            Row(
-              children: [
-                _ActionTile(
-                  icon: LucideIcons.wrench,
-                  label: s.bookService,
-                  onTap: () => context.go('/services'),
-                ),
-                const SizedBox(width: 10),
-                _ActionTile(
-                  icon: LucideIcons.zap,
-                  label: s.roadside,
-                  sos: true,
-                  onTap: () => context.go(
-                      '/services?q=${Uri.encodeQueryComponent('roadside')}'),
-                ),
-                // Phase-2 shortcuts, hidden with their pillars.
-                if (AppFlags.partsStoreEnabled) ...[
-                  const SizedBox(width: 10),
-                  _ActionTile(
-                    icon: LucideIcons.shoppingBag,
-                    label: s.parts,
-                    onTap: () => context.go('/shop'),
-                  ),
-                ],
-                if (AppFlags.carMarketplaceEnabled) ...[
-                  const SizedBox(width: 10),
-                  _ActionTile(
-                    icon: LucideIcons.car,
-                    label: s.sellCar,
-                    onTap: () {
-                      if (!ensureRegistered(context, ref)) return;
-                      context.push('/post-ad');
-                    },
-                  ),
-                ],
+              // ---------------------------------------------- the sections
+              for (final (i, section) in sections.indexed) ...[
+                const SizedBox(height: AppSpacing.sectionGap),
+                Entrance(delayMs: 60 * i, child: section),
               ],
-            ),
-            // ---------------------------------------------- the sections
-            for (final (i, section) in sections.indexed) ...[
-              const SizedBox(height: AppSpacing.sectionGap),
-              Entrance(delayMs: 60 * i, child: section),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -249,7 +272,7 @@ class _CarStatusSection extends StatelessWidget {
           const HomeAddCarCard()
         else
           for (final (i, car) in cars.indexed) ...[
-            if (i > 0) const SizedBox(height: 12),
+            if (i > 0) const SizedBox(height: AppSpacing.md),
             HomeCarCard(car: car, primary: i == 0),
           ],
       ],
@@ -287,8 +310,10 @@ class _BellButton extends StatelessWidget {
               child: Container(
                 width: 6,
                 height: 6,
-                decoration:
-                    BoxDecoration(color: ak.danger, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: ak.danger,
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
         ],
@@ -309,37 +334,47 @@ class _ChallengeStrip extends ConsumerWidget {
 
     return SandCard(
       onTap: () => context.push('/challenge'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       child: Row(
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
-                color: ak.amberBgSoft, shape: BoxShape.circle),
-            child: Icon(LucideIcons.flame, size: 17, color: ak.amber),
+              color: ak.amberBgSoft,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(LucideIcons.flame, size: 18, color: ak.amber),
           ),
-          const SizedBox(width: 11),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(s.weeklyChallenge,
-                    style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w700)),
+                Text(
+                  s.weeklyChallenge,
+                  style: context.text.bodyPrimary.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 if (current != null)
                   Text(
                     current.title.of(s),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10, color: ak.inkSub),
+                    style: context.text.bodySecondary,
                   ),
               ],
             ),
           ),
           SandStatusPill(
-            s.t('${challenge.streakWeeks} أسابيع',
-                '${challenge.streakWeeks}-week streak'),
+            s.t(
+              '${challenge.streakWeeks} أسابيع',
+              '${challenge.streakWeeks}-week streak',
+            ),
             background: ak.amberBgSoft,
             foreground: ak.amberText,
           ),
@@ -371,7 +406,10 @@ class _ActionTile extends StatelessWidget {
       child: SandPressable(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 4),
+          padding: const EdgeInsets.symmetric(
+            vertical: AppSpacing.md + 2,
+            horizontal: AppSpacing.sm,
+          ),
           decoration: BoxDecoration(
             color: sos ? ak.dangerSoft : ak.surface,
             border: Border.all(color: sos ? ak.dangerBorder : ak.border),
@@ -379,15 +417,19 @@ class _ActionTile extends StatelessWidget {
           ),
           child: Column(
             children: [
-              Icon(icon, size: 19, color: sos ? ak.danger : ak.ink),
-              const SizedBox(height: 7),
+              Icon(icon, size: 20, color: sos ? ak.danger : ak.ink),
+              const SizedBox(height: AppSpacing.sm),
               Text(
                 label,
                 maxLines: 1,
+                textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w600,
+                // Was 9.5px — below the size at which a label is read rather
+                // than guessed at from its icon. On the type scale it is
+                // `bodySecondary` at label weight, like every other caption
+                // that names a control.
+                style: context.text.bodySecondary.copyWith(
+                  fontWeight: FontWeight.w700,
                   color: sos ? ak.dangerText : ak.ink,
                 ),
               ),

@@ -71,3 +71,6 @@ docs/*
 /image-slot.js
 /PROJECT_PLAN.md
 /AK_Cars_*.md
+
+# Golden-test failure output, written by flutter_test on a mismatch.
+test/failures/

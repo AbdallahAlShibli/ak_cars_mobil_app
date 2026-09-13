@@ -1,5 +1,6 @@
 import 'package:ak_cars_mobil_app/core/error/app_exception.dart';
 import 'package:ak_cars_mobil_app/core/i18n/strings.dart';
+import 'package:ak_cars_mobil_app/core/utils/guid.dart';
 import 'package:ak_cars_mobil_app/data/models/add_on.dart';
 import 'package:ak_cars_mobil_app/data/models/audit_entry.dart';
 import 'package:ak_cars_mobil_app/data/models/car.dart';
@@ -17,6 +18,7 @@ import 'package:ak_cars_mobil_app/data/models/service_stats.dart';
 import 'package:ak_cars_mobil_app/data/models/workshop_application.dart';
 import 'package:ak_cars_mobil_app/data/services/service_marketplace_service.dart';
 import 'package:collection/collection.dart';
+import 'package:flutter/widgets.dart' show IconData;
 
 import 'data/mock_seed.dart';
 import 'data/mock_service_data.dart';
@@ -41,8 +43,9 @@ class MockServiceMarketplaceService
 
   /// The marketplace's bookings, newest first — the seeded world plus
   /// everything placed during the test.
-  late final List<ServiceRequest> _requests =
-      seeded ? [...MockSeed.requests] : <ServiceRequest>[];
+  late final List<ServiceRequest> _requests = seeded
+      ? [...MockSeed.requests]
+      : <ServiceRequest>[];
 
   /// Ids of the bookings *this device's user* placed. The seeded ones belong
   /// to other people, and a customer's own list must not claim them.
@@ -51,6 +54,11 @@ class MockServiceMarketplaceService
   /// The workshop roster. A mutable copy, because onboarding decisions move
   /// workshops along it during a test.
   final List<ServiceProvider> _providers = [...MockSeed.providers];
+
+  /// The catalogue's categories. A mutable copy because the founder panel can
+  /// now edit one field on them — the promo ribbon — and the fixture itself is
+  /// `const`.
+  final List<ServiceCategory> _categories = [...MockServiceData.categories];
 
   final List<PayoutRecord> _payouts = [...MockSeed.payouts];
   final List<AuditEntry> _audit = [...MockSeed.audit];
@@ -64,7 +72,101 @@ class MockServiceMarketplaceService
 
   @override
   Future<List<ServiceCategory>> fetchCategories() =>
-      respond(MockServiceData.categories);
+      respond(List<ServiceCategory>.unmodifiable(_categories));
+
+  @override
+  Future<ServiceCategory> updateCategoryBadge(
+    String categoryId, {
+    L? badge,
+  }) async {
+    final index = _categories.indexWhere((c) => c.id == categoryId);
+    if (index < 0) throw NotFoundException('Category $categoryId not found');
+    final updated = _categories[index].copyWith(
+      badge: badge,
+      clearBadge: badge == null,
+    );
+    _categories[index] = updated;
+    return respond(updated);
+  }
+
+  // The three category writes mirror the API's guards rather than just storing
+  // what they are given — a fake that accepts a duplicate slug, or deletes a
+  // type out from under live offerings, would let a test pass on behaviour the
+  // server refuses.
+
+  @override
+  Future<ServiceCategory> createCategory(ServiceCategoryDraft draft) {
+    final slug = draft.slug.trim().toLowerCase();
+    if (_categories.any((c) => c.slug == slug)) {
+      throw BusinessRuleException(
+        'A service type already uses the key "$slug".',
+        code: 'slug_taken',
+      );
+    }
+    final created = ServiceCategory(
+      id: newGuid(),
+      slug: slug,
+      name: draft.name,
+      icon: draft.icon,
+      note: draft.note,
+      emergency: draft.emergency,
+      primary: draft.primary,
+      powertrains: draft.powertrains,
+      requires: draft.requires,
+    );
+    _categories.add(created);
+    return respond(created);
+  }
+
+  @override
+  Future<ServiceCategory> updateCategory(
+    String categoryId,
+    ServiceCategoryDraft draft,
+  ) {
+    final index = _categories.indexWhere((c) => c.id == categoryId);
+    if (index < 0) throw NotFoundException('Category $categoryId not found');
+    final slug = draft.slug.trim().toLowerCase();
+    if (_categories.any((c) => c.slug == slug && c.id != categoryId)) {
+      throw BusinessRuleException(
+        'A service type already uses the key "$slug".',
+        code: 'slug_taken',
+      );
+    }
+    final updated = ServiceCategory(
+      id: categoryId,
+      slug: slug,
+      name: draft.name,
+      icon: draft.icon,
+      note: draft.note,
+      emergency: draft.emergency,
+      // The badge is not part of a draft — it has its own write, and a PUT
+      // that silently dropped it would be a ribbon disappearing every time a
+      // founder renamed something.
+      badge: _categories[index].badge,
+      primary: draft.primary,
+      powertrains: draft.powertrains,
+      requires: draft.requires,
+    );
+    _categories[index] = updated;
+    return respond(updated);
+  }
+
+  @override
+  Future<void> deleteCategory(String categoryId) {
+    final index = _categories.indexWhere((c) => c.id == categoryId);
+    if (index < 0) throw NotFoundException('Category $categoryId not found');
+    final used = MockServiceData.offerings
+        .where((o) => o.categoryId == categoryId)
+        .length;
+    if (used > 0) {
+      throw BusinessRuleException(
+        '$used service(s) are still sold under this type.',
+        code: 'category_in_use',
+      );
+    }
+    _categories.removeAt(index);
+    return respond(null);
+  }
 
   @override
   Future<List<ServiceProvider>> fetchProviders() =>
@@ -72,12 +174,12 @@ class MockServiceMarketplaceService
 
   @override
   Future<List<ServiceOffering>> fetchOfferings({String? categoryId}) => respond(
-        categoryId == null
-            ? MockServiceData.offerings
-            : MockServiceData.offerings
-                .where((o) => o.categoryId == categoryId)
-                .toList(growable: false),
-      );
+    categoryId == null
+        ? MockServiceData.offerings
+        : MockServiceData.offerings
+              .where((o) => o.categoryId == categoryId)
+              .toList(growable: false),
+  );
 
   @override
   Future<ServiceOffering> fetchOffering(String offeringId) {
@@ -99,10 +201,140 @@ class MockServiceMarketplaceService
   Future<Offer> setOfferActive(String offerId, {required bool active}) async {
     final index = MockServiceData.offers.indexWhere((o) => o.id == offerId);
     if (index < 0) throw NotFoundException('Offer $offerId not found');
-    final updated =
-        MockServiceData.offers[index].copyWith(activeByFounder: active);
+    final updated = MockServiceData.offers[index].copyWith(
+      activeByFounder: active,
+    );
     MockServiceData.offers[index] = updated;
     return respond(updated);
+  }
+
+  @override
+  Future<List<Offer>> fetchAllOffersForFounder() =>
+      respond(List<Offer>.unmodifiable(MockServiceData.offers));
+
+  @override
+  Future<Offer> createOffer({
+    required String workshopId,
+    required String serviceOfferingId,
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    bool activeByFounder = false,
+  }) {
+    final created = Offer(
+      id: newGuid(),
+      workshopId: workshopId,
+      serviceOfferingId: serviceOfferingId,
+      referencePrice: referencePrice,
+      discountedPrice: discountedPrice,
+      startsAt: startsAt,
+      endsAt: endsAt,
+      regions: regions,
+      activeByFounder: activeByFounder,
+    );
+    MockServiceData.offers.add(created);
+    return respond(created);
+  }
+
+  @override
+  Future<Offer> updateOffer(
+    String offerId, {
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    required bool activeByFounder,
+  }) {
+    final index = MockServiceData.offers.indexWhere((o) => o.id == offerId);
+    if (index < 0) throw NotFoundException('Offer $offerId not found');
+    final updated = MockServiceData.offers[index].copyWith(
+      referencePrice: referencePrice,
+      discountedPrice: discountedPrice,
+      startsAt: startsAt,
+      endsAt: endsAt,
+      regions: regions,
+      activeByFounder: activeByFounder,
+    );
+    MockServiceData.offers[index] = updated;
+    return respond(updated);
+  }
+
+  @override
+  Future<void> deleteOffer(String offerId) async {
+    MockServiceData.offers.removeWhere((o) => o.id == offerId);
+  }
+
+  @override
+  Future<List<Promotion>> fetchAllPromotionsForFounder() =>
+      respond(List<Promotion>.unmodifiable(MockServiceData.promotions));
+
+  @override
+  Future<Promotion> createPromotion({
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  }) {
+    final created = Promotion(
+      id: newGuid(),
+      title: title,
+      body: body,
+      icon: icon,
+      badge: badge,
+      providerId: providerId,
+      offeringId: offeringId,
+      query: query,
+      regions: regions,
+      endsAt: endsAt,
+    );
+    MockServiceData.promotions.add(created);
+    return respond(created);
+  }
+
+  @override
+  Future<Promotion> updatePromotion(
+    String promotionId, {
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  }) {
+    final index = MockServiceData.promotions.indexWhere(
+      (p) => p.id == promotionId,
+    );
+    if (index < 0) throw NotFoundException('Promotion $promotionId not found');
+    final updated = Promotion(
+      id: promotionId,
+      title: title,
+      body: body,
+      icon: icon,
+      badge: badge,
+      providerId: providerId,
+      offeringId: offeringId,
+      query: query,
+      regions: regions,
+      endsAt: endsAt,
+    );
+    MockServiceData.promotions[index] = updated;
+    return respond(updated);
+  }
+
+  @override
+  Future<void> deletePromotion(String promotionId) async {
+    MockServiceData.promotions.removeWhere((p) => p.id == promotionId);
   }
 
   @override
@@ -125,19 +357,19 @@ class MockServiceMarketplaceService
   Future<BookingAvailability> fetchAvailability(
     String providerId, {
     DateTime? date,
-  }) =>
-      respond(
-        const BookingAvailability(
-          slots: MockServiceData.slots,
-          bookedSlots: MockServiceData.bookedSlots,
-        ),
-      );
+  }) => respond(
+    const BookingAvailability(
+      slots: MockServiceData.slots,
+      bookedSlots: MockServiceData.bookedSlots,
+    ),
+  );
 
   @override
   Future<ServiceRequest> createRequest(CreateServiceRequestDraft draft) async {
     final available = await fetchAddOns(draft.offering.provider.id);
-    final selected =
-        available.where((a) => draft.addOnIds.contains(a.id)).toList();
+    final selected = available
+        .where((a) => draft.addOnIds.contains(a.id))
+        .toList();
     final now = DateTime.now();
 
     final request = ServiceRequest(
@@ -215,10 +447,11 @@ class MockServiceMarketplaceService
 
   @override
   Future<List<ServiceRequest>> fetchRequests() => respond(
-        List<ServiceRequest>.unmodifiable(
-          [for (final r in _requests) if (_mine.contains(r.id)) r],
-        ),
-      );
+    List<ServiceRequest>.unmodifiable([
+      for (final r in _requests)
+        if (_mine.contains(r.id)) r,
+    ]),
+  );
 
   @override
   Future<List<ServiceRequest>> fetchOperatorQueue() =>
@@ -295,7 +528,9 @@ class MockServiceMarketplaceService
     final updated = _providers[index].copyWith(
       stage: stage,
       stageSince: DateTime.now(),
-      rejectionReason: stage == ProviderOnboardingStage.suspended ? trimmed : null,
+      rejectionReason: stage == ProviderOnboardingStage.suspended
+          ? trimmed
+          : null,
       // Moving off `suspended` drops the old reason — a re-approved workshop
       // that keeps showing its owner why it was once rejected is a bug.
       clearRejectionReason: stage != ProviderOnboardingStage.suspended,
@@ -317,7 +552,9 @@ class MockServiceMarketplaceService
     final now = DateTime.now();
 
     final provider = ServiceProvider(
-      id: existing >= 0 ? _providers[existing].id : 'w-${_nextProviderNumber++}',
+      id: existing >= 0
+          ? _providers[existing].id
+          : 'w-${_nextProviderNumber++}',
       name: L(
         application.businessNameAr,
         application.businessNameEn?.trim().isNotEmpty ?? false

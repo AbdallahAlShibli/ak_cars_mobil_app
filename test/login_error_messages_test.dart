@@ -22,15 +22,6 @@ import 'helpers/test_harness.dart';
 /// code was ever right — so the copy names what the user can *do*, not which
 /// of the three happened.
 void main() {
-  const account = UserProfile(
-    name: 'Abdullah',
-    phone: '+968 9222 0002',
-    email: 'abdullah@example.om',
-    region: 'Muscat',
-    wilayat: 'Seeb',
-    address: 'Qurum',
-  );
-
   /// Opens the login screen, gets as far as the code field, then makes the
   /// next `login()` fail with [failure].
   Future<void> pumpToCodeField(
@@ -43,7 +34,7 @@ void main() {
 
     final container = await createTestContainer(overrides: [
       authServiceProvider
-          .overrideWithValue(_ScriptedAuthService(account, failure)),
+          .overrideWithValue(_ScriptedAuthService(failure)),
     ]);
 
     await tester.pumpWidget(
@@ -126,15 +117,18 @@ void main() {
   });
 }
 
-/// Finds the account, then fails [login] with a chosen exception.
+/// Sends the code, then fails [login] with a chosen exception.
+///
+/// It no longer holds an account to hand back: `requestOtp` replaced
+/// `findAccount` and answers with a bool, because the server stopped
+/// returning the profile to an unauthenticated caller.
 class _ScriptedAuthService extends MockAuthServiceBase {
-  _ScriptedAuthService(this._account, this._failure);
+  _ScriptedAuthService(this._failure);
 
-  final UserProfile _account;
   final AppException _failure;
 
   @override
-  Future<UserProfile?> findAccount(String identifier) async => _account;
+  Future<bool> requestOtp(String identifier) async => true;
 
   @override
   Future<UserProfile> login(String identifier, String code) async =>
@@ -147,7 +141,7 @@ class MockAuthServiceBase implements AuthService {
   Future<UserProfile?> fetchCurrentUser() async => null;
 
   @override
-  Future<UserProfile?> findAccount(String identifier) async => null;
+  Future<bool> requestOtp(String identifier) async => false;
 
   @override
   Future<UserProfile> login(String identifier, String code) async =>

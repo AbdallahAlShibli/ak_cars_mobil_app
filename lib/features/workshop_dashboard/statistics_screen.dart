@@ -39,49 +39,62 @@ class _StatisticsScreenState extends ConsumerState<StatisticsScreen> {
       backgroundColor: ak.bg,
       appBar: AppBar(title: Text(s.t('الإحصائيات', 'Statistics'))),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.screenMargin,
-            AppSpacing.md,
-            AppSpacing.screenMargin,
-            AppSpacing.xxl,
-          ),
-          children: [
-            Row(
-              children: [
-                for (final (days, label) in [
-                  (7, s.t('٧ أيام', '7d')),
-                  (30, s.t('٣٠ يوم', '30d')),
-                  (90, s.t('٩٠ يوم', '90d')),
-                ]) ...[
-                  SelectChip(
-                    label: label,
-                    selected: _windowDays == days,
-                    onTap: () => setState(() => _windowDays = days),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
+        // Every other dashboard screen pulls to refresh; this one did not,
+        // so the only way to re-read the figures was to leave and come back.
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(workshopDashboardEarningsProvider(_windowDays));
+            ref.invalidate(workshopDashboardMetricsProvider(_windowDays));
+            await Future.wait([
+              ref.read(workshopDashboardEarningsProvider(_windowDays).future),
+              ref.read(workshopDashboardMetricsProvider(_windowDays).future),
+            ]);
+          },
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenMargin,
+              AppSpacing.md,
+              AppSpacing.screenMargin,
+              AppSpacing.xxl,
+            ),
+            children: [
+              Row(
+                children: [
+                  for (final (days, label) in [
+                    (7, s.t('٧ أيام', '7d')),
+                    (30, s.t('٣٠ يوم', '30d')),
+                    (90, s.t('٩٠ يوم', '90d')),
+                  ]) ...[
+                    SelectChip(
+                      label: label,
+                      selected: _windowDays == days,
+                      onTap: () => setState(() => _windowDays = days),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                  ],
                 ],
-              ],
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            SectionHeader(s.t('صافي الأرباح', 'Net earnings')),
-            const SizedBox(height: AppSpacing.headingGap),
-            earnings.when(
-              loading: () => const Skeleton(height: 180),
-              error: (error, _) => _ChartError(s: s),
-              data: (data) => _EarningsChart(s: s, earnings: data),
-            ),
-            const SizedBox(height: AppSpacing.sectionGap),
-            SectionHeader(s.t('الأداء', 'Performance')),
-            const SizedBox(height: AppSpacing.headingGap),
-            metrics.when(
-              loading: () => const Column(
-                children: [MetricSkeleton(count: 3), SizedBox(height: 12)],
               ),
-              error: (error, _) => _ChartError(s: s),
-              data: (data) => _PerformanceSection(s: s, ak: ak, metrics: data),
-            ),
-          ],
+              const SizedBox(height: AppSpacing.lg),
+              SectionHeader(s.t('صافي الأرباح', 'Net earnings')),
+              const SizedBox(height: AppSpacing.headingGap),
+              earnings.when(
+                loading: () => const Skeleton(height: 180),
+                error: (error, _) => _ChartError(s: s),
+                data: (data) => _EarningsChart(s: s, earnings: data),
+              ),
+              const SizedBox(height: AppSpacing.sectionGap),
+              SectionHeader(s.t('الأداء', 'Performance')),
+              const SizedBox(height: AppSpacing.headingGap),
+              metrics.when(
+                loading: () => const Column(
+                  children: [MetricSkeleton(count: 3), SizedBox(height: 12)],
+                ),
+                error: (error, _) => _ChartError(s: s),
+                data: (data) =>
+                    _PerformanceSection(s: s, ak: ak, metrics: data),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -192,9 +205,7 @@ class _EarningsChart extends StatelessWidget {
                         if (idx != 0 && idx != bucketCount - 1) {
                           return const SizedBox.shrink();
                         }
-                        final day = start.add(
-                          Duration(days: idx * bucketDays),
-                        );
+                        final day = start.add(Duration(days: idx * bucketDays));
                         return Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(

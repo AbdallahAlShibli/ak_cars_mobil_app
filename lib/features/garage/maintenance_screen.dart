@@ -44,50 +44,83 @@ class MaintenanceScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: ak.bg,
       body: SafeArea(
-        child: car == null
-            ? _NoCarState(
-                header: _header(context, s, showMyCars: cars.isNotEmpty))
-            : _CarBook(car: car, cars: cars),
+        child: SandRefresh(
+          onRefresh: () =>
+              ref.read(sessionRefreshProvider).refreshVisibleData(),
+          child: car == null
+              ? _NoCarState(
+                  header: _header(context, s, showMyCars: cars.isNotEmpty),
+                )
+              : _CarBook(car: car, cars: cars),
+        ),
       ),
     );
   }
 
-  static Widget _header(BuildContext context, S s,
-          {required bool showMyCars}) =>
-      SandHeader(
-        s.navMyCar,
-        // A tab root — there is nothing behind it to go back to.
-        showBack: false,
-        // The garage lives one tap from here now that the home tab is gone:
-        // this is the only place a user manages their cars from.
-        trailing: showMyCars
-            ? InkPill(
-                label: s.t('سياراتي', 'My cars'),
-                outlined: true,
-                fontSize: 10.5,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                onTap: () => context.push('/garage'),
-              )
-            : null,
-      );
+  static Widget _header(
+    BuildContext context,
+    S s, {
+    required bool showMyCars,
+    // [SandTabHeader], not [SandHeader]: this is one of the five tab roots, and
+    // they now introduce themselves the same way — no back button (there is
+    // nothing behind a tab root to go back to), a subtitle saying what the tab
+    // is for, and one action on the end.
+  }) => SandTabHeader(
+    s.navMyCar,
+    subtitle: s.t(
+      'دفتر الصيانة — لكل سيارة سجلها ومواعيدها',
+      'The maintenance book — each car keeps its own records',
+    ),
+    // The garage lives one tap from here now that the home tab is gone:
+    // this is the only place a user manages their cars from.
+    trailing: showMyCars
+        ? InkPill(
+            label: s.t('سياراتي', 'My cars'),
+            outlined: true,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.sm + 1,
+            ),
+            onTap: () => context.push('/garage'),
+          )
+        : null,
+  );
 
   static String monthLabel(S s, DateTime d) {
     const ar = [
-      'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
     ];
     const en = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return s.isAr
         ? '${ar[d.month - 1]} ${d.year}'
         : '${en[d.month - 1]} ${d.year}';
   }
 
-  static String dayLabel(S s, DateTime d) =>
-      '${d.day} ${monthLabel(s, d)}';
+  static String dayLabel(S s, DateTime d) => '${d.day} ${monthLabel(s, d)}';
 }
 
 /// Empty garage: there is no book to show, so the page asks for a car rather
@@ -100,35 +133,35 @@ class _NoCarState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    return Column(
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenMargin,
+        AppSpacing.md,
+        AppSpacing.screenMargin,
+        AppSpacing.xl,
+      ),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin,
-              AppSpacing.md, AppSpacing.screenMargin, 0),
-          child: header,
-        ),
-        Expanded(
-          child: Center(
-            child: SingleChildScrollView(
-              child: EmptyState(
-                icon: LucideIcons.notebookPen,
-                title: s.t('ابدأ دفتر صيانة سيارتك',
-                    'Start your car\'s maintenance book'),
-                message: s.t(
-                  'أضف سيارتك الأولى لنبدأ نتابع صيانتها معك — كل سيارة بسجلها ومواعيدها.',
-                  'Add your first car and we will keep track of its servicing with you — each car keeps its own records and reminders.',
-                ),
-                action: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                      minimumSize: const Size(0, 48),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.xl)),
-                  onPressed: () => context.push('/add-car'),
-                  icon: const Icon(LucideIcons.plus, size: 17),
-                  label: Text(s.t('أضف سيارة', 'Add car')),
-                ),
-              ),
+        header,
+        SizedBox(height: MediaQuery.sizeOf(context).height * 0.06),
+        EmptyState(
+          icon: LucideIcons.notebookPen,
+          title: s.t(
+            'ابدأ دفتر صيانة سيارتك',
+            'Start your car\'s maintenance book',
+          ),
+          message: s.t(
+            'أضف سيارتك الأولى لنبدأ نتابع صيانتها معك — كل سيارة بسجلها ومواعيدها.',
+            'Add your first car and we will keep track of its servicing with you — each car keeps its own records and reminders.',
+          ),
+          action: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 48),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             ),
+            onPressed: () => context.push('/add-car'),
+            icon: const Icon(LucideIcons.plus, size: 17),
+            label: Text(s.t('أضف سيارة', 'Add car')),
           ),
         ),
       ],
@@ -153,15 +186,20 @@ class _CarBook extends ConsumerWidget {
     final history = book.recordsNewestFirst;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.screenMargin, AppSpacing.md,
-          AppSpacing.screenMargin, AppSpacing.xl),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenMargin,
+        AppSpacing.md,
+        AppSpacing.screenMargin,
+        AppSpacing.xl,
+      ),
       children: [
         MaintenanceScreen._header(context, s, showMyCars: true),
         const SizedBox(height: AppSpacing.lg),
         // ------------------------------------------------- car switcher
         if (cars.length > 1) ...[
           SizedBox(
-            height: 34,
+            height: 40,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: cars.length,
@@ -169,9 +207,9 @@ class _CarBook extends ConsumerWidget {
               itemBuilder: (context, i) => SelectChip(
                 label: cars[i].displayName,
                 selected: cars[i].id == car.id,
-                onTap: () => ref
-                    .read(selectedMaintenanceCarIdProvider.notifier)
-                    .state = cars[i].id,
+                onTap: () =>
+                    ref.read(selectedMaintenanceCarIdProvider.notifier).state =
+                        cars[i].id,
               ),
             ),
           ),
@@ -181,18 +219,17 @@ class _CarBook extends ConsumerWidget {
         _CarHeaderCard(car: car, book: book),
         const SizedBox(height: AppSpacing.lg),
         // ------------------------------------------------ setup / source
-        if (book.isFresh)
-          _SetupBanner(car: car)
-        else
-          _SourceNotice(book: book),
+        if (book.isFresh) _SetupBanner(car: car) else _SourceNotice(book: book),
         const SizedBox(height: AppSpacing.sectionGap),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
             Expanded(
-              child: Text(s.t('جدول الصيانة', 'Maintenance schedule'),
-                  style: context.text.cardTitle),
+              child: Text(
+                s.t('جدول الصيانة', 'Maintenance schedule'),
+                style: context.text.cardTitle,
+              ),
             ),
             Text(
               s.t('لـ ${car.displayName}', 'for ${car.displayName}'),
@@ -208,7 +245,9 @@ class _CarBook extends ConsumerWidget {
         // ------------------------------------------------ custom items
         SandCard(
           padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.cardPadding, vertical: AppSpacing.md + 2),
+            horizontal: AppSpacing.cardPadding,
+            vertical: AppSpacing.md + 2,
+          ),
           onTap: () => showCustomItemSheet(context, ref, car),
           child: Row(
             children: [
@@ -218,8 +257,10 @@ class _CarBook extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(s.t('أضف بنداً خاصاً بك', 'Add your own item'),
-                        style: context.text.cardTitle),
+                    Text(
+                      s.t('أضف بنداً خاصاً بك', 'Add your own item'),
+                      style: context.text.cardTitle,
+                    ),
                     const SizedBox(height: AppSpacing.xs / 2),
                     Text(
                       s.t(
@@ -241,8 +282,10 @@ class _CarBook extends ConsumerWidget {
           textBaseline: TextBaseline.alphabetic,
           children: [
             Expanded(
-              child: Text(s.t('سجل الخدمات', 'Service history'),
-                  style: context.text.cardTitle),
+              child: Text(
+                s.t('سجل الخدمات', 'Service history'),
+                style: context.text.cardTitle,
+              ),
             ),
             Text(
               s.t('لهذه السيارة فقط', 'This car only'),
@@ -285,14 +328,18 @@ class _CarBook extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
             child: Row(
               children: [
-                Icon(LucideIcons.flame, size: 17, color: ak.amber),
+                Icon(LucideIcons.flame, size: 18, color: ak.amber),
                 const SizedBox(width: 11),
                 Expanded(
-                  child: Text(s.weeklyChallenge,
-                      style: const TextStyle(
-                          fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  child: Text(
+                    s.weeklyChallenge,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-                Icon(LucideIcons.chevronLeft, size: 15, color: ak.inkSub),
+                Icon(LucideIcons.chevronLeft, size: 16, color: ak.inkSub),
               ],
             ),
           ),
@@ -349,7 +396,9 @@ class _CarHeaderCard extends ConsumerWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w700),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -362,7 +411,7 @@ class _CarHeaderCard extends ConsumerWidget {
                           car.label,
                         ?car.powertrain?.label.of(s),
                       ].join(' · '),
-                      style: TextStyle(fontSize: 10.5, color: ak.inkSub),
+                      style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                     ),
                   ],
                 ),
@@ -371,8 +420,7 @@ class _CarHeaderCard extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
             decoration: BoxDecoration(
               color: ak.bg,
               borderRadius: BorderRadius.circular(16),
@@ -384,34 +432,37 @@ class _CarHeaderCard extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        s.t('الممشى الحالي — تدخله بنفسك',
-                            'Current mileage — entered by you'),
-                        style: TextStyle(fontSize: 10, color: ak.inkSub),
+                        s.t(
+                          'الممشى الحالي — تدخله بنفسك',
+                          'Current mileage — entered by you',
+                        ),
+                        style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                       ),
                       const SizedBox(height: 2),
                       Text.rich(
-                        TextSpan(children: [
-                          TextSpan(
-                            text: book.currentOdometerKm != null
-                                ? _fmt.format(book.currentOdometerKm)
-                                : '—',
-                            style:
-                                AppTheme.numeric(size: 21, color: ak.ink),
-                          ),
-                          TextSpan(
-                            text: ' ${s.km}',
-                            style: TextStyle(
-                                fontSize: 10,
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: book.currentOdometerKm != null
+                                  ? _fmt.format(book.currentOdometerKm)
+                                  : '—',
+                              style: AppTheme.numeric(size: 22, color: ak.ink),
+                            ),
+                            TextSpan(
+                              text: ' ${s.km}',
+                              style: TextStyle(
+                                fontSize: 12.5,
                                 fontWeight: FontWeight.w500,
-                                color: ak.inkSub),
-                          ),
-                        ]),
+                                color: ak.inkSub,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         _updatedLabel(s, book.odometerUpdatedAt),
-                        style:
-                            TextStyle(fontSize: 9.5, color: ak.inkFaint),
+                        style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
                       ),
                       // The projection is shown next to the entered reading,
                       // never instead of it, and always labelled as an
@@ -423,8 +474,7 @@ class _CarHeaderCard extends ConsumerWidget {
                             'تقديري اليوم: ${_fmt.format(projected)} كم (تقدير)',
                             'Estimated today: ${_fmt.format(projected)} km (estimate)',
                           ),
-                          style:
-                              TextStyle(fontSize: 9.5, color: ak.inkFaint),
+                          style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
                         ),
                     ],
                   ),
@@ -434,7 +484,9 @@ class _CarHeaderCard extends ConsumerWidget {
                       ? s.t('أضف الممشى', 'Add mileage')
                       : s.t('حدّث الممشى', 'Update mileage'),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 18, vertical: 9),
+                    horizontal: 18,
+                    vertical: 9,
+                  ),
                   onTap: () => showMileageSheet(context, ref, car),
                 ),
               ],
@@ -451,8 +503,8 @@ class _CarHeaderCard extends ConsumerWidget {
     final when = days <= 0
         ? s.t('اليوم', 'today')
         : days == 1
-            ? s.t('أمس', 'yesterday')
-            : s.t('قبل $days أيام', '$days days ago');
+        ? s.t('أمس', 'yesterday')
+        : s.t('قبل $days أيام', '$days days ago');
     return s.t('آخر تحديث: $when', 'Last update: $when');
   }
 }
@@ -483,7 +535,7 @@ class _SetupBanner extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(LucideIcons.notebookPen, size: 15, color: ak.ink),
+            child: Icon(LucideIcons.notebookPen, size: 16, color: ak.ink),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -491,10 +543,14 @@ class _SetupBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  s.t('ابدأ دفتر صيانة ${car.displayName}',
-                      'Start ${car.displayName}\'s maintenance book'),
+                  s.t(
+                    'ابدأ دفتر صيانة ${car.displayName}',
+                    'Start ${car.displayName}\'s maintenance book',
+                  ),
                   style: const TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w700),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -503,7 +559,10 @@ class _SetupBanner extends StatelessWidget {
                     'The app knows nothing about this car\'s servicing yet. Enter the last service for each item — the date and the odometer reading — and the countdown starts from there.',
                   ),
                   style: TextStyle(
-                      fontSize: 10.5, color: ak.inkSub, height: 1.7),
+                    fontSize: 12.5,
+                    color: ak.inkSub,
+                    height: 1.7,
+                  ),
                 ),
               ],
             ),
@@ -552,7 +611,10 @@ class _SourceNotice extends StatelessWidget {
                       'These reminders are computed from the mileage you enter and this car\'s service history, plus an estimate of the distance since your last entry assuming a steady usage rate — the app does not read data from the car itself.',
                     ),
               style: TextStyle(
-                  fontSize: 10.5, color: ak.amberDeep, height: 1.7),
+                fontSize: 12.5,
+                color: ak.amberDeep,
+                height: 1.7,
+              ),
             ),
           ),
         ],
@@ -600,7 +662,9 @@ class _ItemCard extends ConsumerWidget {
     return UrgencyCard(
       level: level,
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.cardPadding, vertical: AppSpacing.md + 2),
+        horizontal: AppSpacing.cardPadding,
+        vertical: AppSpacing.md + 2,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -621,8 +685,11 @@ class _ItemCard extends ConsumerWidget {
               // states take their color from the card's own level so the pill
               // and the edge can never disagree.
               if (item.status == DueStatus.good)
-                SandStatusPill(pillLabel,
-                    background: ak.successSoft, foreground: ak.success)
+                SandStatusPill(
+                  pillLabel,
+                  background: ak.successSoft,
+                  foreground: ak.success,
+                )
               else
                 UrgencyLabel(pillLabel, level: level),
             ],
@@ -649,8 +716,10 @@ class _ItemCard extends ConsumerWidget {
           const SizedBox(height: AppSpacing.xs + 1),
           Text(
             _intervalLabel(s, rule),
-            style: context.text.bodySecondary
-                .copyWith(fontSize: 11, color: ak.inkFaint),
+            style: context.text.bodySecondary.copyWith(
+              fontSize: 12.5,
+              color: ak.inkFaint,
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           // Spec §4: every reminder is a booking button. That closes the
@@ -669,9 +738,11 @@ class _ItemCard extends ConsumerWidget {
                     ? s.t('أضف آخر خدمة', 'Add last service')
                     : s.t('حدّث السجل', 'Update record'),
                 outlined: true,
-                fontSize: 10.5,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                fontSize: 12.5,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
                 onTap: () => showRecordSheet(
                   context,
                   ref,
@@ -684,18 +755,22 @@ class _ItemCard extends ConsumerWidget {
               ),
               InkPill(
                 label: s.t('احجز خدمة', 'Book service'),
-                fontSize: 10.5,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                fontSize: 12.5,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
                 onTap: () => _book(context, ref),
               ),
               if (item.isCustom)
                 InkPill(
                   label: s.t('حذف البند', 'Delete item'),
                   outlined: true,
-                  fontSize: 10.5,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  fontSize: 12.5,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 7,
+                  ),
                   onTap: () => _confirmDeleteCustomItem(context, ref),
                 ),
             ],
@@ -750,36 +825,48 @@ class _ItemCard extends ConsumerWidget {
   String _intervalLabel(S s, MaintenanceRule rule) {
     final parts = <String>[
       if (rule.intervalKm != null)
-        s.t('كل ${_fmt.format(rule.intervalKm)} كم',
-            'every ${_fmt.format(rule.intervalKm)} km'),
+        s.t(
+          'كل ${_fmt.format(rule.intervalKm)} كم',
+          'every ${_fmt.format(rule.intervalKm)} km',
+        ),
       if (rule.intervalMonths != null)
-        s.t('كل ${rule.intervalMonths} أشهر',
-            'every ${rule.intervalMonths} months'),
+        s.t(
+          'كل ${rule.intervalMonths} أشهر',
+          'every ${rule.intervalMonths} months',
+        ),
     ];
     if (parts.isEmpty) {
       return s.t('لا توجد فترة تكرار محددة', 'No interval set');
     }
-    return s.t('الفترة: ${parts.join(' أو ')}',
-        'Interval: ${parts.join(' or ')}');
+    return s.t(
+      'الفترة: ${parts.join(' أو ')}',
+      'Interval: ${parts.join(' or ')}',
+    );
   }
 
   Widget _remainingLabel(BuildContext context, S s, AkColors ak) {
     if (item.remainingKm != null) {
       final overdue = item.remainingKm! <= 0;
       return Text.rich(
-        TextSpan(children: [
-          TextSpan(
-              text: overdue ? s.t('متأخر ', 'overdue ') : s.t('باقي ', '')),
-          TextSpan(
-            text: _fmt.format(item.remainingKm!.abs()),
-            style: AppTheme.numeric(
-                size: 12.5, color: overdue ? ak.dangerText : ak.amberText),
-          ),
-          TextSpan(text: s.t(' كم', ' km left')),
-          // The distance is measured against a projected odometer, so the
-          // number is an estimate and has to read as one.
-          if (item.estimated) TextSpan(text: s.t(' (تقديري)', ' (estimated)')),
-        ]),
+        TextSpan(
+          children: [
+            TextSpan(
+              text: overdue ? s.t('متأخر ', 'overdue ') : s.t('باقي ', ''),
+            ),
+            TextSpan(
+              text: _fmt.format(item.remainingKm!.abs()),
+              style: AppTheme.numeric(
+                size: 14,
+                color: overdue ? ak.dangerText : ak.amberText,
+              ),
+            ),
+            TextSpan(text: s.t(' كم', ' km left')),
+            // The distance is measured against a projected odometer, so the
+            // number is an estimate and has to read as one.
+            if (item.estimated)
+              TextSpan(text: s.t(' (تقديري)', ' (estimated)')),
+          ],
+        ),
         style: context.text.bodySecondary,
       );
     }
@@ -788,13 +875,18 @@ class _ItemCard extends ConsumerWidget {
     return Text(
       months <= 0
           ? s.t('الموصى به: الآن', 'Recommended: now')
-          : s.t('الموصى به: بعد $months أشهر', 'Recommended: in $months months'),
+          : s.t(
+              'الموصى به: بعد $months أشهر',
+              'Recommended: in $months months',
+            ),
       style: context.text.bodySecondary,
     );
   }
 
   Future<void> _confirmDeleteCustomItem(
-      BuildContext context, WidgetRef ref) async {
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final s = S.of(context);
     final ak = AkColors.of(context);
     final confirmed = await showDialog<bool>(
@@ -802,10 +894,12 @@ class _ItemCard extends ConsumerWidget {
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(s.t('حذف هذا البند؟', 'Delete this item?')),
-        content: Text(s.t(
-          'سيُحذف "${item.title.ar}" وسجلاته من دفتر ${car.displayName}.',
-          '"${item.title.en}" and its records will be removed from ${car.displayName}\'s book.',
-        )),
+        content: Text(
+          s.t(
+            'سيُحذف "${item.title.ar}" وسجلاته من دفتر ${car.displayName}.',
+            '"${item.title.en}" and its records will be removed from ${car.displayName}\'s book.',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -823,9 +917,7 @@ class _ItemCard extends ConsumerWidget {
       ),
     );
     if (!(confirmed ?? false)) return;
-    ref
-        .read(maintenanceProvider.notifier)
-        .removeCustomItem(car.id, item.key);
+    ref.read(maintenanceProvider.notifier).removeCustomItem(car.id, item.key);
   }
 }
 
@@ -851,21 +943,20 @@ class _HistoryRow extends ConsumerWidget {
     final item = itemKey == null
         ? null
         : book
-            .itemsFor(car.powertrain)
-            .where((i) => i.key == itemKey)
-            .firstOrNull;
+              .itemsFor(car.powertrain)
+              .where((i) => i.key == itemKey)
+              .firstOrNull;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        border:
-            last ? null : Border(bottom: BorderSide(color: ak.divider)),
+        border: last ? null : Border(bottom: BorderSide(color: ak.divider)),
       ),
       child: Row(
         children: [
           Container(
             width: 34,
-            height: 34,
+            height: 40,
             decoration: BoxDecoration(
               color: ak.bg,
               borderRadius: BorderRadius.circular(12),
@@ -885,28 +976,35 @@ class _HistoryRow extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(record.title.of(s),
-                    style: const TextStyle(
-                        fontSize: 11.5, fontWeight: FontWeight.w700)),
+                Text(
+                  record.title.of(s),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 1),
                 Text.rich(
-                  TextSpan(children: [
-                    TextSpan(text: '${record.workshop} · '),
-                    TextSpan(
-                      text: _fmt.format(record.odometerKm),
-                      style: AppTheme.numeric(
+                  TextSpan(
+                    children: [
+                      TextSpan(text: '${record.workshop} · '),
+                      TextSpan(
+                        text: _fmt.format(record.odometerKm),
+                        style: AppTheme.numeric(
                           size: 9.5,
                           weight: FontWeight.w500,
-                          color: ak.inkSub),
-                    ),
-                    TextSpan(text: ' ${s.km}'),
-                  ]),
-                  style: TextStyle(fontSize: 9.5, color: ak.inkSub),
+                          color: ak.inkSub,
+                        ),
+                      ),
+                      TextSpan(text: ' ${s.km}'),
+                    ],
+                  ),
+                  style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                 ),
                 if (record.notes case final notes? when notes.isNotEmpty)
                   Text(
                     notes,
-                    style: TextStyle(fontSize: 9.5, color: ak.inkFaint),
+                    style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
                   ),
               ],
             ),
@@ -916,12 +1014,12 @@ class _HistoryRow extends ConsumerWidget {
             children: [
               Text(
                 MaintenanceScreen.monthLabel(s, record.date),
-                style: TextStyle(fontSize: 10, color: ak.inkSub),
+                style: TextStyle(fontSize: 12.5, color: ak.inkSub),
               ),
               if (!record.isManual)
                 Text(
                   s.t('من حجز مكتمل', 'From a completed booking'),
-                  style: TextStyle(fontSize: 8.5, color: ak.inkFaint),
+                  style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
                 ),
             ],
           ),
@@ -931,7 +1029,7 @@ class _HistoryRow extends ConsumerWidget {
           if (record.isManual && item != null)
             IconButton(
               tooltip: s.t('تعديل', 'Edit'),
-              icon: Icon(LucideIcons.pencil, size: 15, color: ak.inkSub),
+              icon: Icon(LucideIcons.pencil, size: 16, color: ak.inkSub),
               onPressed: () => showRecordSheet(
                 context,
                 ref,
@@ -971,8 +1069,9 @@ void bookMaintenanceItem(
   required Car car,
   required DueItem item,
 }) {
-  ref.read(maintenanceBookingIntentProvider.notifier).state =
-      MaintenanceBookingIntent(
+  ref
+      .read(maintenanceBookingIntentProvider.notifier)
+      .state = MaintenanceBookingIntent(
     carId: car.id,
     itemKey: item.key,
     title: item.title,
@@ -995,17 +1094,12 @@ Future<void> showRecordSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) =>
-        _RecordSheet(car: car, item: item, existing: existing),
+    builder: (_) => _RecordSheet(car: car, item: item, existing: existing),
   );
 }
 
 class _RecordSheet extends ConsumerStatefulWidget {
-  const _RecordSheet({
-    required this.car,
-    required this.item,
-    this.existing,
-  });
+  const _RecordSheet({required this.car, required this.item, this.existing});
 
   final Car car;
   final MaintenanceItem item;
@@ -1032,13 +1126,16 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
 
     _date = existing?.date ?? DateTime.now();
     _odometer = TextEditingController(
-        text: existing?.odometerKm.toString() ?? '');
+      text: existing?.odometerKm.toString() ?? '',
+    );
     _workshop = TextEditingController(text: existing?.workshop ?? '');
     _notes = TextEditingController(text: existing?.notes ?? '');
-    _intervalKm =
-        TextEditingController(text: rule.intervalKm?.toString() ?? '');
-    _intervalMonths =
-        TextEditingController(text: rule.intervalMonths?.toString() ?? '');
+    _intervalKm = TextEditingController(
+      text: rule.intervalKm?.toString() ?? '',
+    );
+    _intervalMonths = TextEditingController(
+      text: rule.intervalMonths?.toString() ?? '',
+    );
   }
 
   @override
@@ -1069,7 +1166,8 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
     final book = ref.read(maintenanceBookProvider(widget.car.id));
     final carId = widget.car.id;
 
-    final odometer = int.tryParse(_odometer.text.trim()) ??
+    final odometer =
+        int.tryParse(_odometer.text.trim()) ??
         book.currentOdometerKm ??
         widget.car.odometerKm ??
         0;
@@ -1083,9 +1181,7 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
         title: widget.item.title,
         // The owner's own words when they gave any; otherwise the honest
         // description of where this row came from.
-        workshop: workshop.isEmpty
-            ? s.t('سجل يدوي', 'Manual entry')
-            : workshop,
+        workshop: workshop.isEmpty ? s.t('سجل يدوي', 'Manual entry') : workshop,
         odometerKm: odometer,
         date: _date,
         itemKey: widget.item.key,
@@ -1103,8 +1199,12 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(s.t('حُفظ السجل — بدأ العد من هذه الخدمة.',
-            'Record saved — the countdown starts from this service.')),
+        content: Text(
+          s.t(
+            'حُفظ السجل — بدأ العد من هذه الخدمة.',
+            'Record saved — the countdown starts from this service.',
+          ),
+        ),
       ),
     );
   }
@@ -1129,21 +1229,22 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
               widget.existing == null
                   ? s.t('أضف آخر خدمة', 'Add last service')
                   : s.t('تعديل السجل', 'Edit record'),
-              style:
-                  const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 3),
             Text(
               '${widget.item.title.of(s)} · ${widget.car.displayName}',
-              style: TextStyle(fontSize: 11.5, color: ak.inkSub),
+              style: TextStyle(fontSize: 12.5, color: ak.inkSub),
             ),
             const SizedBox(height: 14),
             _SheetLabel(s.t('تاريخ آخر خدمة', 'Last service date')),
             GestureDetector(
               onTap: _pickDate,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
                 decoration: BoxDecoration(
                   color: ak.surface,
                   borderRadius: BorderRadius.circular(14),
@@ -1151,32 +1252,38 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
                 ),
                 child: Row(
                   children: [
-                    Icon(LucideIcons.calendar,
-                        size: 17, color: ak.inkSub),
+                    Icon(LucideIcons.calendar, size: 18, color: ak.inkSub),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         MaintenanceScreen.dayLabel(s, _date),
                         style: const TextStyle(
-                            fontSize: 13.5, fontWeight: FontWeight.w700),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                    Icon(LucideIcons.chevronDown, size: 18, color: ak.inkFaint),
+                    Icon(LucideIcons.chevronDown, size: 19, color: ak.inkFaint),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 10),
-            _SheetLabel(s.t('قراءة العداد وقتها (كم)',
-                'Odometer at that service (km)')),
+            _SheetLabel(
+              s.t('قراءة العداد وقتها (كم)', 'Odometer at that service (km)'),
+            ),
             _SheetField(
               controller: _odometer,
               numeric: true,
               hint: s.t('مثال: 123000', 'e.g. 123000'),
             ),
             const SizedBox(height: 10),
-            _SheetLabel(s.t('الورشة أو مَن نفّذها (اختياري)',
-                'Workshop or who did it (optional)')),
+            _SheetLabel(
+              s.t(
+                'الورشة أو مَن نفّذها (اختياري)',
+                'Workshop or who did it (optional)',
+              ),
+            ),
             _SheetField(
               controller: _workshop,
               hint: s.t('مثال: ورشة النور', 'e.g. Al Noor Workshop'),
@@ -1189,16 +1296,16 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
             ),
             const SizedBox(height: 14),
             Text(
-              s.t('كل كم تتكرر هذه الخدمة؟',
-                  'How often does this repeat?'),
-              style:
-                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              s.t('كل كم تتكرر هذه الخدمة؟', 'How often does this repeat?'),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 3),
             Text(
-              s.t('املأ أحدهما أو كليهما — يحين الموعد عند أولهما.',
-                  'Fill in either or both — it falls due at whichever comes first.'),
-              style: TextStyle(fontSize: 10.5, color: ak.inkFaint),
+              s.t(
+                'املأ أحدهما أو كليهما — يحين الموعد عند أولهما.',
+                'Fill in either or both — it falls due at whichever comes first.',
+              ),
+              style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
             ),
             const SizedBox(height: 9),
             Row(
@@ -1209,9 +1316,10 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
                     children: [
                       _SheetLabel(s.t('كل (كم)', 'Every (km)')),
                       _SheetField(
-                          controller: _intervalKm,
-                          numeric: true,
-                          hint: '5000'),
+                        controller: _intervalKm,
+                        numeric: true,
+                        hint: '5000',
+                      ),
                     ],
                   ),
                 ),
@@ -1222,9 +1330,10 @@ class _RecordSheetState extends ConsumerState<_RecordSheet> {
                     children: [
                       _SheetLabel(s.t('كل (شهر)', 'Every (months)')),
                       _SheetField(
-                          controller: _intervalMonths,
-                          numeric: true,
-                          hint: '6'),
+                        controller: _intervalMonths,
+                        numeric: true,
+                        hint: '6',
+                      ),
                     ],
                   ),
                 ),
@@ -1293,12 +1402,13 @@ class _CustomItemSheet extends ConsumerStatefulWidget {
 }
 
 class _CustomItemSheetState extends ConsumerState<_CustomItemSheet> {
-  late final _title =
-      TextEditingController(text: widget.existing?.title ?? '');
+  late final _title = TextEditingController(text: widget.existing?.title ?? '');
   late final _km = TextEditingController(
-      text: widget.existing?.intervalKm?.toString() ?? '');
+    text: widget.existing?.intervalKm?.toString() ?? '',
+  );
   late final _months = TextEditingController(
-      text: widget.existing?.intervalMonths?.toString() ?? '');
+    text: widget.existing?.intervalMonths?.toString() ?? '',
+  );
 
   @override
   void dispose() {
@@ -1313,7 +1423,9 @@ class _CustomItemSheetState extends ConsumerState<_CustomItemSheet> {
     if (title.isEmpty) return;
     final km = int.tryParse(_km.text.trim());
     final months = int.tryParse(_months.text.trim());
-    ref.read(maintenanceProvider.notifier).saveCustomItem(
+    ref
+        .read(maintenanceProvider.notifier)
+        .saveCustomItem(
           widget.car.id,
           CustomMaintenanceItem(
             id: widget.existing?.id ?? newGuid(),
@@ -1348,14 +1460,15 @@ class _CustomItemSheetState extends ConsumerState<_CustomItemSheet> {
               widget.existing == null
                   ? s.t('أضف بنداً خاصاً بك', 'Add your own item')
                   : s.t('تعديل البند', 'Edit item'),
-              style:
-                  const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 3),
             Text(
-              s.t('يُضاف إلى ${widget.car.displayName} وحدها.',
-                  'Added to ${widget.car.displayName} only.'),
-              style: TextStyle(fontSize: 11.5, color: ak.inkSub),
+              s.t(
+                'يُضاف إلى ${widget.car.displayName} وحدها.',
+                'Added to ${widget.car.displayName} only.',
+              ),
+              style: TextStyle(fontSize: 12.5, color: ak.inkSub),
             ),
             const SizedBox(height: 14),
             _SheetLabel(s.t('اسم البند', 'Item name')),
@@ -1373,7 +1486,10 @@ class _CustomItemSheetState extends ConsumerState<_CustomItemSheet> {
                     children: [
                       _SheetLabel(s.t('كل (كم)', 'Every (km)')),
                       _SheetField(
-                          controller: _km, numeric: true, hint: '20000'),
+                        controller: _km,
+                        numeric: true,
+                        hint: '20000',
+                      ),
                     ],
                   ),
                 ),
@@ -1384,7 +1500,10 @@ class _CustomItemSheetState extends ConsumerState<_CustomItemSheet> {
                     children: [
                       _SheetLabel(s.t('كل (شهر)', 'Every (months)')),
                       _SheetField(
-                          controller: _months, numeric: true, hint: '12'),
+                        controller: _months,
+                        numeric: true,
+                        hint: '12',
+                      ),
                     ],
                   ),
                 ),
@@ -1415,7 +1534,10 @@ class _SheetLabel extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(
-            fontSize: 11, fontWeight: FontWeight.w700, color: ak.inkSub),
+          fontSize: 12.5,
+          fontWeight: FontWeight.w700,
+          color: ak.inkSub,
+        ),
       ),
     );
   }
@@ -1441,10 +1563,11 @@ class _SheetField extends StatelessWidget {
       controller: controller,
       autofocus: autofocus,
       keyboardType: numeric ? TextInputType.number : TextInputType.text,
-      inputFormatters:
-          numeric ? [FilteringTextInputFormatter.digitsOnly] : null,
+      inputFormatters: numeric
+          ? [FilteringTextInputFormatter.digitsOnly]
+          : null,
       style: numeric
-          ? AppTheme.numeric(size: 15, color: ak.ink)
+          ? AppTheme.numeric(size: 16, color: ak.ink)
           : const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       decoration: InputDecoration(hintText: hint),
     );

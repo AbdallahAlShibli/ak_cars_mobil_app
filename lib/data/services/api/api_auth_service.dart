@@ -54,18 +54,17 @@ class ApiAuthService implements AuthService {
       );
 
   @override
-  Future<UserProfile?> findAccount(String identifier) async {
+  Future<bool> requestOtp(String identifier) async {
     try {
-      // Also the call that triggers the server to send the OTP — a bare
-      // existence check with no side effect would need a second round-trip
-      // the login screen has no use for.
-      return UserProfile.fromJson(
-        await _client.post(ApiEndpoints.login, body: {
-          'identifier': identifier,
-        }),
-      );
+      // The response body is a fixed acknowledgement, and is deliberately
+      // ignored. The server stopped returning the account here: anyone who
+      // could guess an eight-digit Oman mobile number was being handed that
+      // person's name, e-mail and street address. A 404 is still how "no such
+      // account" is reported, which is all the login screen ever needed.
+      await _client.post(ApiEndpoints.login, body: {'identifier': identifier});
+      return true;
     } on NotFoundException {
-      return null;
+      return false;
     }
   }
 

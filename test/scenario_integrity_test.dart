@@ -718,7 +718,9 @@ void main() {
 
   // ------------------------------------------------------------------ §16
   test('the seed reaches every escrow state, with relative dates', () async {
-    final c = await createDataContainer();
+    // A founder session: the operator queue is founder-only, and this test
+    // reads the whole marketplace through it.
+    final c = await createDataContainer(overrides: [founderSessionOverride()]);
     final queue = c.read(operatorQueueProvider);
 
     final reached = {for (final r in queue) r.escrow};
@@ -757,7 +759,9 @@ void main() {
 
   test('a workshop\'s metrics and earnings are derived, never invented',
       () async {
-    final c = await createDataContainer();
+    // Founder session: the metrics below are derived from the operator
+    // queue, which only a founder's token loads.
+    final c = await createDataContainer(overrides: [founderSessionOverride()]);
     final marketplace = c.read(serviceMarketplaceRepositoryProvider);
     final queue = c.read(operatorQueueProvider);
     final reviews = c.read(reviewsProvider);

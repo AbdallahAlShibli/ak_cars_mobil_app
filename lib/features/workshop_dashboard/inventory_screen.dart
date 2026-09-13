@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -23,8 +25,24 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   final _query = TextEditingController();
   bool _lowStockOnly = false;
 
+  /// Re-filtering on every keystroke means re-scanning the whole stock list
+  /// and rebuilding every row under it. A workshop's inventory is the longest
+  /// list in this app, so the work is worth deferring until the owner stops
+  /// typing — long enough to skip the intermediate letters, short enough that
+  /// the list still tracks the field.
+  static const _searchDebounce = Duration(milliseconds: 250);
+  Timer? _debounce;
+
+  void _onQueryChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(_searchDebounce, () {
+      if (mounted) setState(() {});
+    });
+  }
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _query.dispose();
     super.dispose();
   }
@@ -93,8 +111,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               );
               final filtered = _filter(items);
 
-              return ListView(
-                padding: const EdgeInsets.all(AppSpacing.screenMargin),
+              // `.builder`, not a `children:` list: this one renders a
+              // workshop's entire parts stock, and the plain form builds and
+              // lays out every row whether or not it is on screen. With the
+              // search field above it that cost was paid again per keystroke.
+              // Index 0 is the header, so the rows start one further along.
+              final header = Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   TextField(
                     controller: _query,
@@ -105,7 +128,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       ),
                       prefixIcon: const Icon(LucideIcons.search, size: 16),
                     ),
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (_) => _onQueryChanged(),
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Row(
@@ -135,14 +158,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             )
                           : s.t('لا نتائج مطابقة.', 'No matching results.'),
                       compact: true,
-                    )
-                  else
-                    for (final item in filtered)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                        child: _InventoryRow(item: item),
-                      ),
+                    ),
                 ],
+              );
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(AppSpacing.screenMargin),
+                itemCount: filtered.length + 1,
+                itemBuilder: (context, index) => index == 0
+                    ? header
+                    : Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                        child: _InventoryRow(item: filtered[index - 1]),
+                      ),
               );
             },
           ),

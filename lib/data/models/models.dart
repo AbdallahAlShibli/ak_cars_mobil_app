@@ -43,6 +43,7 @@ export 'spec_catalog.dart';
 export 'spec_option.dart';
 export 'user_profile.dart';
 export 'vehicle_catalog.dart';
+export 'my_workshop_profile.dart';
 export 'workshop_application.dart';
 export 'workshop_customer.dart';
 export 'workshop_earnings.dart';

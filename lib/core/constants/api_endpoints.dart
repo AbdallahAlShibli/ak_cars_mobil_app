@@ -82,6 +82,17 @@ abstract final class ApiEndpoints {
 
   // ------------------------------------------------------ service marketplace
   static const serviceCategories = '/service-marketplace/categories';
+
+  /// One service type, for the founder's create/edit/delete.
+  static String serviceCategory(String categoryId) =>
+      '$serviceCategories/$categoryId';
+
+  /// The ribbon on a category's card, as its own sub-resource rather than a
+  /// PATCH on the category — the route says how narrow the write is, and it is
+  /// the one field a founder edits often enough to want a one-field call for
+  /// (see the API's UpdateCategoryBadgeCommand).
+  static String serviceCategoryBadge(String categoryId) =>
+      '$serviceCategories/$categoryId/badge';
   static const serviceProviders = '/service-marketplace/providers';
   static const serviceOfferings = '/service-marketplace/offerings';
 
@@ -129,6 +140,14 @@ abstract final class ApiEndpoints {
       '$serviceOfferings/$offeringId';
 
   static String serviceOffer(String offerId) => '$serviceOffers/$offerId';
+
+  /// The founder's full CRUD over Offers/Promotions, including rows the
+  /// public reads above filter out (not yet enabled, expired, future).
+  static const allServiceOffers = '$serviceOffers/all';
+  static const allServicePromotions = '$servicePromotions/all';
+
+  static String servicePromotion(String promotionId) =>
+      '$servicePromotions/$promotionId';
 
   static String providerStage(String providerId) =>
       '$serviceProviders/$providerId/stage';
@@ -197,6 +216,9 @@ abstract final class ApiEndpoints {
   static String adminProvider(String providerId) =>
       '$_adminProviders/$providerId';
 
+  static String adminProviderCrDocument(String providerId) =>
+      '${adminProvider(providerId)}/cr-document';
+
   static String adminProviderOfferings(String providerId) =>
       '${adminProvider(providerId)}/offerings';
 
@@ -250,6 +272,13 @@ abstract final class ApiEndpoints {
   // --------------------------------------------------------- notifications
   static const notifications = '/notifications';
   static const markNotificationsRead = '/notifications/read';
+
+  /// One notification. `DELETE` takes it off the owner's list — the server
+  /// stamps `dismissedAt` and keeps the row, so the record that the event was
+  /// raised and told to somebody survives the owner tidying their inbox.
+  static String notification(String id) => '$notifications/$id';
+
+  static String markNotificationRead(String id) => '$notifications/$id/read';
   static const notificationDevices = '/notifications/devices';
 
   static String notificationDevice(String token) =>

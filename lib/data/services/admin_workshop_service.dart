@@ -34,6 +34,16 @@ abstract interface class AdminWorkshopService {
   /// operation stop.
   Future<void> deleteProvider(String providerId);
 
+  /// Replaces the commercial-registration certificate on the applicant's
+  /// behalf — for an illegible or missing scan the founder would otherwise
+  /// have to reject the whole application just to ask for again. Separate
+  /// from [updateProvider] so a profile edit can never silently touch the one
+  /// document approval depends on.
+  Future<ServiceProvider> updateCrDocument(
+    String providerId,
+    MediaAttachment document,
+  );
+
   // ---------------------------------------------------------- offerings
   Future<List<ServiceOffering>> getProviderOfferings(String providerId);
 
@@ -46,6 +56,7 @@ abstract interface class AdminWorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   });
 
   Future<ServiceOffering> updateProviderOffering(
@@ -58,6 +69,7 @@ abstract interface class AdminWorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   });
 
   Future<ServiceOffering> setProviderOfferingActive(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:firebase_core/firebase_core.dart';
@@ -30,12 +31,16 @@ class PushService {
       _initialized = true;
       // FCM can rotate the device token at any time (app restore, token
       // expiry) — re-register whenever that happens, same as at sign-in.
-      FirebaseMessaging.instance.onTokenRefresh.listen((token) {
-        _client.post(
-          ApiEndpoints.notificationDevices,
-          body: {'token': token, 'platform': _platform},
-        );
-      });
+      //
+      // Through [registerCurrentDevice] rather than posting inline, so the
+      // rotation path gets the same try/catch every other method here has.
+      // Inline, the POST was unawaited and unguarded: a failure (offline,
+      // 401, 500) became an unhandled async error escaping to the zone
+      // handler, in the one class whose contract is that push failures are
+      // logged and swallowed.
+      FirebaseMessaging.instance.onTokenRefresh.listen(
+        (_) => unawaited(registerCurrentDevice()),
+      );
       return true;
     } catch (error, stack) {
       developer.log(

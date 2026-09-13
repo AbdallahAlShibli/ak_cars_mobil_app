@@ -1,8 +1,11 @@
 import 'package:collection/collection.dart';
+import 'package:flutter/widgets.dart' show IconData;
 
 import '../../config/app_config.dart';
 import '../../config/home_ranking_config.dart';
 import '../../core/error/app_exception.dart';
+import '../../core/i18n/strings.dart';
+import '../../core/utils/guid.dart';
 import '../models/add_on.dart';
 import '../models/audit_entry.dart';
 import '../models/car.dart';
@@ -51,7 +54,50 @@ abstract interface class ServiceMarketplaceRepository {
   /// asking is two round-trips that can only answer `401`.
   Future<void> warmUp({bool includeFounderLedger = false});
 
+  /// Whether the catalogue has been fetched at least once this run.
+  ///
+  /// The services tab needs this to tell "still loading" apart from "there
+  /// genuinely is nothing here" — two states that look identical through an
+  /// empty list, and want opposite screens: a skeleton for the first, an
+  /// honest empty state for the second. Before it existed, that screen ran a
+  /// fixed 450ms timer and called whatever was in the cache when it fired the
+  /// answer, which is right only by luck.
+  bool get isCatalogueWarm;
+
   List<ServiceCategory> get categories;
+
+  /// Sets or clears the promo ribbon on one category ("زيت مجاني"), on the
+  /// founder's authority. Null clears it.
+  ///
+  /// Kept beside the full [updateCategory] because it is the field a founder
+  /// moves most often and the only one on a category carrying no behaviour.
+  Future<ServiceCategory> setCategoryBadge(String categoryId, {L? badge});
+
+  /// Adds a service type to the catalogue.
+  Future<ServiceCategory> createCategory(ServiceCategoryDraft draft);
+
+  /// Rewrites one service type.
+  ///
+  /// **The slug is behaviour.** `MaintenanceTypeX.forCategory` resets a
+  /// maintenance line from it and the booking screen reads `sos` to mean an
+  /// emergency callout, so renaming one changes what the app does with every
+  /// booking made under it. The API keeps each offering's denormalised
+  /// `categorySlug` in step; what it cannot do is decide whether the founder
+  /// meant to change the behaviour, which is why the editor says so out loud.
+  Future<ServiceCategory> updateCategory(
+    String categoryId,
+    ServiceCategoryDraft draft,
+  );
+
+  /// Removes a service type. Throws when offerings are still sold under it —
+  /// the API answers `409 category_in_use` rather than orphaning them.
+  Future<void> deleteCategory(String categoryId);
+
+  /// How many offerings are sold under [categoryId], from the warm catalogue.
+  ///
+  /// What the delete confirmation needs in order to say *why* a type cannot go
+  /// yet, without a round trip that would only be answered by the same refusal.
+  int offeringCountFor(String categoryId);
 
   /// Categories rendered as big "Car service" package cards.
   List<ServiceCategory> get primaryCategories;
@@ -176,6 +222,16 @@ abstract interface class ServiceMarketplaceRepository {
   /// to say *why* a workshop's offer is not appearing.
   List<({Offer offer, OfferRejection? rejection})> auditOffers();
 
+  /// Why one offer is not being shown, or null when it is live.
+  ///
+  /// The same rules [auditOffers] applies, exposed for lists that come from
+  /// somewhere other than the warmed public catalogue: the founder panel reads
+  /// *every* offer the platform holds via [fetchAllOffersForFounder],
+  /// including the ones the public offers endpoint filters out before the
+  /// client ever sees them, and it still has to be able to say why each one is
+  /// or is not live.
+  OfferRejection? rejectionFor(Offer offer);
+
   /// Enables or stops one offer, on the founder's authority.
   ///
   /// Switching an offer *on* does not make it valid: the other five rules are
@@ -183,6 +239,73 @@ abstract interface class ServiceMarketplaceRepository {
   /// is wrong leaves it just as invisible, with the reason still readable in
   /// [auditOffers].
   Future<Offer> setOfferActive(String offerId, {required bool active});
+
+  /// Every offer the platform holds, any stage — the founder's create/edit/
+  /// delete screen. Deliberately not [auditOffers]: that one reasons about
+  /// the (already-filtered) public catalogue this repository warms at
+  /// start-up, and re-warming it just to open a management screen would ask
+  /// the server for the same rows twice.
+  Future<List<Offer>> fetchAllOffersForFounder();
+
+  /// Publishes a new offer. See [setOfferActive]'s note on why this has no
+  /// self-serve workshop counterpart.
+  Future<Offer> createOffer({
+    required String workshopId,
+    required String serviceOfferingId,
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    bool activeByFounder = false,
+  });
+
+  /// Full edit of an offer's terms — price, dates, regions and the founder
+  /// switch together, unlike [setOfferActive].
+  Future<Offer> updateOffer(
+    String offerId, {
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    required bool activeByFounder,
+  });
+
+  Future<void> deleteOffer(String offerId);
+
+  /// Every promotion the platform holds, including ones already past
+  /// [Promotion.endsAt] — the founder's create/edit/delete screen.
+  Future<List<Promotion>> fetchAllPromotionsForFounder();
+
+  /// Publishes a new promotion. Unlike [createOffer], carries no price and no
+  /// founder-approval gate — publishing it is what shows it.
+  Future<Promotion> createPromotion({
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  });
+
+  Future<Promotion> updatePromotion(
+    String promotionId, {
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  });
+
+  Future<void> deletePromotion(String promotionId);
 
   /// The cheapest offering in a category, or null when nothing in scope sells
   /// it. Quote-only offerings lose to any priced one and win only when there is
@@ -239,7 +362,10 @@ abstract interface class ServiceMarketplaceRepository {
   /// Completed, not requested: the count comes from bookings that reached
   /// `releasedToWorkshop`. A workshop the aggregate has never seen, or that has
   /// completed nothing, is absent rather than ranked at zero.
-  List<RequestedWorkshop> mostRequestedWorkshops({String? region, int limit = 5});
+  List<RequestedWorkshop> mostRequestedWorkshops({
+    String? region,
+    int limit = 5,
+  });
 
   /// Approved workshops nearest first — the honest fallback for a marketplace
   /// too young to have a ratings board (spec §5).
@@ -365,7 +491,7 @@ abstract interface class ServiceMarketplaceRepository {
 
 class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   ServiceMarketplaceRepositoryImpl(this._service, {AppConfig? config})
-      : _config = config ?? AppConfig.current();
+    : _config = config ?? AppConfig.current();
 
   final ServiceMarketplaceService _service;
 
@@ -456,6 +582,69 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   List<ServiceCategory> get categories => _categories.value;
 
   @override
+  Future<ServiceCategory> setCategoryBadge(
+    String categoryId, {
+    L? badge,
+  }) async {
+    final updated = await _service.updateCategoryBadge(categoryId, badge: badge);
+    // Patch the cached row in place rather than re-fetching: unlike the offers
+    // feed, /categories returns every category whether or not it carries a
+    // badge, so the row being edited is always already in this cache.
+    _categories.put([
+      for (final category in _categories.value)
+        if (category.id == updated.id) updated else category,
+    ]);
+    return updated;
+  }
+
+  @override
+  Future<ServiceCategory> createCategory(ServiceCategoryDraft draft) async {
+    final created = await _service.createCategory(draft);
+    _categories.put([..._categories.value, created]);
+    return created;
+  }
+
+  @override
+  Future<ServiceCategory> updateCategory(
+    String categoryId,
+    ServiceCategoryDraft draft,
+  ) async {
+    final updated = await _service.updateCategory(categoryId, draft);
+    _categories.put([
+      for (final category in _categories.value)
+        if (category.id == updated.id) updated else category,
+    ]);
+    // A rename rewrites every offering's denormalised `categorySlug` server
+    // side, so the cached offerings this session is holding are now stale in
+    // exactly the field the booking screen reads to decide `sos`. Patched here
+    // rather than re-fetched: the server applied the same rule, and the ids
+    // being patched are the ones it just changed.
+    if (_offerings.isWarm) {
+      _offerings.put([
+        for (final offering in _offerings.value)
+          if (offering.categoryId == updated.id)
+            offering.copyWith(categorySlug: updated.slug)
+          else
+            offering,
+      ]);
+    }
+    return updated;
+  }
+
+  @override
+  Future<void> deleteCategory(String categoryId) async {
+    await _service.deleteCategory(categoryId);
+    _categories.put([
+      for (final category in _categories.value)
+        if (category.id != categoryId) category,
+    ]);
+  }
+
+  @override
+  int offeringCountFor(String categoryId) =>
+      offerings.where((o) => o.categoryId == categoryId).length;
+
+  @override
   List<ServiceCategory> get primaryCategories =>
       categories.where((c) => c.primary).toList(growable: false);
 
@@ -469,8 +658,9 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
 
   @override
   List<ServiceCategory> categoriesFor(Powertrain? powertrain) {
-    final bookable =
-        categories.where((c) => c.appliesTo(powertrain)).toList(growable: false);
+    final bookable = categories
+        .where((c) => c.appliesTo(powertrain))
+        .toList(growable: false);
     if (powertrain == null || !powertrain.plugsIn) return bookable;
     // An EV owner's own services first — the rest still follow, because an EV
     // needs tyres, AC and detailing like any other car.
@@ -480,12 +670,21 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     ];
   }
 
+  /// Both halves, because a page showing offerings from workshops needs the
+  /// two lists to agree: a warm offering list joined against a cold provider
+  /// roster renders as "no results" just as convincingly as a genuinely empty
+  /// marketplace does.
+  @override
+  bool get isCatalogueWarm => _offerings.isWarm && _providers.isWarm;
+
   @override
   List<ServiceProvider> get providers => _providers.value;
 
   @override
-  List<ServiceProvider> get visibleProviders =>
-      [for (final p in providers) if (p.isApproved) p];
+  List<ServiceProvider> get visibleProviders => [
+    for (final p in providers)
+      if (p.isApproved) p,
+  ];
 
   /// Approved provider ids, as a set — every customer-facing filter below is a
   /// membership test against this, so the rule is written once.
@@ -512,9 +711,11 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       // Visible, not all: this answers "who can do high-voltage work on my
       // car", which is a customer's question.
       visibleProviders
-          .where((p) =>
-              p.capabilities.contains(capability) &&
-              (region == null || p.region == region))
+          .where(
+            (p) =>
+                p.capabilities.contains(capability) &&
+                (region == null || p.region == region),
+          )
           .toList(growable: false);
 
   /// The raw catalogue — **including** entries belonging to workshops that are
@@ -534,18 +735,19 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     final visible = _visibleIds;
     return [
       for (final offering in offerings)
-        if (visible.contains(offering.provider.id)) pricedOffering(offering.id)!,
+        if (visible.contains(offering.provider.id))
+          pricedOffering(offering.id)!,
     ];
   }
 
   @override
   List<String> get providerRegions => {
-        // Built from the visible roster so the region picker can never offer a
-        // governorate whose only workshop is an application nobody has
-        // approved — tapping it would land on a guaranteed empty state.
-        for (final provider in visibleProviders)
-          if (provider.region.isNotEmpty) provider.region,
-      }.toList(growable: false);
+    // Built from the visible roster so the region picker can never offer a
+    // governorate whose only workshop is an application nobody has
+    // approved — tapping it would land on a guaranteed empty state.
+    for (final provider in visibleProviders)
+      if (provider.region.isNotEmpty) provider.region,
+  }.toList(growable: false);
 
   /// Priced, not raw: every list of offerings the app shows is a list of
   /// things the user could book right now, so each one carries the price they
@@ -565,11 +767,10 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   }
 
   @override
-  int providerCountFor(String categoryId, {String? region}) =>
-      offeringsFor(categoryId, region: region)
-          .map((o) => o.provider.id)
-          .toSet()
-          .length;
+  int providerCountFor(String categoryId, {String? region}) => offeringsFor(
+    categoryId,
+    region: region,
+  ).map((o) => o.provider.id).toSet().length;
 
   @override
   double? fromPriceFor(String categoryId, {String? region}) =>
@@ -642,8 +843,9 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     if (offeringId == null) return true;
     final offering = offeringById(offeringId);
     if (offering == null) return false;
-    final category =
-        categories.where((c) => c.id == offering.categoryId).firstOrNull;
+    final category = categories
+        .where((c) => c.id == offering.categoryId)
+        .firstOrNull;
     // The same rule the recommendation rail and the leaderboard use.
     return category == null || categoryServes(category, powertrain);
   }
@@ -680,8 +882,9 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   /// offer is a claim about money, and the platform is making it on the
   /// workshop's behalf.
   OfferRejection? _reject(Offer offer, {DateTime? now}) {
-    final workshop =
-        providers.where((p) => p.id == offer.workshopId).firstOrNull;
+    final workshop = providers
+        .where((p) => p.id == offer.workshopId)
+        .firstOrNull;
     if (workshop == null) return OfferRejection.unknownWorkshop;
     // Rule 2 — approved workshops only.
     if (!workshop.isApproved) return OfferRejection.workshopNotApproved;
@@ -741,30 +944,41 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       }
       // The same powertrain rule the rest of the home page uses: work this car
       // cannot have done is not an offer to this customer.
-      final category =
-          categories.where((c) => c.id == offering.categoryId).firstOrNull;
+      final category = categories
+          .where((c) => c.id == offering.categoryId)
+          .firstOrNull;
       if (category != null && !categoryServes(category, powertrain)) continue;
       live.add((offer: offer, offering: offering));
     }
     // Biggest real saving first. The only ordering the front page has, and it
     // is computed from the prices themselves — there is nothing a workshop
     // could pay to move up it (spec §2).
-    live.sort((a, b) => b.offer.discountPercent.compareTo(a.offer.discountPercent));
-    return live.take(HomeRankingConfig.maxCardsPerSection).toList(growable: false);
+    live.sort(
+      (a, b) => b.offer.discountPercent.compareTo(a.offer.discountPercent),
+    );
+    return live
+        .take(HomeRankingConfig.maxCardsPerSection)
+        .toList(growable: false);
   }
 
   @override
   List<({Offer offer, OfferRejection? rejection})> auditOffers() => [
-        for (final offer in _offers.value) (offer: offer, rejection: _reject(offer)),
-      ];
+    for (final offer in _offers.value)
+      (offer: offer, rejection: _reject(offer)),
+  ];
+
+  @override
+  OfferRejection? rejectionFor(Offer offer) => _reject(offer);
 
   @override
   Future<Offer> setOfferActive(String offerId, {required bool active}) async {
     final updated = await _service.setOfferActive(offerId, active: active);
-    _offers.put([
-      for (final offer in _offers.value)
-        if (offer.id == updated.id) updated else offer,
-    ]);
+    // Re-fetch rather than patch the cached row in place. The public offers
+    // endpoint returns only approved, in-window offers, so an offer being
+    // switched *on* is usually absent from this cache — mapping over the old
+    // list would silently leave it out, and the home rail would stay empty
+    // until the next warm-up even though the founder just enabled it.
+    await _service.fetchOffers().then(_offers.put);
     await _audit(
       actor: EscrowActor.founder,
       actorId: 'founder',
@@ -774,6 +988,133 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       toState: active ? 'active' : 'stopped',
     );
     return updated;
+  }
+
+  @override
+  Future<List<Offer>> fetchAllOffersForFounder() =>
+      _service.fetchAllOffersForFounder();
+
+  @override
+  Future<Offer> createOffer({
+    required String workshopId,
+    required String serviceOfferingId,
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    bool activeByFounder = false,
+  }) async {
+    final created = await _service.createOffer(
+      workshopId: workshopId,
+      serviceOfferingId: serviceOfferingId,
+      referencePrice: referencePrice,
+      discountedPrice: discountedPrice,
+      startsAt: startsAt,
+      endsAt: endsAt,
+      regions: regions,
+      activeByFounder: activeByFounder,
+    );
+    // Keeps the customer-facing offers rail current for the rest of this
+    // session without waiting on the next warmUp — same reason
+    // AdminActions.updateProviderProfile re-fetches providers after a write.
+    await _service.fetchOffers().then(_offers.put);
+    return created;
+  }
+
+  @override
+  Future<Offer> updateOffer(
+    String offerId, {
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    required bool activeByFounder,
+  }) async {
+    final updated = await _service.updateOffer(
+      offerId,
+      referencePrice: referencePrice,
+      discountedPrice: discountedPrice,
+      startsAt: startsAt,
+      endsAt: endsAt,
+      regions: regions,
+      activeByFounder: activeByFounder,
+    );
+    await _service.fetchOffers().then(_offers.put);
+    return updated;
+  }
+
+  @override
+  Future<void> deleteOffer(String offerId) async {
+    await _service.deleteOffer(offerId);
+    await _service.fetchOffers().then(_offers.put);
+  }
+
+  @override
+  Future<List<Promotion>> fetchAllPromotionsForFounder() =>
+      _service.fetchAllPromotionsForFounder();
+
+  @override
+  Future<Promotion> createPromotion({
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  }) async {
+    final created = await _service.createPromotion(
+      title: title,
+      body: body,
+      icon: icon,
+      badge: badge,
+      providerId: providerId,
+      offeringId: offeringId,
+      query: query,
+      regions: regions,
+      endsAt: endsAt,
+    );
+    await _service.fetchPromotions().then(_promotions.put);
+    return created;
+  }
+
+  @override
+  Future<Promotion> updatePromotion(
+    String promotionId, {
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  }) async {
+    final updated = await _service.updatePromotion(
+      promotionId,
+      title: title,
+      body: body,
+      icon: icon,
+      badge: badge,
+      providerId: providerId,
+      offeringId: offeringId,
+      query: query,
+      regions: regions,
+      endsAt: endsAt,
+    );
+    await _service.fetchPromotions().then(_promotions.put);
+    return updated;
+  }
+
+  @override
+  Future<void> deletePromotion(String promotionId) async {
+    await _service.deletePromotion(promotionId);
+    await _service.fetchPromotions().then(_promotions.put);
   }
 
   @override
@@ -848,15 +1189,17 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       // Nothing completed is not a rank of last place — it is no evidence at
       // all, and a "most requested" board is a claim about evidence.
       if (demand.completedBookings <= 0) continue;
-      final provider =
-          providers.where((p) => p.id == demand.providerId).firstOrNull;
+      final provider = providers
+          .where((p) => p.id == demand.providerId)
+          .firstOrNull;
       if (provider == null || !provider.isApproved) continue;
       if (region != null && provider.region != region) continue;
       ranked.add((provider: provider, demand: demand));
     }
     ranked.sort((a, b) {
-      final byBookings =
-          b.demand.completedBookings.compareTo(a.demand.completedBookings);
+      final byBookings = b.demand.completedBookings.compareTo(
+        a.demand.completedBookings,
+      );
       if (byBookings != 0) return byBookings;
       return a.provider.distanceKm.compareTo(b.provider.distanceKm);
     });
@@ -867,7 +1210,8 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   List<ServiceProvider> approvedWorkshops({String? region, int limit = 5}) {
     final matches = [
       for (final provider in providers)
-        if (provider.isApproved && (region == null || provider.region == region))
+        if (provider.isApproved &&
+            (region == null || provider.region == region))
           provider,
     ]..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
     return matches.take(limit).toList(growable: false);
@@ -958,8 +1302,13 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     try {
       final stored = await _service.appendAudit(
         AuditEntry(
-          // Replaced by the service, which owns the identity sequence.
-          id: 'pending',
+          // A real GUID, not a placeholder: `AppendAuditCommand` stores
+          // whatever id it is given verbatim (`entry.Id = request.Id`) rather
+          // than assigning its own — a leftover mock-era comment here used to
+          // say the service replaces this, which stopped being true once the
+          // real API shipped, and sending the literal string `'pending'` as a
+          // `Guid`-typed field made every audit-log write fail with a 500.
+          id: newGuid(),
           at: DateTime.now(),
           actor: actor,
           actorId: actorId,
@@ -1021,26 +1370,27 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
 
   @override
   List<ServiceProvider> providersInStage(ProviderOnboardingStage stage) {
-    final matches = [
-      for (final p in providers)
-        if (p.stage == stage) p,
-    ]..sort((a, b) {
-        // Oldest first: the application that has been waiting longest is the
-        // one the founder should answer next, and a queue that sorts any other
-        // way quietly rewards jumping in late.
-        final aAt = a.stageSince;
-        final bAt = b.stageSince;
-        if (aAt == null || bAt == null) return 0;
-        return aAt.compareTo(bAt);
-      });
+    final matches =
+        [
+          for (final p in providers)
+            if (p.stage == stage) p,
+        ]..sort((a, b) {
+          // Oldest first: the application that has been waiting longest is the
+          // one the founder should answer next, and a queue that sorts any other
+          // way quietly rewards jumping in late.
+          final aAt = a.stageSince;
+          final bAt = b.stageSince;
+          if (aAt == null || bAt == null) return 0;
+          return aAt.compareTo(bAt);
+        });
     return List.unmodifiable(matches);
   }
 
   @override
   Map<ProviderOnboardingStage, int> get onboardingPipeline => {
-        for (final stage in ProviderOnboardingStage.values)
-          stage: providers.where((p) => p.stage == stage).length,
-      };
+    for (final stage in ProviderOnboardingStage.values)
+      stage: providers.where((p) => p.stage == stage).length,
+  };
 
   @override
   Future<ServiceProvider> setProviderStage(
@@ -1050,8 +1400,11 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     String actorId = 'founder',
   }) async {
     final before = providerById(providerId);
-    final updated =
-        await _service.setProviderStage(providerId, stage, reason: reason);
+    final updated = await _service.setProviderStage(
+      providerId,
+      stage,
+      reason: reason,
+    );
 
     _providers.put([
       for (final p in providers)
@@ -1146,12 +1499,14 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
         releasedGross += request.total;
         releasedCommission += commission;
       }
-      lines.add(EarningsLine(
-        request: request,
-        at: at,
-        gross: request.total,
-        commission: commission,
-      ));
+      lines.add(
+        EarningsLine(
+          request: request,
+          at: at,
+          gross: request.total,
+          commission: commission,
+        ),
+      );
     }
 
     // Open jobs belong in the table too — a workshop wants to see what is
@@ -1159,12 +1514,14 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     for (final request in requests) {
       if (request.offering.provider.id != providerId) continue;
       if (!request.escrow.holdsFunds) continue;
-      lines.add(EarningsLine(
-        request: request,
-        at: request.inCurrentStateSince,
-        gross: request.total,
-        commission: request.total * rate,
-      ));
+      lines.add(
+        EarningsLine(
+          request: request,
+          at: request.inCurrentStateSince,
+          gross: request.total,
+          commission: request.total * rate,
+        ),
+      );
     }
 
     lines.sort((a, b) => b.at.compareTo(a.at));
@@ -1207,7 +1564,9 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   }) async {
     final stored = await _service.recordPayout(
       PayoutRecord(
-        id: 'pending',
+        // Same fix as `_audit()` above — `RecordPayoutCommand` also stores
+        // this id verbatim, and it is a `Guid`-typed field on the wire.
+        id: newGuid(),
         providerId: providerId,
         amount: amount,
         periodFrom: periodFrom,
@@ -1254,8 +1613,9 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       // counted against it.
       final offeredAt = _entryAt(request, EscrowState.fundsHeld);
       final acceptedAt = _entryAt(request, EscrowState.acceptedByWorkshop);
-      final rejected = request.history
-          .any((e) => e.event == EscrowEvent.rejectJob);
+      final rejected = request.history.any(
+        (e) => e.event == EscrowEvent.rejectJob,
+      );
       if (offeredAt == null && !rejected) continue;
 
       received++;
@@ -1282,10 +1642,8 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       avgResponseTime: responses.isEmpty
           ? null
           : Duration(
-              milliseconds: responses.fold<int>(
-                    0,
-                    (sum, d) => sum + d.inMilliseconds,
-                  ) ~/
+              milliseconds:
+                  responses.fold<int>(0, (sum, d) => sum + d.inMilliseconds) ~/
                   responses.length,
             ),
       // Derived from the reviews themselves — there is no stored rating field

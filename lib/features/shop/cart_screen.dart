@@ -193,6 +193,7 @@ class _QtyStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
+    final s = S.of(context);
     return Container(
       decoration: BoxDecoration(
         color: ak.surfaceDim,
@@ -202,6 +203,11 @@ class _QtyStepper extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
+            // The icon changes at one, and so does what the button does, so
+            // the announced name has to change with it.
+            tooltip: qty == 1
+                ? s.t('إزالة من السلة', 'Remove from cart')
+                : s.t('إنقاص الكمية', 'Decrease quantity'),
             visualDensity: VisualDensity.compact,
             icon: Icon(
               qty == 1 ? LucideIcons.trash2 : LucideIcons.minus,
@@ -223,6 +229,7 @@ class _QtyStepper extends StatelessWidget {
             ),
           ),
           IconButton(
+            tooltip: s.t('زيادة الكمية', 'Increase quantity'),
             visualDensity: VisualDensity.compact,
             icon: Icon(LucideIcons.plus, size: 17, color: ak.ink),
             onPressed: () {

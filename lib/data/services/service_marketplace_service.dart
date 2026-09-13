@@ -1,3 +1,6 @@
+import 'package:flutter/widgets.dart' show IconData;
+
+import '../../core/i18n/strings.dart';
 import '../models/add_on.dart';
 import '../models/audit_entry.dart';
 import '../models/car.dart';
@@ -32,6 +35,37 @@ class BookingAvailability {
 abstract interface class ServiceMarketplaceService {
   Future<List<ServiceCategory>> fetchCategories();
 
+  /// Sets or clears the promo ribbon on one service category
+  /// ("زيت مجاني" / "FREE OIL"). Null clears it.
+  ///
+  /// Kept as its own call beside [updateCategory] because it is the field a
+  /// founder changes most often and the only one that carries no behaviour —
+  /// worth a one-field write rather than PUTting a whole category back to move
+  /// a ribbon.
+  Future<ServiceCategory> updateCategoryBadge(String categoryId, {L? badge});
+
+  /// Adds a service type to the catalogue.
+  ///
+  /// [slug] is the behavioural key, not wording: the maintenance mapper resets
+  /// a schedule line from it and the booking screen treats `sos` as an
+  /// emergency callout. The API validates its shape and uniqueness.
+  Future<ServiceCategory> createCategory(ServiceCategoryDraft draft);
+
+  /// Rewrites one service type. The API renames the denormalised
+  /// `categorySlug` on every offering underneath it in the same transaction,
+  /// so a rename cannot leave services answering to the old key.
+  Future<ServiceCategory> updateCategory(
+    String categoryId,
+    ServiceCategoryDraft draft,
+  );
+
+  /// Removes a service type.
+  ///
+  /// The API refuses with `category_in_use` while any offering is still sold
+  /// under it — deleting the row would orphan those offerings, and the
+  /// customer's Services tab resolves that reference to draw its cards.
+  Future<void> deleteCategory(String categoryId);
+
   Future<List<ServiceProvider>> fetchProviders();
 
   /// All offerings, or only those in [categoryId] when given.
@@ -60,6 +94,74 @@ abstract interface class ServiceMarketplaceService {
   /// respectively, and an approval flow that could quietly edit either would
   /// defeat the point of validating them.
   Future<Offer> setOfferActive(String offerId, {required bool active});
+
+  /// The founder's management view — every offer regardless of approval
+  /// state or window, so nothing created or since-expired can go missing
+  /// from the create/edit/delete screen.
+  Future<List<Offer>> fetchAllOffersForFounder();
+
+  /// Publishes a new offer. Founder-only — see [setOfferActive]'s note on why
+  /// there is no self-serve path for a workshop.
+  Future<Offer> createOffer({
+    required String workshopId,
+    required String serviceOfferingId,
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    bool activeByFounder = false,
+  });
+
+  /// Full edit of an existing offer's terms — price, dates, regions and the
+  /// founder switch together, unlike [setOfferActive] which only ever moves
+  /// the switch.
+  Future<Offer> updateOffer(
+    String offerId, {
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    required bool activeByFounder,
+  });
+
+  Future<void> deleteOffer(String offerId);
+
+  /// The founder's management view of every promotion, including ones past
+  /// [Promotion.endsAt] — [fetchPromotions] filters those out for the
+  /// customer-facing rail.
+  Future<List<Promotion>> fetchAllPromotionsForFounder();
+
+  /// Publishes a new promotion (a platform announcement, or a workshop's own
+  /// campaign card). Unlike [createOffer], a promotion carries no price and
+  /// no founder-approval gate — publishing it is what shows it.
+  Future<Promotion> createPromotion({
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  });
+
+  Future<Promotion> updatePromotion(
+    String promotionId, {
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  });
+
+  Future<void> deletePromotion(String promotionId);
 
   /// Marketplace-wide booking counts per category. Aggregated server-side: the
   /// client can only see its own user's bookings.

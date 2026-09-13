@@ -13,9 +13,8 @@ abstract interface class AuthRepository {
 
   Future<UserProfile> updateProfile(UserProfile profile);
 
-  /// Locates an existing account by phone or email for the login screen.
-  /// Null when nothing matches.
-  Future<UserProfile?> findAccount(String identifier);
+  /// Sends a one-time code to [identifier]; false when no account matched.
+  Future<bool> requestOtp(String identifier);
 
   /// Verifies [code] and starts the session for the account [identifier]
   /// resolves to.
@@ -41,8 +40,8 @@ class AuthRepositoryImpl implements AuthRepository {
       _service.updateProfile(profile);
 
   @override
-  Future<UserProfile?> findAccount(String identifier) =>
-      _service.findAccount(identifier);
+  Future<bool> requestOtp(String identifier) =>
+      _service.requestOtp(identifier);
 
   @override
   Future<UserProfile> login(String identifier, String code) =>

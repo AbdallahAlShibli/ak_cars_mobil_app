@@ -3,7 +3,9 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/error/app_exception.dart';
+import '../core/utils/jwt_claims.dart';
 import '../di/providers.dart';
+import 'admin_content_state.dart';
 import 'auth_state.dart';
 import 'cars_state.dart';
 import 'challenge_state.dart';
@@ -72,8 +74,31 @@ class SessionRefresh {
   /// synchronous steps after it run together once that check passes, so nothing
   /// can interleave between them.
   Future<void> refreshEverything({required int generation}) async {
-    await _refillWarmCaches(includeFounderLedger: true);
+    await _refillWarmCaches(includeFounderLedger: await _isFounder());
     if (_disposed || _supersededBy(generation)) return;
+    _announce();
+    await loadSessionLists();
+  }
+
+  /// The same three steps, run because **the user asked for them** — the
+  /// pull-to-refresh gesture on the five customer tabs.
+  ///
+  /// It takes no [generation] because there is no race to lose: the identity
+  /// is not changing underneath this call the way it is during a sign-in, so
+  /// there is no newer refresh whose result this one could overwrite. The
+  /// [_disposed] guard stays, since the container can still go away while the
+  /// round trip is in flight.
+  ///
+  /// Deliberately the *whole* refresh and not a per-screen one. The five tabs
+  /// read across almost every cache between them — the home page alone shows
+  /// the garage, the maintenance books, the offers and the workshop boards —
+  /// so a refresh scoped to "what this tab reads" would be four-fifths of this
+  /// anyway, and would have to be re-derived every time a section moved
+  /// between tabs. Every step is best-effort ([_bestEffort]), so a tab whose
+  /// data fails to reload keeps what it had rather than emptying.
+  Future<void> refreshVisibleData() async {
+    await _refillWarmCaches(includeFounderLedger: await _isFounder());
+    if (_disposed) return;
     _announce();
     await loadSessionLists();
   }
@@ -125,6 +150,31 @@ class SessionRefresh {
   bool _supersededBy(int generation) =>
       _ref.read(authProvider.notifier).generation != generation;
 
+  /// Whether this session's stored token carries the backend's founder role.
+  ///
+  /// Three of the fetches below are founder-only, and this file used to ask
+  /// for all three unconditionally on the grounds that "there is no claim on
+  /// the profile that says whether this session is a founder's — the `403`
+  /// *is* the check". That was true of the *profile* and false of the
+  /// *token*: `TokenService.GenerateAccessToken` puts the role in the JWT, and
+  /// [jwtHasFounderRole] has read it since the `/admin` route guard needed it.
+  /// So every ordinary customer's sign-in fired three requests that could only
+  /// ever answer `403`, and printed three red lines in the console on the way.
+  ///
+  /// Read off the token rather than [AuthState.isFounder] because bootstrap
+  /// calls [loadSessionLists] *before* `AuthNotifier.restore()` re-attaches
+  /// the profile — auth state is still empty there no matter who is signed in,
+  /// exactly as `AppBootstrap._signedIn` describes. The token is already
+  /// stored in both paths: a cold start reads the one persisted last session,
+  /// and `login()`/`register()` save it before they return.
+  ///
+  /// **Not a trust boundary** — see [jwtHasFounderRole]. Skipping a call the
+  /// server would refuse anyway cannot grant access; the endpoints still
+  /// enforce the role themselves.
+  Future<bool> _isFounder() async => jwtHasFounderRole(
+    await _ref.read(tokenStoreProvider).tryReadAccessToken(),
+  );
+
   /// Re-fetches everything the repositories hold in warm caches.
   ///
   /// In parallel, because none of them depends on another — and *all* of them,
@@ -134,19 +184,25 @@ class SessionRefresh {
   /// expects the app to go and look.
   ///
   /// [includeFounderLedger] is the one thing that differs between the two
-  /// callers: [refreshEverything] asks for it unconditionally because the
-  /// client has no claim on the profile that says whether the new session is
-  /// a founder's (a non-founder's `403` is swallowed by [_bestEffort] as the
-  /// ordinary answer it is), while [clearAfterSignOut] asks it to be dropped,
-  /// since there is no session left to hold it for.
+  /// callers: [refreshEverything] asks for it only when [_isFounder] says the
+  /// session's token carries the role (a `403` is still swallowed by
+  /// [_bestEffort] if the claim and the server ever disagree), while
+  /// [clearAfterSignOut] asks it to be dropped, since there is no session left
+  /// to hold it for.
   Future<void> _refillWarmCaches({required bool includeFounderLedger}) async {
     await Future.wait([
-      _bestEffort('vehicle & location catalogues',
-          () => _ref.read(catalogRepositoryProvider).warmUp()),
-      _bestEffort('parts catalogue',
-          () => _ref.read(shopRepositoryProvider).warmUp()),
-      _bestEffort('cars feed',
-          () => _ref.read(carsRepositoryProvider).warmUp()),
+      _bestEffort(
+        'vehicle & location catalogues',
+        () => _ref.read(catalogRepositoryProvider).warmUp(),
+      ),
+      _bestEffort(
+        'parts catalogue',
+        () => _ref.read(shopRepositoryProvider).warmUp(),
+      ),
+      _bestEffort(
+        'cars feed',
+        () => _ref.read(carsRepositoryProvider).warmUp(),
+      ),
       _bestEffort(
         'service marketplace',
         () => _ref
@@ -154,10 +210,14 @@ class SessionRefresh {
             .warmUp(includeFounderLedger: includeFounderLedger),
       ),
       _bestEffort('garage', () => _ref.read(garageRepositoryProvider).warmUp()),
-      _bestEffort('maintenance books',
-          () => _ref.read(maintenanceRepositoryProvider).warmUp()),
-      _bestEffort('challenge board',
-          () => _ref.read(challengeRepositoryProvider).warmUp()),
+      _bestEffort(
+        'maintenance books',
+        () => _ref.read(maintenanceRepositoryProvider).warmUp(),
+      ),
+      _bestEffort(
+        'challenge board',
+        () => _ref.read(challengeRepositoryProvider).warmUp(),
+      ),
     ]);
   }
 
@@ -226,6 +286,12 @@ class SessionRefresh {
     _ifBuilt(workshopRequestsProvider);
     _ifBuilt(workshopCustomersProvider);
     _ifBuilt(workshopScheduleConfigProvider);
+
+    // Same reasoning as the workshop-dashboard block above: founder-only,
+    // fetched on demand via `ref.read` inside `build()`, never reached by
+    // `warmCacheNoticeProvider`.
+    _ifBuilt(adminOffersProvider);
+    _ifBuilt(adminPromotionsProvider);
   }
 
   /// [Ref.invalidate], but only for a provider that has actually been built
@@ -272,21 +338,37 @@ class SessionRefresh {
   /// the same request a moment earlier. True at sign-in, where they very much
   /// do exist and are holding the empty list a guest was given.
   Future<void> loadSessionLists({bool includeSelfLoading = true}) async {
+    // Resolved before the batch, not inside it: the operator queue is the only
+    // founder-only entry here, and reading the claim is a store read rather
+    // than a round trip.
+    final founder = await _isFounder();
     await Future.wait([
-      _bestEffort('bookings',
-          () => _ref.read(requestsProvider.notifier).load()),
+      _bestEffort(
+        'bookings',
+        () => _ref.read(requestsProvider.notifier).load(),
+      ),
       _bestEffort('orders', () => _ref.read(ordersProvider.notifier).load()),
       if (includeSelfLoading) ...[
-        _bestEffort('inbox',
-            () => _ref.read(notificationsProvider.notifier).load()),
-        _bestEffort('reviews',
-            () => _ref.read(reviewsProvider.notifier).load()),
+        _bestEffort(
+          'inbox',
+          () => _ref.read(notificationsProvider.notifier).load(),
+        ),
+        _bestEffort(
+          'reviews',
+          () => _ref.read(reviewsProvider.notifier).load(),
+        ),
       ],
       // Founder-only (`GetAllRequestsQueryHandler` answers everyone else
-      // `403`). Asked for anyway, because there is no claim on the profile that
-      // says whether this session is a founder's — the `403` *is* the check.
-      _bestEffort('operator queue',
-          () => _ref.read(operatorQueueProvider.notifier).refresh()),
+      // `403`), so it is asked for only when the token says founder. It used
+      // to be asked for unconditionally, on the grounds that the `403` *was*
+      // the check — see [_isFounder] for why that was the wrong place to look.
+      // Still best-effort: the claim describes the token, and only the server
+      // decides.
+      if (founder)
+        _bestEffort(
+          'operator queue',
+          () => _ref.read(operatorQueueProvider.notifier).refresh(),
+        ),
     ]);
   }
 

@@ -49,7 +49,7 @@ class _StaffEditorSheetState extends ConsumerState<_StaffEditorSheet> {
     final s = S.of(context);
     return Padding(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.lg,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.lg,
         left: AppSpacing.screenMargin,
         right: AppSpacing.screenMargin,
         top: AppSpacing.md,

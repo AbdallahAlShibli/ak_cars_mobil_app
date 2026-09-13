@@ -78,8 +78,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: Icon(LucideIcons.x,
-                            size: 17, color: ak.inkSub),
+                        tooltip: s.t('مسح البحث', 'Clear search'),
+                        icon: Icon(LucideIcons.x, size: 17, color: ak.inkSub),
                         onPressed: () {
                           _controller.clear();
                           _setQuery('');

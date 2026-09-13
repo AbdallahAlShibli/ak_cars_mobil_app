@@ -90,9 +90,55 @@ class ChatHub {
   }
 
   /// Messages received on [threadId] since this call. Callers own the
-  /// subscription's lifetime and should cancel it when the thread screen
-  /// closes.
+  /// subscription's lifetime: cancel it when the thread screen closes, and
+  /// call [release] afterwards so the controller behind it goes too.
   Stream<ChatMessage> messages(String threadId) => _threadControllers
       .putIfAbsent(threadId, () => StreamController<ChatMessage>.broadcast())
       .stream;
+
+  /// Closes and forgets [threadId]'s controller once nothing is listening to
+  /// it any more.
+  ///
+  /// Without this the map only ever grew: [messages] adds an entry per thread
+  /// and nothing removed one, so every thread opened in a session stayed for
+  /// the rest of it. The entries also survived sign-out — `chatHubProvider`
+  /// is not rebuilt by [SessionRefresh] — which left one account's thread ids
+  /// keyed in a hub the *next* account on the device was posting frames into
+  /// via [_onReceiveMessage].
+  ///
+  /// The [StreamController.hasListener] check is what makes this safe to call
+  /// from any one listener: [messages] hands the same broadcast controller to
+  /// every caller watching a thread, so a second open view of the same thread
+  /// keeps it alive.
+  void release(String threadId) {
+    final controller = _threadControllers[threadId];
+    if (controller == null || controller.hasListener) return;
+    _threadControllers.remove(threadId);
+    controller.close();
+  }
+
+  /// Closes every remaining controller and stops the connection.
+  ///
+  /// Wired to `chatHubProvider`'s `onDispose`, which runs when the container
+  /// is torn down or the token store this hub authenticates with is replaced.
+  /// Errors are swallowed for the reason the class doc gives: nothing here is
+  /// load-bearing, and a hub that fails to shut down cleanly must not take a
+  /// sign-out with it.
+  Future<void> dispose() async {
+    final controllers = List.of(_threadControllers.values);
+    _threadControllers.clear();
+    for (final controller in controllers) {
+      await controller.close();
+    }
+    try {
+      await _connection.stop();
+    } catch (error, stack) {
+      developer.log(
+        'SignalR chat hub failed to stop cleanly',
+        name: 'ChatHub',
+        error: error,
+        stackTrace: stack,
+      );
+    }
+  }
 }

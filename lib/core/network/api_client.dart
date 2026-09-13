@@ -66,4 +66,15 @@ abstract interface class ApiClient {
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
   });
+
+  /// `DELETE` routes that answer with the remaining collection rather than
+  /// `204` — the notification inbox's dismiss routes, which return what is
+  /// left so the screen rebuilds from the server's answer instead of guessing
+  /// what its own list should now hold.
+  Future<List<JsonMap>> deleteList(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+  });
 }

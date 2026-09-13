@@ -193,7 +193,7 @@ class _ShopFilterSheetState extends ConsumerState<ShopFilterSheet> {
         padding: EdgeInsets.only(
           left: 20,
           right: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
         ),
         child: ListView(
           shrinkWrap: true,
@@ -600,8 +600,8 @@ class _PickerSheetState<T> extends State<_PickerSheet<T>> {
     // would sit on top of the very results it is filtering. Lift the content
     // clear of it, and cap the height against the screen that is left rather
     // than the whole screen.
-    final keyboard = MediaQuery.of(context).viewInsets.bottom;
-    final available = MediaQuery.of(context).size.height - keyboard;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final available = MediaQuery.sizeOf(context).height - keyboard;
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(

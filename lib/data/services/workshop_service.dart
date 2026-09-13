@@ -14,7 +14,10 @@ import '../models/models.dart';
 /// history.
 abstract interface class WorkshopService {
   // ------------------------------------------------------------- profile
-  Future<ServiceProvider> getMyWorkshop();
+  /// The whole `GET /my-workshop` envelope, not just the provider inside it —
+  /// the completeness report and the booking-schedule config only exist on
+  /// this response, and there is no second route that serves either.
+  Future<MyWorkshopProfile> getMyWorkshop();
 
   Future<ServiceProvider> updateMyWorkshop({
     required L name,
@@ -43,6 +46,7 @@ abstract interface class WorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   });
 
   Future<ServiceOffering> updateOffering(
@@ -54,6 +58,7 @@ abstract interface class WorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   });
 
   Future<ServiceOffering> setOfferingActive(

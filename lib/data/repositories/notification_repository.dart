@@ -30,6 +30,19 @@ abstract interface class NotificationRepository {
 
   Future<List<AppNotification>> markAllRead();
 
+  /// Marks one notification read, and answers with the remaining inbox.
+  Future<List<AppNotification>> markRead(String id);
+
+  /// Takes one notification off the owner's list, and answers with what is
+  /// left.
+  ///
+  /// **A dismissal, not a delete** — the row survives server-side. See
+  /// `NotificationService.dismiss`.
+  Future<List<AppNotification>> dismiss(String id);
+
+  /// The same, for every visible notification at once.
+  Future<List<AppNotification>> dismissAll();
+
   /// Raises the notification an escrow transition would have pushed.
   /// Returns null for transitions the customer is not told about — the
   /// automatic proof hand-off, for one, is invisible by design.
@@ -109,6 +122,15 @@ class NotificationRepositoryImpl implements NotificationRepository {
 
   @override
   Future<List<AppNotification>> markAllRead() => _service.markAllRead();
+
+  @override
+  Future<List<AppNotification>> markRead(String id) => _service.markRead(id);
+
+  @override
+  Future<List<AppNotification>> dismiss(String id) => _service.dismiss(id);
+
+  @override
+  Future<List<AppNotification>> dismissAll() => _service.dismissAll();
 
   // The booking exists but nothing is held yet — the founder confirms that
   // separately (spec §3). Saying "held in escrow" here would be the app

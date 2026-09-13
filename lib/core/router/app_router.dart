@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -77,13 +79,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/start-choice',
         builder: (context, state) => const StartChoiceScreen(),
-      ),
-      // Presents the login/register choice — where a guest lands before
-      // either form, so returning users are never funnelled straight into
-      // registration (see [ensureRegistered] below).
-      GoRoute(
-        path: '/auth',
-        builder: (context, state) => const AuthGateScreen(),
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
@@ -358,8 +353,11 @@ final routerProvider = Provider<GoRouter>((ref) {
 ///   (`providerOwnedBy`, keyed on `ownerUserId` — a staff account linked to
 ///   the roster does not pass this) that is
 ///   [ProviderOnboardingStage.approved]. An application still under review,
-///   or one nobody has ever filed, both land on `/settings`, where the
-///   profile screen shows the real status.
+///   or one nobody has ever filed, both land on `/profile` — My account,
+///   which is where the status card and the permanent "Workshop status" row
+///   both live, so a bounced navigation ends somewhere that explains itself.
+///   (This used to redirect to `/settings`, which stopped being the right
+///   answer when the "My business" section moved to My account.)
 ///
 /// Deliberately **not** routed through the cached `activeRoleProvider`: that
 /// provider only recomputes when something invalidates it, and this check has
@@ -378,28 +376,30 @@ String? _guardOperatorPanels(Ref ref, GoRouterState state) {
   }
 
   if (location == '/admin' || isAdminWorkshopDetail) {
-    return ref.read(authProvider).isFounder ? null : '/settings';
+    return ref.read(authProvider).isFounder ? null : '/profile';
   }
 
   final userId = ref.read(authProvider).profile?.id;
-  if (userId == null) return '/settings';
+  if (userId == null) return '/profile';
   final workshop = ref
       .read(serviceMarketplaceRepositoryProvider)
       .providerOwnedBy(userId);
-  if (workshop == null || !workshop.isApproved) return '/settings';
+  if (workshop == null || !workshop.isApproved) return '/profile';
   return null;
 }
 
 /// Registration gate — rule 4/5/6: no service requests, parts orders, or
 /// car ads until the user has completed their details. Browsing stays free.
 ///
-/// Opens [AuthGateScreen] rather than jumping straight to `/register`: a
-/// guest here might be someone who signed out of an existing account, not
-/// only a first-time visitor, and only they know which of the two they are.
+/// Opens [showAuthGate] rather than jumping straight to `/register`: a guest
+/// here might be someone who signed out of an existing account, not only a
+/// first-time visitor, and only they know which of the two they are. It is a
+/// dialog over the current screen, so declining it leaves the user exactly
+/// where the gated action was.
 bool ensureRegistered(BuildContext context, WidgetRef ref) {
   final registered = ref.read(authProvider).isRegistered;
   if (!registered) {
-    context.push('/auth');
+    unawaited(showAuthGate(context));
   }
   return registered;
 }

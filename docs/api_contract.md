@@ -267,7 +267,8 @@ failures:
 - `GET /user/profile` → `401` means "nobody is signed in". `ApiAuthService`
   returns `null`; the router reads that as a cold start.
 - `POST /auth/login` → `404` means "no account matches". The login screen shows
-  "no account found".
+  "no account found". `200` carries `{ "sent": true }` and nothing else — see
+  the endpoint's own note for why it no longer returns the profile.
 
 ---
 
@@ -357,14 +358,23 @@ phone number or an email, in any of the formats the register screen accepts
 (`+968 9200 1234`, `96892001234`, `9200 1234`). Normalise before matching.
 
 ```jsonc
-// POST /auth/login   →  200 { UserProfile }   |   404 no account
+// POST /auth/login   →  200 { "sent": true }   |   404 no account
 { "identifier": "+968 9200 1234" }
 ```
 
-This call **also sends the OTP**. It answers with the matched `UserProfile` (no
-token) so the code screen can greet the user by name — it is not a bare
-existence check. Rate-limit it: it is an unauthenticated endpoint that sends
-SMS, which is to say it spends money on behalf of anyone who can reach it.
+This call **also sends the OTP**. It answers with a fixed acknowledgement and
+**never with the account** — the 200-vs-404 split is the whole of what the
+client learns here.
+
+> It used to answer `200 { UserProfile }`, "so the code screen can greet the
+> user by name". The screen never did — its only use of the response was a null
+> check — and the endpoint is unauthenticated, so anyone who could guess an
+> eight-digit Oman mobile number was handed that person's name, e-mail,
+> governorate and street address. Changed 2026-08-26; the client method is now
+> `AuthService.requestOtp`, returning `bool`.
+
+Rate-limit it: it is an unauthenticated endpoint that sends SMS, which is to
+say it spends money on behalf of anyone who can reach it.
 
 ```jsonc
 // POST /auth/login/verify   →  200 session envelope   |   401 wrong/expired
@@ -636,9 +646,27 @@ additionally requires `stage == "approved"`, else `422 workshop_not_approved`
 
 | Path | Purpose |
 |---|---|
-| `GET /my-workshop` | the caller's `ServiceProvider`, plus `stage` and a completeness flag |
+| `GET /my-workshop` | the caller's `ServiceProvider`, plus a completeness report and the booking-schedule config |
 | `PUT /my-workshop` | edit `name`, `area`, `region`, `phone`, `whatsapp`, `hours`, `fulfillments`, `capabilities`, `pickupFee`, `vatNumber`, `crNumber` |
 | `GET /my-workshop/summary` | one payload the dashboard home renders without a second round trip |
+
+```jsonc
+// GET /my-workshop
+{
+  "provider": { /* ServiceProvider, carrying `stage` */ },
+  "isComplete": false,
+  "missingFields": ["whatsapp", "vatNumber"],
+  // The only route that reads these back. They are *written* through
+  // `PUT /my-workshop/schedule`, which has no GET of its own, so without
+  // them here the schedule config sheet has nothing to reopen with.
+  "schedule": { "hours": { "ar": "…", "en": "…" }, "slotTemplate": ["09:00", "11:00"],
+                "capacityPerSlot": 2, "closedDays": ["Friday"] }
+}
+```
+
+`PUT /my-workshop` answers with the bare `ServiceProvider`, **not** this
+envelope — the client re-derives `missingFields` from the saved provider using
+the same six checks until the next `GET`.
 
 ```jsonc
 // GET /my-workshop/summary

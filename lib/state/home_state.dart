@@ -8,6 +8,7 @@ import '../data/models/recommendation.dart';
 import '../data/models/service_provider.dart';
 import '../data/repositories/service_marketplace_repository.dart';
 import '../di/providers.dart';
+import 'admin_content_state.dart';
 import 'garage_state.dart';
 import 'maintenance_state.dart';
 import 'offers_state.dart';
@@ -34,8 +35,13 @@ final sessionSeedProvider = Provider<int>(
 /// the offers section must be able to hide itself when nothing is discounted
 /// (spec §2), which it could not do if an announcement counted as an offer.
 final homePromotionsProvider = Provider<List<Promotion>>((ref) {
+  // A founder creating/editing/deleting a promotion is reflected here on the
+  // next frame — see `promotionsRevisionProvider`.
+  ref.watch(promotionsRevisionProvider);
   final region = ref.watch(regionProvider);
-  return ref.watch(serviceMarketplaceRepositoryProvider).promotions(
+  return ref
+      .watch(serviceMarketplaceRepositoryProvider)
+      .promotions(
         region: region.isEmpty ? null : region,
         powertrain: ref.watch(primaryPowertrainProvider),
       );
@@ -53,7 +59,9 @@ final homeOffersProvider = Provider<List<LiveOffer>>((ref) {
   // frame — see `offersRevisionProvider`.
   ref.watch(offersRevisionProvider);
   final region = ref.watch(regionProvider);
-  return ref.watch(serviceMarketplaceRepositoryProvider).liveOffers(
+  return ref
+      .watch(serviceMarketplaceRepositoryProvider)
+      .liveOffers(
         region: region.isEmpty ? null : region,
         powertrain: ref.watch(primaryPowertrainProvider),
       );
@@ -118,8 +126,10 @@ final homeRecommendationsProvider = Provider<List<Recommendation>>((ref) {
     dueFor: (car) => ref.watch(maintenanceDueForCarProvider(car.id)),
     categoriesFor: (car) => marketplace.categoriesFor(car.powertrain),
     market: (categoryId) {
-      final cheapest =
-          marketplace.cheapestOfferingFor(categoryId, region: scope);
+      final cheapest = marketplace.cheapestOfferingFor(
+        categoryId,
+        region: scope,
+      );
       return (
         fromPrice: marketplace.fromPriceFor(categoryId, region: scope),
         workshops: marketplace.providerCountFor(categoryId, region: scope),
@@ -135,9 +145,9 @@ final homeRecommendationsProvider = Provider<List<Recommendation>>((ref) {
 /// book. The counts themselves stay marketplace-wide — that is what they
 /// measure.
 final mostBookedServicesProvider = Provider<List<RankedCategory>>((ref) {
-  return ref.watch(serviceMarketplaceRepositoryProvider).mostBookedCategories(
-        powertrain: ref.watch(primaryPowertrainProvider),
-      );
+  return ref
+      .watch(serviceMarketplaceRepositoryProvider)
+      .mostBookedCategories(powertrain: ref.watch(primaryPowertrainProvider));
 });
 
 /// A rating leaderboard, and whether it had to widen to see one.
@@ -160,10 +170,7 @@ final topRatedWorkshopsProvider = Provider<RatingBoard>((ref) {
     final local = marketplace.topRatedWorkshops(region: region, limit: size);
     if (local.length >= 2) return (items: local, nationwide: false);
   }
-  return (
-    items: marketplace.topRatedWorkshops(limit: size),
-    nationwide: true,
-  );
+  return (items: marketplace.topRatedWorkshops(limit: size), nationwide: true);
 });
 
 /// A demand leaderboard, and whether it had to widen to fill one. Same shape
@@ -178,8 +185,10 @@ final mostRequestedWorkshopsProvider = Provider<DemandBoard>((ref) {
   const size = HomeRankingConfig.workshopBoardSize;
 
   if (region.isNotEmpty) {
-    final local =
-        marketplace.mostRequestedWorkshops(region: region, limit: size);
+    final local = marketplace.mostRequestedWorkshops(
+      region: region,
+      limit: size,
+    );
     if (local.length >= 2) return (items: local, nationwide: false);
   }
   return (

@@ -23,4 +23,21 @@ abstract interface class NotificationService {
   });
 
   Future<List<AppNotification>> markAllRead();
+
+  /// Marks one notification read. Answers with the whole remaining inbox, the
+  /// same shape [markAllRead] uses — the screen rebuilds from the response
+  /// rather than patching its own copy and hoping the two agree.
+  Future<List<AppNotification>> markRead(String id);
+
+  /// Takes one notification off the owner's list.
+  ///
+  /// **A dismissal, not a delete.** The server stamps `dismissedAt` and keeps
+  /// the row: whether a customer was told their money moved is a question
+  /// support has to answer months later, and an inbox is the first thing
+  /// anybody clears out.
+  Future<List<AppNotification>> dismiss(String id);
+
+  /// Takes every visible notification off the owner's list, on the same terms
+  /// as [dismiss].
+  Future<List<AppNotification>> dismissAll();
 }

@@ -292,15 +292,19 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
     if (!untilReminder.isNegative) {
       _timers.add(
         Timer(untilReminder, () async {
+          if (_disposed) return;
           final current = state.firstWhereOrNull((r) => r.id == request.id);
           if (current?.escrow != EscrowState.awaitingApproval) return;
-          ref
-              .read(notificationsProvider.notifier)
-              .adopt(
-                await ref
-                    .read(notificationRepositoryProvider)
-                    .notifyApprovalWindowClosing(current!, deadline),
-              );
+          final notification = await ref
+              .read(notificationRepositoryProvider)
+              .notifyApprovalWindowClosing(current!, deadline);
+          // Re-checked after the await, not just before it. `ref.onDispose`
+          // cancels the timers that have not fired; it cannot cancel this one,
+          // which already fired and is suspended here. Without the second
+          // check a sign-out landing in this window reads `ref` on a disposed
+          // notifier.
+          if (_disposed) return;
+          ref.read(notificationsProvider.notifier).adopt(notification);
         }),
       );
     }

@@ -47,32 +47,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.screenMargin),
           children: [
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(LucideIcons.chevronRight),
-                  onPressed: () => setState(
-                    () => _date = _date.subtract(const Duration(days: 1)),
-                  ),
-                ),
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(LucideIcons.chevronLeft),
-                  onPressed: () => setState(
-                    () => _date = _date.add(const Duration(days: 1)),
-                  ),
-                ),
-              ],
+            _DayPicker(
+              day: day,
+              onChanged: (picked) => setState(() => _date = picked),
             ),
             const SizedBox(height: AppSpacing.md),
             schedule.when(
@@ -165,15 +142,29 @@ class _ScheduleConfigSheetState extends ConsumerState<_ScheduleConfigSheet> {
   bool _initialized = false;
   bool _saving = false;
 
+  /// Wire values are English `DateTime.weekday` names — `UpdateScheduleCommand`
+  /// parses them straight back into a `DayOfWeek`, so the *key* must stay
+  /// English no matter which language the chip is rendered in.
   static const _weekdays = [
+    'Saturday',
+    'Sunday',
     'Monday',
     'Tuesday',
     'Wednesday',
     'Thursday',
     'Friday',
-    'Saturday',
-    'Sunday',
   ];
+
+  static String _weekdayLabel(String key, S s) => switch (key) {
+    'Saturday' => s.t('السبت', 'Saturday'),
+    'Sunday' => s.t('الأحد', 'Sunday'),
+    'Monday' => s.t('الاثنين', 'Monday'),
+    'Tuesday' => s.t('الثلاثاء', 'Tuesday'),
+    'Wednesday' => s.t('الأربعاء', 'Wednesday'),
+    'Thursday' => s.t('الخميس', 'Thursday'),
+    'Friday' => s.t('الجمعة', 'Friday'),
+    _ => key,
+  };
 
   @override
   void dispose() {
@@ -205,7 +196,7 @@ class _ScheduleConfigSheetState extends ConsumerState<_ScheduleConfigSheet> {
         }
         return Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.lg,
+            bottom: MediaQuery.viewInsetsOf(context).bottom + AppSpacing.lg,
             left: AppSpacing.screenMargin,
             right: AppSpacing.screenMargin,
             top: AppSpacing.md,
@@ -253,7 +244,7 @@ class _ScheduleConfigSheetState extends ConsumerState<_ScheduleConfigSheet> {
                 children: [
                   for (final day in _weekdays)
                     FilterChip(
-                      label: Text(day),
+                      label: Text(_weekdayLabel(day, s)),
                       selected: _closedDays.contains(day),
                       onSelected: (v) => setState(
                         () =>
@@ -299,6 +290,93 @@ class _ScheduleConfigSheetState extends ConsumerState<_ScheduleConfigSheet> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Day stepper for the schedule view: previous/next arrows that point the way
+/// the language reads, a tappable date that opens a real calendar, and a
+/// "today" shortcut that only appears when you have wandered off it.
+///
+/// Replaced a pair of fixed `chevronRight`/`chevronLeft` buttons whose arrows
+/// pointed backwards in English, and a plain text date with no way to reach a
+/// day more than a few taps away.
+class _DayPicker extends StatelessWidget {
+  const _DayPicker({required this.day, required this.onChanged});
+
+  final DateTime day;
+  final ValueChanged<DateTime> onChanged;
+
+  static String _format(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final now = DateTime.now();
+    final isToday =
+        day.year == now.year && day.month == now.month && day.day == now.day;
+
+    Future<void> pick() async {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: day,
+        // A schedule is worth looking a year back (what did we do) and a year
+        // forward (what is already booked); anything wider is a scroll, not a
+        // feature.
+        firstDate: DateTime(now.year - 1),
+        lastDate: DateTime(now.year + 1, 12, 31),
+      );
+      if (picked != null) {
+        onChanged(DateTime(picked.year, picked.month, picked.day));
+      }
+    }
+
+    return Row(
+      children: [
+        IconButton(
+          tooltip: s.t('اليوم السابق', 'Previous day'),
+          icon: Icon(rtl ? LucideIcons.chevronRight : LucideIcons.chevronLeft),
+          onPressed: () => onChanged(day.subtract(const Duration(days: 1))),
+        ),
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: pick,
+            child: Column(
+              children: [
+                Text(
+                  _format(day),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isToday
+                      ? s.t('اليوم', 'Today')
+                      : s.t('اضغط لاختيار يوم', 'Tap to pick a day'),
+                  style: TextStyle(fontSize: 10.5, color: ak.inkSub),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (!isToday)
+          TextButton(
+            onPressed: () => onChanged(DateTime(now.year, now.month, now.day)),
+            child: Text(s.t('اليوم', 'Today')),
+          ),
+        IconButton(
+          tooltip: s.t('اليوم التالي', 'Next day'),
+          icon: Icon(rtl ? LucideIcons.chevronLeft : LucideIcons.chevronRight),
+          onPressed: () => onChanged(day.add(const Duration(days: 1))),
+        ),
+      ],
     );
   }
 }

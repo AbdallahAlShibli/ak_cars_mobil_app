@@ -30,12 +30,11 @@ class SettingsState {
     Locale? locale,
     ThemeMode? themeMode,
     bool? notifications,
-  }) =>
-      SettingsState(
-        locale: locale ?? this.locale,
-        themeMode: themeMode ?? this.themeMode,
-        notifications: notifications ?? this.notifications,
-      );
+  }) => SettingsState(
+    locale: locale ?? this.locale,
+    themeMode: themeMode ?? this.themeMode,
+    notifications: notifications ?? this.notifications,
+  );
 }
 
 class SettingsNotifier extends Notifier<SettingsState> {
@@ -77,8 +76,45 @@ class SettingsNotifier extends Notifier<SettingsState> {
   }
 }
 
-final settingsProvider =
-    NotifierProvider<SettingsNotifier, SettingsState>(SettingsNotifier.new);
+final settingsProvider = NotifierProvider<SettingsNotifier, SettingsState>(
+  SettingsNotifier.new,
+);
+
+/// Which workshop-application stage the owner has dismissed the "My account"
+/// status card for, or null while they have dismissed nothing.
+///
+/// Stores the stage key, not a boolean: the card says one specific thing
+/// ("approved", "under review", "needs a change"), and dismissing one of
+/// those sentences is not consent to never hear the next one. When the
+/// founder later suspends or approves the workshop the stage changes, this
+/// no longer matches, and the card comes back on its own.
+class WorkshopNoticeDismissalNotifier extends Notifier<String?> {
+  SharedPreferences get _prefs => ref.read(sharedPrefsProvider);
+
+  @override
+  String? build() =>
+      _prefs.getString(AppConstants.prefsWorkshopNoticeDismissedStage);
+
+  /// Hide the card for [stageKey] until the stage itself changes.
+  void dismiss(String stageKey) {
+    state = stageKey;
+    _prefs.setString(AppConstants.prefsWorkshopNoticeDismissedStage, stageKey);
+  }
+
+  /// Bring it back — what the always-visible status row in "My account" does
+  /// when tapped, so a dismissal is never a one-way door.
+  void restore() {
+    state = null;
+    _prefs.remove(AppConstants.prefsWorkshopNoticeDismissedStage);
+  }
+
+  bool isDismissedFor(String stageKey) => state == stageKey;
+}
+
+final workshopNoticeDismissalProvider =
+    NotifierProvider<WorkshopNoticeDismissalNotifier, String?>(
+      WorkshopNoticeDismissalNotifier.new,
+    );
 
 /// Region selected for service discovery. Defaults to the first governorate
 /// the marketplace operates in.

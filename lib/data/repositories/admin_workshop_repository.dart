@@ -30,6 +30,13 @@ abstract interface class AdminWorkshopRepository {
 
   Future<void> deleteProvider(String providerId);
 
+  /// Replaces the commercial-registration certificate on the applicant's
+  /// behalf. See `AdminWorkshopService.updateCrDocument`.
+  Future<ServiceProvider> updateCrDocument(
+    String providerId,
+    MediaAttachment document,
+  );
+
   Future<List<ServiceOffering>> getOfferings(String providerId);
 
   Future<ServiceOffering> createOffering(
@@ -41,6 +48,7 @@ abstract interface class AdminWorkshopRepository {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   });
 
   Future<ServiceOffering> updateOffering(
@@ -53,6 +61,7 @@ abstract interface class AdminWorkshopRepository {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   });
 
   Future<ServiceOffering> setOfferingActive(
@@ -126,6 +135,12 @@ class AdminWorkshopRepositoryImpl implements AdminWorkshopRepository {
       _service.deleteProvider(providerId);
 
   @override
+  Future<ServiceProvider> updateCrDocument(
+    String providerId,
+    MediaAttachment document,
+  ) => _service.updateCrDocument(providerId, document);
+
+  @override
   Future<List<ServiceOffering>> getOfferings(String providerId) =>
       _service.getProviderOfferings(providerId);
 
@@ -139,6 +154,7 @@ class AdminWorkshopRepositoryImpl implements AdminWorkshopRepository {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) => _service.createProviderOffering(
     providerId,
     categoryId: categoryId,
@@ -148,6 +164,7 @@ class AdminWorkshopRepositoryImpl implements AdminWorkshopRepository {
     durationMin: durationMin,
     includes: includes,
     warrantyMonths: warrantyMonths,
+    photo: photo,
   );
 
   @override
@@ -161,6 +178,7 @@ class AdminWorkshopRepositoryImpl implements AdminWorkshopRepository {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) => _service.updateProviderOffering(
     providerId,
     offeringId,
@@ -171,6 +189,7 @@ class AdminWorkshopRepositoryImpl implements AdminWorkshopRepository {
     durationMin: durationMin,
     includes: includes,
     warrantyMonths: warrantyMonths,
+    photo: photo,
   );
 
   @override

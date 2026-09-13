@@ -55,7 +55,9 @@ class AdminWorkshopProfileNotifier
     String? vatNumber,
     String? crNumber,
   }) async {
-    final updated = await ref.read(adminActionsProvider).updateProviderProfile(
+    final updated = await ref
+        .read(adminActionsProvider)
+        .updateProviderProfile(
           arg,
           name: name,
           area: area,
@@ -102,8 +104,11 @@ class AdminWorkshopOfferingsNotifier
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async {
-    final created = await ref.read(adminWorkshopRepositoryProvider).createOffering(
+    final created = await ref
+        .read(adminWorkshopRepositoryProvider)
+        .createOffering(
           arg,
           categoryId: categoryId,
           name: name,
@@ -112,6 +117,7 @@ class AdminWorkshopOfferingsNotifier
           durationMin: durationMin,
           includes: includes,
           warrantyMonths: warrantyMonths,
+          photo: photo,
         );
     state = AsyncData([...state.valueOrNull ?? const [], created]);
     return created;
@@ -126,8 +132,11 @@ class AdminWorkshopOfferingsNotifier
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async {
-    final updated = await ref.read(adminWorkshopRepositoryProvider).updateOffering(
+    final updated = await ref
+        .read(adminWorkshopRepositoryProvider)
+        .updateOffering(
           arg,
           offeringId,
           categoryId: categoryId,
@@ -137,6 +146,7 @@ class AdminWorkshopOfferingsNotifier
           durationMin: durationMin,
           includes: includes,
           warrantyMonths: warrantyMonths,
+          photo: photo,
         );
     _replace(updated);
     return updated;
@@ -154,7 +164,9 @@ class AdminWorkshopOfferingsNotifier
   }
 
   Future<void> delete(String offeringId) async {
-    await ref.read(adminWorkshopRepositoryProvider).deleteOffering(arg, offeringId);
+    await ref
+        .read(adminWorkshopRepositoryProvider)
+        .deleteOffering(arg, offeringId);
     state = AsyncData([
       for (final o in state.valueOrNull ?? const <ServiceOffering>[])
         if (o.id != offeringId) o,
@@ -162,9 +174,9 @@ class AdminWorkshopOfferingsNotifier
   }
 
   void _replace(ServiceOffering updated) => state = AsyncData([
-        for (final o in state.valueOrNull ?? const <ServiceOffering>[])
-          if (o.id == updated.id) updated else o,
-      ]);
+    for (final o in state.valueOrNull ?? const <ServiceOffering>[])
+      if (o.id == updated.id) updated else o,
+  ]);
 }
 
 final adminWorkshopOfferingsProvider = AsyncNotifierProvider.autoDispose

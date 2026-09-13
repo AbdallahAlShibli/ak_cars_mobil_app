@@ -192,7 +192,7 @@ class _PostAdScreenState extends ConsumerState<PostAdScreen> {
       builder: (context) => SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.7,
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),

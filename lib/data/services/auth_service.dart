@@ -20,17 +20,25 @@ abstract interface class AuthService {
 
   Future<UserProfile> updateProfile(UserProfile profile);
 
-  /// Locates an existing account by phone or email, for the login screen.
+  /// Asks the server to send a one-time code to [identifier], and reports
+  /// whether an account was there to send it to.
   ///
-  /// Null when nothing matches — the caller offers registration instead of
+  /// False when nothing matches — the caller offers registration instead of
   /// pretending an OTP would go anywhere. Does not start a session; [login]
-  /// does that once the code the screen showed has been confirmed.
-  Future<UserProfile?> findAccount(String identifier);
+  /// does that once the code has been confirmed.
+  ///
+  /// Was `findAccount`, returning the matched `UserProfile`. That handed the
+  /// account's name, e-mail and street address to an unauthenticated caller
+  /// who supplied nothing but a phone number, and no caller ever read a field
+  /// of it — the login screen only checked whether it was null. The server no
+  /// longer sends the profile, so there is nothing left to return but the
+  /// answer to that check.
+  Future<bool> requestOtp(String identifier);
 
   /// Verifies [code] against the OTP sent to [identifier] and, if it
   /// matches, starts the session.
   ///
-  /// Callers must have already resolved [findAccount] to a non-null profile
+  /// Callers must have already had [requestOtp] answer true
   /// — this is the step that proves the person holding the phone is that
   /// account's owner, not the step that looks the account up.
   Future<UserProfile> login(String identifier, String code);

@@ -17,6 +17,2465 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-13 · API log triage: two EF warnings fixed, the SQL error was environmental
+
+**Baseline:** `00e1d90` (this repo). **The code changed is in the API repo**
+(`AKCarsMobileAPI`), logged here because this is where the running edit log lives.
+
+Request, verbatim: "check the logs and fix the bugs:" followed by an
+`AKCars.Api` development-run log.
+
+### What the log actually contained
+
+1. **`SqlException 18461` — "Server is in single user mode"**, hitting a request
+   query and then both background services at 13:57. **Not a code bug and
+   nothing was changed for it.** SQL Server (`.\SQLEXPRESS`) had been started
+   with `-m`, so only one administrator could connect. Checked live during this
+   session: `SERVERPROPERTY('IsSingleUser') = 0`, `UserAccess = MULTI_USER`,
+   `Status = ONLINE` — it had already cleared.
+
+   Worth recording because the stack trace *looks* like a crashed background
+   service: it names `AutoReleaseHostedService.ExecuteAsync` line 33 and
+   `ApprovalReminderHostedService.ExecuteAsync` line 30. Both were read and
+   both are correct — the `try/catch` is inside the `do { } while
+   (await timer.WaitForNextTickAsync(...))` loop, so a failed tick is logged and
+   the next one runs five minutes later. The frames appear only because the
+   exception carries its original stack. The escrow auto-release and the 24h
+   approval reminder were never at risk of dying with the database.
+
+2. **`MultipleCollectionIncludeWarning` ×3 on every cold start** — real, fixed.
+   `ServiceRequest` carries three collections (`History`, `AddOns`, and the
+   owned `ProofMedia`) and `MaintenanceBook` two (`Records`, `CustomItems`), so
+   every list query over them returned the cartesian product of those
+   collections in a single result set. The row count multiplies with a
+   booking's history, not with the number of bookings, so it gets worse as the
+   pilot accumulates real data.
+
+   Fixed by `UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)` on
+   the SqlServer builder in `AKCars.Infrastructure/DependencyInjection.cs`.
+
+   **First attempt was wrong and was reverted:** `.AsSplitQuery()` was added to
+   the eight affected queries in `AKCars.Application`, which does not compile —
+   `AsSplitQuery` is in EF's *Relational* package and `AKCars.Application`
+   references only `Microsoft.EntityFrameworkCore`, on purpose: the application
+   layer is not supposed to know its provider. The revert was done by reversing
+   each edit rather than `git checkout`, because that repo has a lot of
+   unrelated uncommitted work. (A stray BOM introduced by the edit script was
+   stripped from all nine files; `git diff` was used to confirm only the
+   intended change remains.)
+
+3. **`'First'/'FirstOrDefault' without 'OrderBy' and filter operators`** —
+   real, fixed. `GetVehicleCatalogQueryHandler` read the `CatalogSettings`
+   singleton with a bare `FirstOrDefaultAsync`. One seeded row exists today, so
+   nothing is currently wrong, but the query asks SQL Server for "any row" — if
+   a second ever appeared, the catalogue's earliest selectable year would flip
+   between page loads. Now `OrderBy(c => c.Id).FirstOrDefaultAsync(...)`.
+
+### Found and deliberately not fixed
+
+The app warms **every** provider on cold start:
+`ServiceMarketplaceRepository._warmProvider` runs for each entry in
+`_providers.value`, fetching add-ons and tomorrow's slots — two requests per
+provider. That is the 20-request burst visible at 13:23:12 and 13:56:52 with
+ten providers, and it grows linearly with the number of workshops on the
+platform.
+
+Not fixed here because it is not a one-line change: `addOnsFor()` and
+`availabilityFor()` are **synchronous** cache reads used directly by
+`booking_screen.dart`, `quote_screen.dart` and `service_detail_screen.dart`, so
+making the fetch lazy means giving those three screens real loading states.
+That is a scoped piece of work, not a side effect of reading a log — raised for
+the user's decision.
+
+### Verified
+
+`dotnet build src/AKCars.Infrastructure` — 0 warnings, 0 errors.
+`dotnet test tests/AKCars.Tests` — **984 passed, 0 failed**. The full solution
+build cannot link while the API is running (the .exe holds the DLLs), so the
+tests were built to a scratch `BaseOutputPath` rather than stopping the user's
+server.
+
+**Not verified:** the split-query behaviour itself. The test suite runs on the
+EF in-memory provider, which ignores a SqlServer-specific option, so the proof
+that the warnings are gone is the next real cold start against SQL Server.
+
+---
+
+## 2026-09-13 · First-run screens rebuilt around what the app actually does
+
+**Baseline:** `00e1d90`.
+
+Request, verbatim: "check the pages which works first time when install the app
+. that pages need to improve  and recreate. also the idea of telling users what
+we provide and what we have. improve the user expereance also."
+
+The first-run flow is three screens: `/splash` → `/onboarding` → `/start-choice`
+(`AuthState.initialRoute`), each seen once per install.
+
+### What was actually wrong
+
+1. **The tour sold a pillar this build does not ship.** Slide 2 of 2 was the
+   parts store — "Shop parts for your car … with filters for category,
+   provider, price, and region" — while `AppFlags.partsStoreEnabled` has been
+   `false` since the phase-1 refocus, which compiles the Shop tab, its routes
+   and every entry point into it out of the build. Half the tour described a
+   feature the user could not then find.
+2. **The tour never mentioned escrow.** The thing that makes this app different
+   from phoning a workshop — the money is held and released only on the
+   customer's approval — appeared nowhere in the intro, so the one remaining
+   truthful slide undersold the product.
+3. **The welcome screen said nothing.** "Everything your car needs… in one
+   place" is true of every automotive app ever shipped.
+4. **No sign-in on the way in.** Login existed only in the profile tab, so a
+   user reinstalling or switching phones had to sit through an intro for a
+   product they already use, and answer a car question about a car they had
+   already registered, before getting their bookings back.
+5. **The skipper learned nothing.** Both exits from step 3 ("Skip", "Not now")
+   drop straight into the app, and the tour is skippable from two screens
+   earlier, so it was possible to reach the shell having been told nothing.
+
+### The change
+
+- **New `lib/features/onboarding/intro_content.dart`** — the single source of
+  what the app claims it does, built from the same `AppFlags` that decide what
+  is reachable. `introSlides()`, `capabilityHighlights()`, `introChips()`. The
+  parts and marketplace slides live there behind their flags, so flipping a
+  flag restores the tab and its slide together; neither can drift again.
+- **Tour rebuilt** (`onboarding_screen.dart`): four slides on the real phase-1
+  product — verified workshops → money held until you approve → itemised
+  part+labour quote → live tracking and service history. Each carries three
+  proof chips, which is what a user skimming in four seconds actually reads.
+  Dots are now tappable (they were a 7px target with no hit padding), and each
+  slide scrolls rather than overflowing at large text scales.
+- **Welcome screen** (`splash_screen.dart`): concrete tagline, a three-chip
+  capability strip above the fold, and an "Already have an account? Sign in"
+  link that pushes `/login` (`AuthNotifier.login` already records both
+  first-run flags, so a returning user answers nothing). Layout now
+  LayoutBuilder + minHeight + IntrinsicHeight so the Spacer-based hero still
+  centres on a normal phone but scrolls on a short one.
+- **Step 3** (`start_choice_screen.dart`): a "What AK Cars does for you" recap
+  card from `capabilityHighlights()` — the last place the app can say what it
+  is for before the user is expected to go and find out.
+
+Two things were fixed in the product rather than worked around in a test: the
+recap's reminder line duplicated the "Add my car now" card's benefit line word
+for word on the same screen (reworded), and the longest Arabic proof chip
+overflowed a 320pt screen by 2.5px (the chip label is now `Flexible`).
+
+### Not done
+
+`AppFlags.partsStoreEnabled` / `carMarketplaceEnabled` were left off. The copy
+now follows them instead of contradicting them; whether phase 2 turns on is the
+user's call, not a side effect of fixing the intro.
+
+### Verified
+
+`dart analyze lib/features/onboarding/` — no issues. `flutter test` — 602
+passing (597 before, 5 new). New tests: the tour never names a flag-hidden
+pillar; the tour states the escrow promise; the welcome screen fits 360×640 and
+320×568 in both languages; every tour slide fits 320×568 in Arabic. The
+overflow tests were written after hitting both overflows for real, not
+speculatively. Not run on a device or emulator — no screenshots taken.
+
+---
+
+## 2026-09-13 · Auth gate's primary option was unreadable in dark theme
+
+**Baseline:** `00e1d90`.
+
+Request, verbatim: "when user change to dark theam and click on login this
+happen. colors are mismatched. fix them" (with a screenshot of the dark-theme
+auth gate dialog).
+
+### What was actually wrong
+
+`_GateOption` in `lib/features/auth/auth_gate_screen.dart` painted the primary
+("لديّ حساب" / "I have an account") card with `ak.ink` and hardcoded every
+foreground on it to `Colors.white`. Those two tokens only agree in the light
+theme: `ink` is near-black in Sand, but in Ink (dark) it inverts to cream
+`#F2EFE8` — so the card came out light cream with white title, white subtitle,
+white chevron and a white-on-white icon tile. Effectively invisible text.
+
+The card's shadow had the same bug: `ak.ink.withValues(alpha: 0.18)` is a pale
+glow in dark theme, not a shadow.
+
+### The fix
+
+- Background now reads `ak.primary` and all foregrounds read `ak.onPrimary`.
+  That pair is defined to invert together (light: ink bg / cream fg; dark: cream
+  bg / ink fg), which is exactly the contract this card needs.
+- Icon-tile wash switched from `Colors.white @ 16%` to `ak.onPrimary @ 12%`.
+- Card shadow switched to `Colors.black @ 18%`.
+- The dialog title got an explicit `color: ak.ink` instead of inheriting an
+  implicit theme text color.
+
+The only remaining `Colors.white` in the file is the car icon on the header's
+`AppColors.brandGradient`, which is a dark ink gradient in both themes — correct
+as-is.
+
+### Verified
+
+`dart analyze lib/features/auth/auth_gate_screen.dart` — no issues. Not
+re-screenshotted in a running app; the change is a token swap with no layout or
+logic effect.
+
+---
+
+## 2026-09-04 · A per-caller catalogue response was marked publicly cacheable
+
+**Baseline:** `00e1d90` here (no app-side change); `AKCarsMobileAPI` at `74b1305`,
+changed in its own repo.
+
+Request, verbatim: "review the code for api and flutter project for any possible
+bugs and issues then fix them. After finish write small explanation about what
+you did."
+
+### What was actually wrong
+
+`GET /api/v1/service-marketplace/offerings` set
+`Cache-Control: public, max-age=300`, but its body is **not** the same for every
+caller. `GetOfferingsQuery` branches on `ICurrentUser` twice:
+
+- a founder additionally receives the offerings of workshops that are *not*
+  approved yet (everyone else is filtered to `Stage == Approved`);
+- `CatalogueMappers.ToPublicDto` keeps the nested provider's CR document scan,
+  VAT number, CR number and the owner's personal phone for a founder or for the
+  workshop's own owner, and strips them for everybody else.
+
+`public` tells *any* shared cache — a CDN, a corporate proxy — that one stored
+copy may be handed to every later caller. So a founder's response could be
+served to the next anonymous visitor for five minutes, handing out workshop
+identity documents, owner phone numbers and unapproved workshops to strangers.
+
+This was latent rather than observed: no shared cache sits in front of the API
+today. It is a header promising something untrue, and the promise is only wrong
+once something starts believing it.
+
+### The fix
+
+**Files:** `src/AKCars.Api/Endpoints/MarketplaceEndpoints.cs` (API repo).
+
+A second helper beside `Cacheable`, used only by `/offerings`:
+
+    private, max-age=300
+    Vary: Authorization
+
+`private` keeps the response in the one caller's own HTTP cache. `Vary:
+Authorization` keeps it correct even there — the app sends a bearer token and a
+guest sends none, so signing in or out no longer re-serves the previous
+identity's snapshot.
+
+`/promotions` and `/offers` were left `public` deliberately, and that is now
+asserted rather than assumed: their handlers take no `ICurrentUser` at all, so
+they really are the same for everyone.
+
+### What was checked and found *correct* (no change made)
+
+Recorded so the same ground is not re-covered later:
+
+- `ToPublicDto`'s founder/owner gating of CR document, VAT/CR and owner phone.
+- The new `MediaValidation`/`MediaRules` allowlist, its size pre-check, and every
+  call site's `.When(... is not null)` guard on optional photos.
+- `ApplyEscrowEventCommandValidator`'s `RuleForEach(x => x.Proof!.Media)`. The
+  `Proof!` looked like an NRE waiting for any event sent without proof; it is
+  not — FluentValidation evaluates the rule-level `.When` before touching the
+  collection. Pinned by a test rather than left to be re-suspected.
+- Both new migrations add only nullable columns — no repeat of the
+  `defaultValue: false` backfill that once switched every offering inactive.
+- Notification dismissal (`DismissedAt`) filters consistently across all four
+  handlers; founder-only authorisation on every new offer/promotion/badge slice.
+- Flutter: every `double.parse`/`int.parse` on a text field is gated behind a
+  `tryParse`-based `_ready`/`_canSave` guard, so no editor can crash on input.
+
+### Known-adjacent, not fixed (needs a product decision, not a bug fix)
+
+`ServiceProvider.Photo` is half-wired: the API has the column, the migration and
+the validation, and both `UpdateMyWorkshopCommand` and
+`AdminUpdateProviderCommand` set `provider.Photo = null` whenever the request
+carries no photo. No Flutter client ever *sends* or *reads* a provider photo —
+the Dart `ServiceProvider` model has no photo field at all — so nothing is lost
+today. The moment a photo-upload UI is added, every unrelated profile edit
+(name, hours, pickup fee) will silently delete the photo, because the client
+does not round-trip it the way the offering editor does. Offerings are fine:
+that editor preloads the existing photo and resends it.
+
+Also unaddressed: `GetOfferingsQuery` does `.Include(o => o.Provider)`, which
+materialises each provider's full `varbinary(max)` `PhotoData` and `CrDocument`
+once per offering, even for callers whose response strips them. A projection
+would fix it; that is a larger change than this pass.
+
+### Verified
+
+- `dotnet build` — 0 errors, 0 warnings.
+- `dotnet test` — 984 passed, 0 failed (980 before, plus 4 added here).
+- New `CatalogueCachingIntegrationTests` asserts `/offerings` is `private` +
+  `Vary: Authorization` and that `/promotions` and `/offers` stay `public`.
+  Confirmed non-vacuous: reverting the one-line fix makes it fail with "GET
+  /offerings varies by caller and must be `private`", and it passes again once
+  restored.
+- New `EscrowProofValidationTests` covers an escrow event with no proof.
+- Flutter side: `flutter analyze` clean, `flutter test` 595 passed. **No Dart
+  file was changed** — the app sends no `Cache-Control` request headers and
+  reads the catalogue through its own warm caches, so this fix needs nothing
+  from the client.
+
+---
+
+## 2026-09-02 · The inbox's delete was broken two ways, from one cause
+
+**Baseline:** `00e1d90` here; `AKCarsMobileAPI` changed in its own repo. Fixes
+the 2026-09-01 (4) entry below.
+
+Request, verbatim: "Last time I asked you to update the notification page but I
+think there some bugs. Check the notifications idea in both sides: api and
+flutter. Review, test, fix issues. And make sure is working properly."
+
+### What was actually wrong
+
+Both defects were on the **Flutter** side, and both came from the same decision:
+the notifier wrote optimistically and the list matched its rows by index.
+
+1. **A refused delete crashed the list.** `Dismissible.onDismissed` fired, the
+   notifier removed the row, the call failed, the rollback put the same
+   `ValueKey` back — into a tree that had already recorded that key as
+   dismissed. Flutter asserts on exactly this: *"A dismissed Dismissible widget
+   is still part of the tree."*
+2. **And the card did not come back.** After the assertion the row was simply
+   gone until the next fetch — the reader was left believing something was
+   deleted that the server had refused to delete. The previous entry's own doc
+   comment claimed the rollback prevented this. It did not, and nothing tested
+   it.
+3. **Rows were matched by index.** `ListView.itemBuilder` returned an unkeyed
+   `Entrance`, so deleting a card handed its element — including the live
+   `_DismissibleState` — to whichever notification moved up into that slot. That
+   is the mechanism behind (1), and it also replayed every entrance animation
+   below a deletion.
+
+### The fix
+
+* **Writes are no longer optimistic.** `_write` (apply-then-roll-back) became
+  `_apply`: await, then adopt the inbox the server returns. These routes answer
+  with the remaining visible inbox precisely so the screen cannot drift from it,
+  and there is now nothing to roll back.
+* **The swipe is held open across the round trip** — `confirmDismiss` instead of
+  `onDismissed`. It returns `true` only if the server agreed; `false` springs
+  the card back, which is both the honest answer and better feedback than a
+  card vanishing and reappearing.
+* **Every row is keyed by notification id.**
+
+Trade-off worth naming: deleting from the overflow menu now waits for the round
+trip before the card goes, where before it went instantly and sometimes lied.
+The swipe covers its own latency with the drag; the menu does not.
+
+### What was checked and found correct
+
+* **The API side has no equivalent bug.** All four queries that read
+  `db.Notifications` filter `DismissedAt == null` — `GetNotifications`,
+  `MarkAllRead`, and both handlers in `InboxActions`. `NotificationSender` only
+  inserts. There is no path that resurfaces a dismissed row.
+* **Every route is mapped and authorised.** With the API running, all six
+  answered `401` rather than `404`/`405`, including the two riskiest: the
+  empty-pattern `DELETE /notifications` and the pre-existing
+  `DELETE /notifications/devices/{token}`, which the new `{id:guid}` route
+  could have shadowed and does not.
+* **The wire contract matches.** `Program.cs` sets camelCase; `NotificationDto`
+  emits `{id, title:{ar,en}, body:{ar,en}, icon, time, read, route}`, which is
+  exactly what `AppNotification.fromJson` and `L.fromJson` read. `Guid`
+  serialises to a string for `requireString('id')`, `DateTime` to ISO-8601 for
+  `dateTimeOr('time')`.
+* **The migration caveat from the last entry is resolved.** The API was no
+  longer holding a lock on its build output, so the hand-written migration was
+  replaced with a properly scaffolded `20260902172823_AddNotificationDismissedAt`
+  (now with its `.Designer.cs`). Before swapping it, a throwaway scaffold came
+  out **empty** against a real build — proving the hand-written file and the
+  snapshot had been correct all along.
+* `Entrance` leaves an uncancelled `Future.delayed` per row. It is guarded by
+  `mounted`, so it cannot crash — it only means a widget test must pump past the
+  delay. Left alone: it is shared code, pre-existing, and outside this request.
+
+### Verified
+
+* `flutter analyze` clean; `flutter test` **595 passing** (was 589).
+* New `test/notifications_screen_test.dart` — six widget tests pinning the two
+  bugs: a swipe that succeeds, **a swipe the server refuses (the card must come
+  back, and nothing may assert)**, tap-marks-read, deleting the last card
+  reaching the empty state, a push landing on top while the list is open, and
+  **deleting after a push removing the right card** — the one that fails if rows
+  go back to index matching.
+* `dotnet test` **980 passing**, run this time with a normal build (no
+  `-p:BuildProjectReferences=false` needed).
+
+### The gap
+
+Still **not exercised with a signed-in session end to end**. Reaching one would
+mean creating an account or entering a password, which I do not do. Everything
+either side of the token is covered — routes and auth over real HTTP, handler
+behaviour against a real `DbContext`, the UI against the service double — but
+the single round trip through a live JWT is not.
+
+**Files:** `lib/state/notifications_state.dart`,
+`lib/features/home/notifications_screen.dart`,
+`test/notifications_screen_test.dart` (new),
+`AKCarsMobileAPI/src/AKCars.Infrastructure/Persistence/Migrations/20260902172823_AddNotificationDismissedAt.cs`
+(replaces the hand-written `20260901161747_…`), and that migration's
+`.Designer.cs` + `AkCarsDbContextModelSnapshot.cs`.
+
+---
+
+## 2026-09-01 (4) · The notification inbox gets actions, and a memory
+
+**Baseline:** `00e1d90` here; `AKCarsMobileAPI` changed in its own repo.
+
+Request, verbatim: "in the notifications page, users can remove the notification
+cards only as hide and let them available in the database. so user can cacele or
+delete one notification and also can cancel or delete all notifications. also
+users can mark as red"
+
+### The shape of it
+
+`Notification` gains **`DismissedAt: DateTime?`** — null while it is on the
+owner's list. Every read (`GetNotifications`, `MarkAllRead`) filters it out, and
+three new commands write it:
+
+* `DELETE /notifications/{id}` — dismiss one.
+* `DELETE /notifications` — dismiss the lot.
+* `POST /notifications/{id}/read` — mark one read.
+
+The verb is DELETE because that is what the caller means; what the server does
+is stamp a timestamp and keep the row. Whether a customer was told their money
+moved is a question support answers months later, and an inbox is the first
+thing anybody clears out — so the button says delete, the reader stops seeing
+it, and the record survives. All three answer with the **remaining visible
+inbox** rather than 204, the shape `MarkAllRead` already used, so the screen
+rebuilds from the server's answer instead of guessing.
+
+Two details worth keeping: a dismissal is idempotent (a retry does not rewrite
+*when* it happened), and somebody else's notification is a **404, not a 403** —
+403 would confirm the id exists.
+
+### The read state, which had to change to make the request possible
+
+`NotificationsScreen` marked **everything** read from `initState`. That made the
+unread count a number that could only ever be zero by the time anyone looked at
+it, and left "mark as read" with nothing to do. So reading is now something the
+reader does: tapping a card marks that one, its overflow menu marks it without
+opening it, and an app-bar action marks the lot. Unread is carried by a tinted
+surface, an inverted icon tile and a dot — not by font weight alone, which only
+reads as a state when both weights are on screen together.
+
+**This is a behaviour change the request implied rather than asked for**, and it
+is the one thing here worth a second opinion: the badge on the home bell now
+stays lit until the reader acts, where before it cleared itself.
+
+### The rest
+
+Swipe-to-dismiss in both directions with a red captioned background, plus a
+per-card menu — the menu exists because a reader who never discovers the gesture
+would otherwise have no way to these actions at all. "Delete all" confirms
+first; a single dismissal does not, because a swipe is already deliberate and
+what it removes is a message *about* something, not the something.
+
+`NotificationsNotifier` writes optimistically and **rolls back on failure**,
+which is the half that makes optimism honest — a dismissal the server refused
+has to come back, or the reader believes something is gone that will reappear on
+the next fetch. The screen surfaces that failure in a snackbar rather than
+letting the list silently snap back.
+
+`ApiClient` gains `deleteList` (DELETE routes answering with a collection);
+`OfflineApiClient` refuses it like the rest.
+
+### A fake that was lying
+
+`MockNotificationService.push` minted ids from
+`DateTime.now().microsecondsSinceEpoch`. That has **millisecond** resolution on
+Windows, so a loop pushing three notifications gave all three the same id — and
+dismissing one then hid every one of them. Replaced with a counter. Worth
+noting because it was only visible once something keyed off ids; every test
+before this one compared whole objects.
+
+### Verified
+
+* **App:** `flutter analyze` clean, `flutter test` **589 passing**, including 8
+  new in `test/notifications_inbox_test.dart`. The load-bearing ones count rows:
+  after dismissing one of three the list holds two and the store still holds
+  three; after dismissing all the list is empty and the store still holds four.
+  Plus: a dismissed row does not return on refetch, marking all read skips
+  dismissed rows, and a failed dismissal restores the list.
+* **API:** `dotnet test` **980 passing**, including 8 new in
+  `InboxActionCommandTests.cs` — the row survives, the query stops returning it,
+  a second dismissal keeps the first timestamp, a stranger's id is a 404, "all"
+  stops at the caller's own rows, and an anonymous caller gets 401.
+* A temporary widget check (deleted) rendered the screen in **ar/en ×
+  light/dark**, then drove the real controls: the card menu's Delete removed the
+  card while the store kept all four rows, "Mark as read" disappeared from the
+  menu once used, and "Delete all" showed its confirmation before emptying the
+  list.
+
+### Two caveats
+
+* **The migration is hand-written.** `dotnet ef migrations add` has to load a
+  freshly built startup assembly, and the API was running from Visual Studio,
+  holding a lock on `AKCars.Apiin`; with `--no-build` the scaffolder diffs
+  against the stale assembly and emitted an empty migration twice. The column is
+  one nullable `datetime2` with no default and no backfill (NULL = visible,
+  which is what every existing row already is), the model snapshot was updated
+  alongside it, and regenerating it properly with the API stopped is safe and
+  would produce the same two statements.
+* `dotnet test` again needed `-p:BuildProjectReferences=false` for the same
+  lock. The Application project was built clean separately, and these tests call
+  handlers directly rather than endpoints. **Nothing was walked in a browser.**
+
+**Files (app):** `lib/features/home/notifications_screen.dart`,
+`lib/state/notifications_state.dart`,
+`lib/data/repositories/notification_repository.dart`,
+`lib/data/services/notification_service.dart`,
+`lib/data/services/api/api_notification_service.dart`,
+`lib/core/constants/api_endpoints.dart`, `lib/core/network/api_client.dart`,
+`lib/core/network/dio_api_client.dart`,
+`test/fakes/mock_notification_service.dart`,
+`test/fakes/offline_api_client.dart`,
+`test/notifications_inbox_test.dart` (new).
+
+**Files (API):** `src/AKCars.Domain/Entities/Notification.cs`,
+`src/AKCars.Application/Notifications/InboxActions/InboxActionCommands.cs`
+(new), `src/AKCars.Application/Notifications/GetNotifications/GetNotificationsQuery.cs`,
+`src/AKCars.Application/Notifications/MarkAllRead/MarkAllReadCommand.cs`,
+`src/AKCars.Api/Endpoints/NotificationEndpoints.cs`,
+`src/AKCars.Infrastructure/Persistence/Migrations/20260901161747_AddNotificationDismissedAt.cs`
+(new), `.../AkCarsDbContextModelSnapshot.cs`,
+`tests/AKCars.Tests/MyWorkshop/InboxActionCommandTests.cs` (new).
+
+---
+
+## 2026-09-01 (3) · Service types become the founder's to manage
+
+**Baseline:** `00e1d90` here; `AKCarsMobileAPI` changed in its own repo.
+
+Request, verbatim: "admin can control to add, edit, update, delete services
+types in the contents page in the admin page"
+
+### The constraint this deliberately lifts
+
+The badge was the **only** writable field on a `ServiceCategory`, said so in
+four places, and the reason was real rather than decorative:
+
+* `MaintenanceTypeX.forCategory(slug)` resets a maintenance line from the slug —
+  `express`/`full`/`major` reset engine oil, plus `tyres`, `battery`, `ac`,
+  `ev-battery`/`ev-check`.
+* `booking_screen.dart` reads `offering.categorySlug == 'sos'` to make a booking
+  an emergency: no time slots, roadside by default.
+
+So the catalogue is not inert wording — parts of it are behaviour. That is a
+reason to make the editor *say so*, not a reason to keep the founder locked out
+of their own catalogue, so the whole record is now editable and the editor names
+the consequence before the save.
+
+### The API (`AKCarsMobileAPI`)
+
+`WriteServiceCategoryCommands.cs` — create, update, delete, on the `founder`
+group, beside `POST/PUT/DELETE /service-marketplace/categories`.
+`UpdateCategoryBadgeCommand` stays as the narrow one-field path, because the
+badge is what a founder changes most often and the only field carrying no
+behaviour.
+
+Three guards carry the weight:
+
+1. **A key stays unique** (`409 slug_taken`). Two rows answering to `sos` makes
+   "which one is the emergency" undefined.
+2. **A rename rewrites every offering's `CategorySlug` in the same
+   transaction.** Offerings carry a denormalised copy so the booking screen can
+   read `sos` without a join; leaving it behind is how a renamed emergency
+   category stops being an emergency for everything already sold under it.
+3. **A type with offerings cannot be deleted** (`409 category_in_use`, with the
+   count). Refused rather than cascaded: deleting a workshop's priced work as a
+   side effect of tidying a catalogue is not an admin screen's decision.
+
+### The app
+
+`ServiceCategoryDraft` (the editable half of a category) → service → repository
+→ `CategoryBadgeAdmin.create/update/delete/offeringCount`. The repository
+patches its warm caches on each write, including rewriting cached
+`categorySlug`s after a rename so this session's booking screen does not keep
+reading the old key.
+
+`category_editor_sheet.dart` is the editor: four numbered steps (name+icon,
+key, how it shows and to whom, price note), a 14-icon visual picker, powertrain
+chips, the capability requirement, and a Save that names what is still missing.
+Its centrepiece is the key step — changing away from a behavioural slug shows a
+**red** notice naming what will stop working ("the current key `major` resets
+the engine-oil reminder"); adopting one shows an amber notice naming what it
+switches on. The list flags behavioural keys with an amber chip so they are
+visible before anything is opened.
+
+Delete confirms in two shapes: a plain refusal naming the count when services
+are still filed under the type, and an ordinary destructive confirm when not.
+
+### A crash this closes on the way past
+
+`services_screen.dart` resolved a category with
+`categories.firstWhere((c) => c.id == o.categoryId)` in two places — once per
+search hit and once per card. Unguarded, that throws `StateError` for an
+offering whose category is gone, which deleting a type can now cause. Both are
+`firstWhereOrNull` and degrade instead (the search falls back to an empty name,
+which cannot match a non-empty query; the card falls back to a wrench glyph).
+
+### Verified
+
+* **App:** `flutter analyze` clean, `flutter test` **581 passing**, including 6
+  new tests in `test/admin_service_types_test.dart` covering create, the
+  duplicate-key refusal, the badge surviving an edit, the rename cascade onto
+  offerings, the delete-in-use refusal, and the delete that is allowed.
+* **API:** `dotnet test` **972 passing**, including 22 new ones in
+  `WriteServiceCategoryCommandTests.cs` — founder-only on create and delete,
+  key lower-casing, uniqueness on both create and rename, the badge surviving a
+  PUT, the offering cascade, the in-use refusal leaving both rows intact, the
+  404, and the slug-pattern table (rejects `UPPER`, `Has Spaces`, `-leading`,
+  `double--hyphen`).
+* A temporary render check (deleted) rendered the Content tab and the type
+  editor at 402×874 in **ar/en × light/dark**, scrolled both to the bottom, and
+  asserted the behavioural-key warning appears live while typing. Two golden
+  captures were inspected by eye, then deleted.
+* **Two caveats.** `dotnet test` had to run with
+  `-p:BuildProjectReferences=false`: the API is running from Visual Studio and
+  holds `AKCars.Api`'s build output, so a normal build cannot copy into it. The
+  Application project — where all three handlers live — was built clean
+  separately, and the new tests exercise handlers directly, not endpoints. And
+  the founder panel is behind a real founder JWT, so none of this was walked in
+  a browser; the render check stands in for that.
+
+**Files (app):** `lib/data/models/service_category.dart`,
+`lib/data/services/service_marketplace_service.dart`,
+`lib/data/services/api/api_service_marketplace_service.dart`,
+`lib/data/repositories/service_marketplace_repository.dart`,
+`lib/core/constants/api_endpoints.dart`, `lib/state/admin_content_state.dart`,
+`lib/features/operations/category_editor_sheet.dart` (new),
+`lib/features/operations/admin_category_badges.dart`,
+`lib/features/services/services_screen.dart`,
+`test/fakes/mock_service_marketplace_service.dart`,
+`test/admin_service_types_test.dart` (new),
+`test/admin_category_badges_test.dart`.
+
+**Files (API):**
+`src/AKCars.Application/Marketplace/WriteServiceCategory/WriteServiceCategoryCommands.cs`
+(new), `src/AKCars.Api/Endpoints/MarketplaceEndpoints.cs`,
+`tests/AKCars.Tests/MyWorkshop/WriteServiceCategoryCommandTests.cs` (new).
+
+---
+
+## 2026-09-01 (2) · The Content tab explains itself
+
+**Baseline:** `00e1d90`, on top of the same day's tab-UI entry below.
+
+Request, verbatim: "the contents page in the admin page and it's details are
+not clear to how use them or dealing with them. Improve this page and make it
+friendly."
+
+### What was actually wrong
+
+The tab held two sections — service badges and Home announcements — with no
+statement of what either changes, so the page was two stacked lists with no
+stated relationship. Underneath that were four things that made it genuinely
+hard to operate, and two that were bugs:
+
+* **Nothing said where the writing lands.** Both sections described an effect
+  in a subtitle; neither showed one. For announcements there was no preview
+  anywhere, so a founder wrote a title, a body, a badge and an icon blind and
+  found out how it looked by leaving the panel and opening Home.
+* **The icon dropdown listed raw wire keys** — `notification`, `fact_check`,
+  `lock_clock`, `inventory`. Those are `IconCodec`'s storage keys; they name the
+  asset, not the announcement.
+* **The region chips and the row's region chip printed canonical English keys**
+  (`Muscat`) instead of going through `LocationCatalog.localized` the way every
+  other screen in the app does.
+* **A badge filled in one language only was accepted silently.** `L('عرض', '')`
+  paints an *empty yellow pill* for every English reader. The category badge
+  dialog has guarded against exactly this since it was written; the
+  announcement editor never did.
+* **Save was disabled with no explanation.** Four fields are required and
+  nothing said which was missing.
+* **The three destination fields interact by precedence** (a chosen service
+  beats a search beats the plain Services tab) and nothing said so, so a search
+  typed under an already-chosen service was silently ignored.
+* Rows were editable only through an 18px pencil in the corner, which reads as
+  a list you look at rather than one you edit.
+
+### What changed
+
+**A preview that is the real card.** `_AnnouncementCard`'s painting is extracted
+into `PromotionCardFace` (`core/widgets/`), and Home and the editor now render
+the *same widget* — Home feeding it a `Promotion`, the editor feeding it the
+half-typed form. It is given the rail's own height, so text that will ellipsise
+on a phone ellipsises in the preview. A preview drawn separately from the thing
+it previews drifts within a release and the founder learns about it from a
+customer; this one cannot.
+
+**The tab says what it is.** A short intro names the two sections and where each
+one appears, and states once — in amber, up front — that a discount must not be
+announced from this tab, because neither a badge nor an announcement is checked
+against the catalogue price. That warning used to be a footnote under one of the
+two sections.
+
+**The editor is three numbered steps** instead of twelve controls at one level:
+what the card says, where tapping it goes, and who sees it until when. The icon
+dropdown is a grid of the eight icons with human labels. A live line under the
+destination fields states, in a sentence, where a tap would actually land — and
+says outright when a typed search is being overridden. The blocked Save now
+names the first missing thing.
+
+**Two real bugs fixed:** the badge is enforced both-languages-or-neither, with
+the reason shown inline; regions are localised in the editor chips and in each
+row's meta chip.
+
+**Both lists are filterable** (`All / Live / Expired`, `All / With a badge /
+Without`) using the panel's existing `AdminFilterRow`, so the counts in the
+summary strips became something to act on. **Whole rows are tappable** on both
+lists, and an unbadged category now says "Tap to add a badge" rather than
+reporting "No badge"; its corner action switches between a `+` and a pencil.
+
+### Verified
+
+* `flutter analyze` clean; `flutter test` **575 passing**.
+* A temporary render check (deleted with the pass) rendered the whole tab and
+  the editor sheet at 402×874 in **ar/en × light/dark** and scrolled both to the
+  bottom. It caught one real overflow — the new "Tap to add a badge" row, whose
+  `mainAxisSize.min` let the label overflow instead of ellipsising once a long
+  category name squeezed the column. Fixed with `Flexible`.
+* Two one-off golden captures were rendered and inspected, then deleted:
+  structure, spacing and the preview pane confirmed by eye. (Glyphs render as
+  tofu under `flutter_tester`, which has no Arabic font — layout only.)
+* `test/admin_category_badges_test.dart` updated to the deliberate behaviour
+  change: the corner tooltip is now `Add a badge` on an unbadged row and
+  `Edit badge` on a badged one, so the test asserts the split rather than
+  counting one tooltip across the whole list.
+* **Not** verified in a browser: `/admin` requires a real founder JWT
+  (`AuthState.isFounder`), which this session had no account for. The render
+  check above stands in for that walkthrough.
+
+**Files:** `lib/core/widgets/promotion_card_face.dart` (new),
+`lib/core/widgets/widgets.dart`, `lib/features/home/home_widgets.dart`,
+`lib/features/operations/admin_content_screen.dart`,
+`lib/features/operations/admin_category_badges.dart`,
+`test/admin_category_badges_test.dart`.
+
+---
+
+## 2026-09-01 · The five customer tabs, on one type scale and one header
+
+**Baseline:** `00e1d90`. The working tree already carried unrelated uncommitted
+work when this started, so `git diff 00e1d90` is wider than this entry; the
+files this entry covers are listed at the bottom.
+
+Request, verbatim: "I think the home page, services page, bookings page, my car
+page, and my account page needs update the ui and make them look modern. try to
+polish the ui to the best you can to make the user experience so modern and
+efficiency. review them then make the update."
+
+### What the review found
+
+The Sand & Ink system itself is sound. What had drifted was every screen's
+compliance with it, and the drift was concentrated in three places.
+
+**1. The type scale existed and nobody used it.** `AppTypography` documents four
+levels — 12.5 / 14 / 16 / 20 — and says in its own doc comment that nine sizes
+one step apart "is not a hierarchy; it is nine ways of saying normal". Across
+the five tabs there were **104 hand-written `fontSize:` values** spanning 8.5,
+9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 15, 16, 17, 19, 20, 21.
+Everything below ~11px is also simply too small to read on a phone: the home
+page's quick-action tiles labelled their buttons at **9.5px**, so "حجز صيانة"
+and "مساعدة طريق" were guessed at from their icons rather than read.
+
+**2. Five tabs, four different headers.** Home had a greeting row, Services and
+Bookings had Material `AppBar`s, My Car had a `SandHeader`, Account had a bare
+`Text(fontSize: 19)`. Switching tabs moved the title, changed the top margin,
+and changed whether the title stayed put while scrolling.
+
+**3. No pull-to-refresh anywhere on the customer side.** Every screen in the
+workshop dashboard has a `RefreshIndicator`; not one of the five customer tabs
+did. On a phone, the gesture *is* the refresh affordance, and its absence left
+stale data with no way to ask for fresh data short of killing the app.
+
+### What changed
+
+**Shared** — `sand_widgets.dart` gains `SandTabHeader` (title + optional
+subtitle + one trailing action; scrolls rather than pinning, because on a tab
+root the bottom bar already says which tab this is) and `SandRefresh` (the
+app's `RefreshIndicator`, one tint and one displacement).
+`SessionRefresh.refreshVisibleData()` is the whole warm-cache + announce +
+per-account-list refresh without the generation guard `refreshEverything` needs
+— there is no identity changing underneath a pull, so there is no race to lose.
+
+**Type scale** — every `fontSize:` on the five tabs snapped to the nearest of
+the four levels (104 call sites), and the tabular-figure sizes moved one step
+with them. The fixed-height carousels grew to match (offers 158→186,
+announcements 150→178, recommendations 152→180), and two `Row`s that could not
+survive the larger labels were fixed properly rather than by shrinking the text
+back: the recommendation card's workshop count is now `Flexible` + ellipsis
+inside a 190px card, and the two ranking-board tabs are `Flexible` pills.
+
+**Home** — pull-to-refresh; quick-action labels at `bodySecondary`/w700 instead
+of 9.5px; challenge strip and search pill on the spacing scale.
+
+**Services** — the search field is now **pinned** (`SliverPersistentHeader`), so
+refining a search after reading three results no longer means scrolling back up
+to find the box. Its background fades out over its last 14px rather than ending
+in a hard edge, which was slicing the first line of whatever scrolled under it
+in half. **The 450ms fake skeleton is gone**: `ServiceMarketplaceRepository`
+gained `isCatalogueWarm`, so the screen now shows a skeleton while the catalogue
+is genuinely cold, an honest "couldn't load services / retry" when a fetch came
+back and left it cold, and results otherwise. It also re-asks for the catalogue
+once on mount if bootstrap's best-effort warm-up had failed — previously that
+failure surfaced as a permanently empty "nothing matched".
+
+**Bookings** — a filter bar (الكل / بانتظارك / جارية / منتهية) with live counts,
+each chip hidden while its slice is empty except "All". "بانتظارك" is the point
+of it: `quoted`, `awaitingApproval` and `disputed` are the only states blocked
+on the customer, and they are also lifted to the top of the active list. The
+header subtitle counts them.
+
+**My Car** — `SandTabHeader` in place of `SandHeader`, pull-to-refresh on both
+the book and the empty-garage state (the empty state became a `ListView`, since
+the one screen a user with a failed sync lands on must be the one they can pull
+to retry from).
+
+**Account** — `SandTabHeader` with a subtitle, screen margin onto the scale
+(20→16, matching the other four), stat tiles on `SandPressable` so they dip
+under the finger, roomier menu rows.
+
+### Verified
+
+* `flutter analyze` — clean.
+* `flutter test` — **599 passing**, up from 575 (the 24 new ones below).
+* `test/tmp_tab_layout_check_test.dart` — a temporary check that renders all
+  five tabs at 402×874 in **ar/en × light/dark** and scrolls each to the bottom.
+  A type-scale change fails silently otherwise: nothing throws at build time, a
+  yellow-and-black overflow bar just appears somewhere below the fold. It found
+  the two `Row`s named above. Deleted after the pass.
+* `test/ev_test.dart`'s synthetic viewport raised 2600→3200. Not an assertion
+  change — it is the off-screen height at which the whole page mounts in one
+  frame, and the page legitimately got taller. A taller viewport makes that
+  file's `findsNothing` checks stricter, not looser.
+* In the browser against the live API (`dotnet run` on `:7291`, Flutter web on
+  `:5959`, 375×812): all five tabs walked, plus a scroll through Services
+  confirming the search field parks at the top with content passing under it.
+
+**Files:** `lib/core/widgets/sand_widgets.dart`, `lib/state/session_refresh.dart`,
+`lib/data/repositories/service_marketplace_repository.dart`,
+`lib/features/home/home_screen.dart`, `lib/features/home/home_widgets.dart`,
+`lib/features/services/services_screen.dart`,
+`lib/features/services/requests_screen.dart`,
+`lib/features/garage/maintenance_screen.dart`,
+`lib/features/profile/profile_screen.dart`, `test/ev_test.dart`.
+
+---
+
+## 2026-08-29 (3) · The yellow "شارة" on a service card had no owner
+
+**Baseline:** `00e1d90` here; `AKCarsMobileAPI` changed in its own repo.
+Request, verbatim: "the yellow sign called \"شارة\", there is now clear way to
+control by it in the admin dashboard eathier in the advertisments section or in
+the content section. check there and fix it."
+
+### What it actually was
+
+Two different things in this app render a yellow badge, and only one of them was
+editable:
+
+* `Promotion.badge` — on the announcements rail. Already editable, in the
+  Content tab's promotion editor.
+* **`ServiceCategory.badge`** — the pill in the corner of the big service cards
+  (`service_widgets.dart`, `ak.amber`, positioned `top: -10, end: 12`). This is
+  the one in the screenshot: "زيت مجاني" on صيانة شاملة.
+
+The second had no write path anywhere. Not in the app, not in the repository,
+not in the API: `GET /service-marketplace/categories` was the *only* category
+endpoint, and `ServiceMarketplaceService` exposed only `fetchCategories()`. The
+badge was seed data — visible to every customer on the home page, changeable by
+nobody, including the founder.
+
+### The fix, end to end
+
+**API** (`AKCarsMobileAPI`): `UpdateCategoryBadgeCommand` +
+`PUT /service-marketplace/categories/{id}/badge`, on the `founder` group.
+
+The badge is deliberately the *only* writable field on a category. Slug, name,
+icon and the powertrain restrictions are catalogue structure the app branches on
+— the slug drives `MaintenanceTypeX.forCategory`'s schedule reset and the `sos`
+emergency booking path — so an admin screen that could retype them would break
+bookings rather than change wording. The badge carries no behaviour at all;
+nothing reads it but the card that draws it. Hence a PUT on a sub-resource
+rather than a PATCH on the category: the route says how narrow the write is.
+
+Validation: max 24 characters (the ribbon is a small pill on a 148px card and
+longer text is clipped, not wrapped), and **both languages or neither** — half a
+badge renders as an empty yellow box for readers of the other language, which
+looks like a bug rather than a missing translation. Null or whitespace in both
+clears it, which is the supported way to take a ribbon down.
+
+**One consequence that had to be handled.** `GET /categories` was `Cacheable`
+for five minutes, on the stated reasoning that "static catalogue data
+(categories, offerings, promotions) doesn't flip on a single admin click". That
+stopped being true the moment the badge became editable — the founder would save
+a ribbon, pull to refresh, and be served the old one back, indistinguishable
+from the save failing. The cache header is gone from that route and the comment
+next to `/providers` (which already had this exact problem) now says why.
+
+**Client:** `ApiEndpoints.serviceCategoryBadge`, `updateCategoryBadge` on the
+marketplace service (API + mock), `setCategoryBadge` on the repository (patches
+the warm cache in place — unlike the offers feed, `/categories` returns every
+category whether or not it has a badge, so the edited row is always already
+cached), plus `categoriesRevisionProvider` / `adminCategoriesProvider` /
+`categoryBadgeAdminProvider` mirroring the offers pattern.
+
+`ServiceCategory.copyWith` gained a `clearBadge` flag. `badge: null` in a
+copyWith cannot mean "clear" — it is indistinguishable from "leave alone" — and
+clearing is a real operation now.
+
+**UI:** a "شارات الخدمات / Service badges" section at the top of the Content tab
+(`admin_category_badges.dart`), in the same card language as the rest of the
+panel: summary card with with-badge/without counts, one row per category, and a
+dialog with Arabic/English fields, a live preview, and Remove.
+
+Two deliberate details:
+
+1. **The preview is the real ribbon**, not the text in a neutral chip — same
+   colour, radius, font size and letter-spacing as `service_widgets.dart` draws
+   it. The founder is choosing wording for a small yellow pill, and a preview in
+   a different shape hides the one thing that actually goes wrong: it not
+   fitting.
+2. **The card says what a badge is not.** "A badge is wording only — it promises
+   no price and no discount. For a real discount use the Offers tab, the one
+   that is validated against the published price." An offer that lies is a
+   mispriced booking the platform has to honour; a badge that lies is only wrong
+   wording. That asymmetry is exactly why a badge must never be used to announce
+   a discount, and the one place to say so is where someone is typing one.
+
+Placed on the Content tab rather than Offers for the same reason: both the badge
+and an announcement are copy the founder writes on top of data they did not
+write. An offer is a claim about money and is validated as one.
+
+### Not changed
+
+No migration: `ServiceCategory.Badge` already existed as a column and was
+already returned by `GET /categories`. What was missing was only the write.
+
+### Verified
+
+- `dotnet build` — clean. `dotnet test` — 950 passing (941 before, 9 new,
+  covering the founder guard, set/clear/whitespace-clear, not-found, the
+  one-language rejection and the length cap).
+- `flutter analyze` — no issues. `flutter test` — 575 passing (570 before, 5
+  new, covering the list, the write-through, the both-languages rule and
+  removal).
+- **Not verified in the running app.** `https://localhost:7291` is still
+  refusing connections, so the founder panel has not been exercised against the
+  live API. In particular the new endpoint has been tested at the handler level
+  and through the client's mock, but never over HTTP.
+
+---
+
+## 2026-08-29 (2) · The other four founder tabs, in the Offers tab's language
+
+**Baseline:** `00e1d90`, continuing the entry below. Request, verbatim: "do same
+ui idea for the rest of sections."
+
+### The idea, made shared instead of copied
+
+The Offers rebuild invented a card language and kept it private to one file.
+Applying it to the other tabs by copy would have produced five stat strips that
+drift apart on the first edit, so it moved to
+`admin_panel_widgets.dart` first: `AdminSummaryCard` (icon, title, stat strip,
+fact chips, footnote, one primary action), `AdminStat`, `AdminMetaChip` +
+`AdminChipTone`, `AdminGroupHeader`, `AdminFilterRow`, `AdminCardAction`,
+`AdminInsetDivider`. The Offers tab was then rewritten onto them, so it is now a
+consumer of the language rather than its owner.
+
+Every tab now answers the same shape of question in the same shape: *what is the
+state of this pile, and which row needs me.*
+
+### Per tab
+
+**Today** — summary card leads with money held, in-flight count, open disputes
+(red only when non-zero), with completed-this-month as a chip. Each queue got an
+`AdminGroupHeader` whose icon tile turns amber when the queue is non-empty, so a
+day with work in it looks different from a quiet one before you read a word. The
+booking card is now zoned: header, divider, timeline + waited label, divider,
+action bar. The customer's dispute note moved out of loose italics into an amber
+quote block, and the auto-release deadline became a chip that turns amber once
+the window has closed.
+
+**Workshops** — pending/approved/suspended as the three figures. The onboarding
+pipeline, previously a row of bespoke `_StageChip`s, is now the summary card's
+chip row (empty stages dimmed, still shown — a pipeline that hides its empty
+columns changes shape as you work through it). The roster row became a full card:
+icon tile tinted by approval state, status badge, region and stage as chips, the
+rejection reason in a quote block, and Suspend/Manage on an action bar. The
+application-review card is deliberately untouched — it is a form, not a list row.
+
+**Money** — held / released / refunded as three rial figures, plus an "owed to
+workshops" chip that is green at zero and amber otherwise. Owed rows became cards
+with "Mark as paid" as a real button and a shortcut into the workshop. The
+transfer ledger stays deliberately quieter than everything above it: it is
+history, and it carries no controls at all.
+
+**Log** — entries / today / records-touched, and the subject filter moved from a
+wrapping chip pile to the same `AdminFilterRow` the Offers tab uses, now with
+counts. Each row gets an icon per subject type so a filtered log still reads as a
+list of different things. The action key is still printed verbatim, and the card
+still has no control that writes anything — the footnote says so.
+
+**Content (announcements)** — live/expired counts, "New announcement" as the
+card's action, and promotion rows restyled to the shared card: icon tile in the
+primary colour while live and grey once expired, live/expired badge, end date and
+regions as chips, edit/delete as icon actions.
+
+### Structure
+
+`admin_screen.dart` went from 1724 lines to 108 — it is now only the shell and
+its six tab registrations. The tabs live in `admin_today_tab.dart`,
+`admin_workshops_tab.dart`, `admin_money_tab.dart`, `admin_offers_tab.dart` and
+`admin_audit_tab.dart`. `PhoneField`/`showCrDocumentDialog` moved with the
+workshops tab and `admin_workshop_detail_screen.dart`'s import was repointed.
+
+### Two bugs this surfaced
+
+1. **`AdminMetaChip` overflowed by 80px on a long label.** `MainAxisSize.min`
+   sizes the row to its children, so a label longer than the space the parent
+   `Wrap` had left overflowed instead of ellipsising. Every chip holds
+   translator-written text and the Arabic of a short English label is regularly
+   half as long again — the text is `Flexible` now. Caught by
+   `operator_panels_test.dart`, which renders the Today tab.
+2. **A precision change broke two existing assertions.** Rendering
+   completed-this-month as a full `RialAmount` put a second `0.00` on the Today
+   tab; the old code used `toStringAsFixed(0)` in the label. Both tests
+   (`the founder panel offers only the founder's transitions`, `a disputed
+   booking still counts toward the escrow total`) assert on money text globally.
+   The figure is back to whole rials — a month's takings are a scale, not
+   something anyone reconciles to the fils — so the tests pass unchanged rather
+   than being loosened.
+
+### Verified
+
+- `flutter analyze` — no issues.
+- `flutter test` — 570 passing, same as before this change.
+- Rendered all five tabs to PNG in `en` and `ar` at 402×1600. No `RenderFlex`
+  overflow in any of the ten, and RTL mirrors correctly throughout (icon tiles,
+  status badges, action bars and stat strips all swap sides). Those preview files
+  were temporary and are deleted.
+- **Not verified in the running app**, same as the entry below:
+  `https://localhost:7291` is refusing connections, so the founder panel cannot
+  be reached against a real API or a real founder session.
+
+---
+
+## 2026-08-29 · The Offers tab could not show the offer you had just made
+
+**Baseline:** `00e1d90`. Request, verbatim: "update the offers section in the
+admin page. allow admin to add, edit, update, and delete offer. make the ui
+modern and update the offer card ui. make this section modern and nice look."
+
+### What was actually wrong, beyond the missing buttons
+
+The founder panel had **two** places that dealt with offers: the Offers tab
+(an approve/stop switch and nothing else) and a second offers list on the
+Content tab (which *did* have create/edit/delete). The screenshot in the
+request is the first one — the one with no way to add anything.
+
+Underneath that, the Offers tab was reading the wrong list. `offersAuditProvider`
+resolves to `ServiceMarketplaceRepository.auditOffers()`, which reasons over the
+warm cache filled from `GET /service-marketplace/offers` — and that endpoint,
+by its own documented contract, *"returns only founder-approved, in-window
+offers"*. So the tab's promise ("every offer the platform holds, live or not,
+with the exact rule keeping it off the home page") was not true against the real
+API. It was only true in tests, because the mock returned every fixture row from
+that endpoint. Bolting a "New offer" button onto that screen would have produced
+the worst possible bug: create an offer, watch it not appear, create it again.
+
+A second, related bug found on the way: `setOfferActive` patched the cached row
+in place (`for (final offer in _offers.value) if (offer.id == updated.id) ...`).
+An offer being switched **on** is by definition absent from that cache, so the
+map left it out and the customer-facing home rail stayed empty until the next
+warm-up — even though the founder had just enabled it.
+
+### What changed
+
+**One surface for offers, and it reads the founder's list.**
+`lib/features/operations/admin_offers_tab.dart` (new) replaces `_OffersTab`/
+`_OffersSection`/`_OfferRow` inside `admin_screen.dart`, and the Content tab's
+duplicate offers list is gone — that tab is announcements only now. The new tab
+reads `adminOfferAuditProvider` (new, in `admin_content_state.dart`), which
+pairs `adminOffersProvider` (`GET /offers/all` — every offer, any stage) with
+the repository's own validation.
+
+**The validation stayed put.** `ServiceMarketplaceRepository.rejectionFor(offer)`
+(new on the interface) just exposes the existing private `_reject` — the same
+rules the home page runs, not a second opinion. The reference price is still
+never typed by hand: the editor copies it from the selected service's published
+catalogue price, so the original reason the tab had no edit button ("an approval
+screen that could quietly adjust either would hollow out the validation") is now
+enforced in the editor rather than by having no editor.
+
+**`setOfferActive` re-fetches** instead of patching in place, matching what
+`createOffer`/`updateOffer`/`deleteOffer` already did.
+
+**`AdminOffersNotifier.setActive`** added, so the founder's switch writes
+through to the list the screen is rendering. `OffersAdmin.setActive` only bumped
+the revision counter — fine for the rails that re-read the cache, useless for a
+list holding its own state.
+
+### The card, and why it is shaped this way
+
+- **The percentage leads**, as a tile, in the primary colour when the offer is
+  live and grey when it is not. It is the one thing readable while scrolling,
+  and it is also the home page's only ranking signal (spec §2), so it carries
+  the same weight here that it carries there.
+- **Discounted price large, reference price struck through** beside it, then the
+  saving, the window, and the time left as fact-chips — all read off the `Offer`
+  itself. The "ends soon" chip turns amber at ≤3 days and grey once past.
+- **The blocking reason is on the row**, and now distinguishes two cases that
+  used to look identical: merely awaiting the founder's switch (neutral, one tap
+  away) versus blocked by a rule the switch cannot clear (amber, plus "fix the
+  cause first"). That distinction already existed in the code as `blockedByOther`
+  but only changed a sentence, not the card's tone.
+- **Actions inline**: a switch for enable/stop, plus edit and delete.
+- **The list is ordered decision-first** — blocked, then live, then expired,
+  each by soonest deadline. A founder opens this tab to unblock something; a
+  live offer needs nothing from them.
+- **A summary card on top** carries live/blocked/expired counts and the only
+  "New offer" button, because a bare count of offers says nothing: an offer that
+  exists and an offer that is showing are different facts.
+
+The editor sheet (`offer_editor_sheet.dart`, moved out of
+`admin_content_screen.dart`) is grouped into four questions — what, how much,
+how long, where — and now shows the arithmetic back: published price struck
+through beside what the customer saves and the resulting percentage, live as
+you type. It also clamps the end date forward when a start date is pushed past
+it, instead of silently disabling Save.
+
+### Files
+
+New: `admin_offers_tab.dart`, `offer_editor_sheet.dart`, `admin_form_widgets.dart`
+(the shared date field, loading and error blocks, and one `formatAdminDate` so
+the panel has a single date format), `test/admin_offers_tab_test.dart`.
+Changed: `admin_screen.dart` (−207 lines, tab now delegates), `admin_content_screen.dart`
+(−548 lines, announcements only), `service_marketplace_repository.dart`,
+`admin_content_state.dart`.
+
+### Verified
+
+- `flutter analyze` — no issues.
+- `flutter test` — 570 passing (566 before, 4 new).
+- The new tests use a mock whose `fetchOffers()` filters like the **real** API
+  does, which is the point: the old screen passes its own tests against the
+  permissive mock and fails against the deployed one. They cover the create/
+  edit/enable/delete affordances, that a stopped offer still appears with its
+  reason, that delete removes the row, and that the switch writes through.
+- Rendered the tab to PNG in both `en` and `ar` at 402×1500 to check layout —
+  no overflow, RTL mirrors correctly (badge/status/switch/actions all swap
+  sides). Those preview files were temporary and are deleted.
+- **Not verified in the running app.** The Flutter web build starts, but
+  `https://localhost:7291` is refusing connections, so the app stops at "The app
+  could not start" and the founder panel cannot be reached. Nothing here has
+  been exercised against the real API or a real founder session.
+
+---
+
+## 2026-08-26 (3) · Security review of the API — a phone number bought you a stranger's home address
+
+**Baseline:** `00e1d90` here; `AKCarsMobileAPI` reviewed and changed in its own
+repo. Request, verbatim: "/ecc:security-review — for api and fix any issue of
+this skill feedbacks."
+
+The skill's checklist is written for TypeScript/Next.js/Supabase; the API is
+ASP.NET Core 8 with EF Core, so each item was mapped onto the real stack
+(parameterised queries → EF's `IQueryable`; RLS → per-handler ownership
+checks; httpOnly cookies → bearer tokens in the client's secure storage).
+
+### What was already right
+
+Worth recording, because it is most of the checklist: **no raw SQL anywhere**
+(`FromSqlRaw`/`ExecuteSqlRaw` return nothing); JWT validation is complete
+(issuer, audience, lifetime, signing key, 30s skew); refresh tokens are 64
+crypto-random bytes stored only as a SHA-256 hash with a family id; the OTP is
+crypto-random, hashed, 5-minute, and capped at five attempts; every endpoint
+group carries `RequireAuthorization()` and the founder-only ones re-check
+`ICurrentUser.IsFounder` **inside the handler**, not just at the route; every
+user-scoped query filters on `currentUser.UserId`; the chat hub is
+`[Authorize]`; CORS is wide open in `IsDevelopment()` only; Swagger is
+dev-only; and the committed `Jwt:SigningKey` is empty, with the only literal
+key clearly labelled dev-only in `appsettings.Development.json`.
+
+### HIGH — `POST /auth/login` handed the account to anyone who asked
+
+`RequestOtpCommandHandler` returned the matched `UserProfileDto` — id, name,
+phone, **e-mail, region, wilayat and street address** — from an endpoint that
+is `AllowAnonymous` by necessity. The stated reason, in the handler's own
+comment, was "so the code screen can greet the user by name". The code screen
+never did: `login_screen.dart`'s only use of the response was `if (account ==
+null)`. An Oman mobile is eight digits beginning 7 or 9, so this was a
+guessable key to a stranger's home address, five lookups per minute per IP.
+
+Fixed on both sides: the handler now returns the non-generic `Result`, the
+endpoint answers `200 { "sent": true }`, and the client's
+`AuthService.findAccount` became `requestOtp` returning `bool`. The 200-vs-404
+split is kept deliberately — it is what lets the login screen offer
+registration instead of pretending a code went out — and is now the only thing
+an unauthenticated caller learns. `docs/api_contract.md` updated.
+
+### HIGH — every 500 carried its exception message to the client
+
+`GlobalExceptionHandler` set `Detail = exception.Message` on all paths,
+including the `_ =>` 500 case. A `SqlException` names the server, database and
+often the failing column. Now: a fixed sentence plus the existing `traceId`
+for correlation; the full exception was already being logged. Deliberate
+failures (validation, `Result<T>` errors) still carry their own detail.
+
+### MEDIUM — nine unvalidated base64 uploads
+
+Every photo, CR scan and proof attachment went straight into
+`Convert.FromBase64String` and then into the database: no type check at all, no
+per-item size check, and a `FormatException` on malformed input — which
+surfaced as a 500 (carrying its message, per the finding above) rather than the
+400 a bad request deserves.
+
+Added `MediaValidation` + `MediaRules` (`AKCars.Application/Common/`) and wired
+them into all nine: an **allowlist** of media types — exactly what the client's
+own picker can produce, per `media_codec.dart`, and deliberately *not*
+`application/octet-stream`, which is the client's "I could not identify this"
+fallback — plus a 4 MB per-item cap matching the client's `maxAttachmentBytes`,
+checked from the encoded length before allocating. `ApplyEscrowEvent` takes a
+*list*, so it uses `RuleForEach`: Kestrel's 8 MB cap bounded the batch, nothing
+bounded an item inside it. `Decode` stays guarded so a handler reached without
+its validator still fails as a rejected request.
+
+### MEDIUM — rate limiting covered two endpoints out of ~140
+
+`IpRateLimiting.GeneralRules` listed only `/auth/login` and
+`/auth/login/verify`. Added `/auth/register` (10/h) and `/auth/refresh`
+(20/min), plus `*` fallbacks at 300/min and 5000/h so a new endpoint is
+covered the day it is written rather than the day someone remembers it.
+
+### LOW — no transport or framing headers
+
+Added `UseHsts()` outside Development (on localhost it would pin the
+developer's browser for every other localhost project, with a 30-day max-age
+they cannot easily undo) and a small middleware setting
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and
+`Referrer-Policy: no-referrer`.
+
+### Reported, deliberately NOT changed
+
+- **`AllowedHosts: "*"`** disables host-header filtering. The right value is
+  the production hostname, which this session has no way to know — guessing it
+  would break their deployment. Needs the real host set before launch.
+- **User enumeration on `/auth/login`.** The 404-vs-200 split tells an
+  attacker whether a number is registered. It is load-bearing product
+  behaviour (the login screen offers registration on 404), so it stays — but
+  it is a knowing trade, not an oversight, and it is now the *only* thing that
+  leaks.
+- **`LoggingOtpSender` writes OTP codes to the log.** It already carries a
+  "swap for a real provider (and never log the code) before production"
+  comment and no SMS gateway exists yet; replacing it is a feature, not a fix.
+- **The OTP is four digits, SHA-256 without a salt.** 10,000 possibilities is
+  small, but the guess rate is bounded by five attempts per challenge and the
+  per-IP limits, and the hash only matters to someone who already has the
+  database. Worth revisiting alongside a real SMS provider.
+
+### Verified
+
+- API: `dotnet build -c Release` clean (0 warnings), `dotnet test` **941/941
+  pass**.
+- Client: `flutter analyze` clean, `flutter test` **566/566 pass**.
+- **Not** verified: nothing was exercised against a running server. In
+  particular the new media allowlist has not been tested with a real photo
+  from a real device — if a picker reports a type outside the allowlist, that
+  upload now gets a 400 where it previously succeeded. That is the intended
+  behaviour, but it is the change most worth watching first.
+- The API was **running from Visual Studio** throughout (which is why the
+  Debug build was file-locked and Release was used); it must be restarted for
+  any of this to take effect.
+- No regression test was added for the `/auth/login` fix. The guarantee is now
+  in the type — `Result` has no payload to leak — but an integration test
+  asserting the response body contains no profile fields would be a cheap
+  belt-and-braces addition.
+
+---
+
+## 2026-08-26 (2) · Three `403`s after every ordinary sign-in — the founder claim was there all along, just never read
+
+**Baseline:** `00e1d90`, on top of the uncommitted working tree from the
+entries below. Reported verbatim: "after login I sow some errors in the
+console: … `/service-marketplace/audit` 403 (Forbidden) …
+`/service-marketplace/payouts` 403 … `/service-marketplace/operator/requests`
+403 … check what are those errors and fix them".
+
+### What they were
+
+All three endpoints are founder-only, and all three were being asked for by
+**every** account that signed in. None of them was a malfunction — each `403`
+was already caught and treated as the ordinary answer
+(`ServiceMarketplaceRepositoryImpl._optionalForFounder` for two,
+`SessionRefresh._bestEffort` for the third), which is why nothing broke. They
+were three guaranteed-to-fail round trips and three red console lines per
+sign-in, on every customer's and every workshop's device.
+
+### Why they were being asked
+
+Two comments in the code said the same thing, and both were wrong:
+
+> "there is no claim on the profile that says whether this session is a
+> founder's — the `403` *is* the check"
+
+True of the **profile** (`UserProfileDto` mirrors the `Users` table and has no
+role column) and false of the **token**. `TokenService.GenerateAccessToken`
+puts the role in the JWT, and `jwtHasFounderRole` has decoded it since the
+`/admin` route guard needed it — `AuthState.isFounder` is built on it. The
+check existed; these three call sites just never used it.
+
+### The fix
+
+- `SessionRefresh` gained `_isFounder()`, which decodes the role claim off the
+  **stored token** rather than reading `AuthState.isFounder`. That matters:
+  bootstrap calls `loadSessionLists` *before* `AuthNotifier.restore()`
+  re-attaches the profile, so auth state is empty there for everyone — the
+  same reason `AppBootstrap._signedIn` already reads the token store. The
+  token is in place in both paths (a cold start reads last session's;
+  `login()`/`register()` save it before returning).
+- `refreshEverything` now passes `includeFounderLedger: await _isFounder()`
+  instead of a hardcoded `true`.
+- `loadSessionLists` fires the operator-queue refresh only when that claim is
+  present.
+- `AppBootstrap.warmUp` keys `includeFounderLedger` on a new `_isFounder`
+  rather than on `signedIn`, which had the same effect on every cold start.
+
+Both `_optionalForFounder` and `_bestEffort` are **left in place**. The claim
+describes the token; only the server decides, and if the two ever disagree the
+`403` must still land softly.
+
+### Checked before gating: does anyone else need this data?
+
+Yes — this was the thing worth getting wrong. `payouts` feeds
+`outstandingFor`, which sounds like a workshop's "what am I owed". It is not:
+`payoutsProvider`, `auditLogProvider` and `outstandingByProviderProvider` are
+read **only** by `admin_screen.dart`, the founder panel, which does its own
+`warmUp(includeFounderLedger: true)` and `operatorQueueProvider.refresh()` on
+entry. The workshop dashboard's earnings come from `WorkshopRepository`
+(`/my-workshop/*`) and never touch the ledger. So no non-founder screen loses
+data.
+
+### Four tests failed, and they were right to
+
+The fake world seeds every test container with a session (`MemoryTokenStore`
+holding the non-JWT string `'test-access'`), and the mock services do not
+enforce roles — so founder-only data used to arrive for everybody. Gating on a
+real claim took it away:
+
+- `scenario_integrity_test` × 2 read the whole seeded marketplace through
+  `operatorQueueProvider`.
+- `session_refresh_test`'s founder-ledger test asserts sign-in *does* fetch
+  payouts.
+
+Fixed by adding `founderSessionOverride()` to `test/fakes/fakes.dart` — a real
+three-part JWT whose payload is exactly the founder role claim — and passing it
+in those three tests. **Deliberately not made the default token**: seven test
+files sign in, and `activeRoleProvider` returns `AppRole.founder` the moment
+`isFounder` is true, so a founder-by-default container would have quietly
+changed what `profile_test`, `account_test` and
+`account_business_panel_test` were testing.
+
+The fourth, `workshop_dashboard_test`'s StatisticsScreen, was **not** a data
+problem: dumping the widget tree showed the expected empty states appear after
+`pumpAndSettle` but not after that helper's single fixed `pump(500ms)` — the
+two figure providers each re-run once `workshopSummaryProvider` resolves, which
+is more async hops than one pump covers. The test now settles. The helper
+itself was left alone, since three other tests (and the dashboard goldens)
+depend on its fixed pump.
+
+### Verified
+
+- `flutter analyze` — no issues.
+- `flutter test` — all 566 pass.
+- The four failures were **confirmed to be caused by this change**, not
+  pre-existing: `git stash`ing only `session_refresh.dart` and `bootstrap.dart`
+  made all three files pass, and popping it brought them back.
+- **Not** verified against the live API: the console should now show no `403`
+  for these three after an ordinary sign-in, and a founder's panels should
+  still populate, but neither was watched in a running app.
+
+---
+
+## 2026-08-26 (1) · Login redesigned: an ink header, a sliding channel switch, and one box per code digit
+
+**Baseline:** `00e1d90`, on top of the uncommitted working tree from the
+entries below. Request, verbatim: "the login design needs to be improve. make
+it modern in different way."
+
+### The bug the screenshot showed first
+
+The brand tile rendered as a **full-width black bar**, not the 56px rounded
+square it asked for. `Container(width: 56, height: 56)` was a direct child of
+a `ListView`, and a `ListView` hands its children a *tight* cross-axis
+constraint — so the width was ignored and the tile stretched edge to edge. It
+had presumably looked right wherever it was written and never been checked in
+place.
+
+### What changed
+
+**One flat sheet of sand → an ink header over a form.** The screen is now a
+`brandGradient` panel with a 32px rounded bottom, carrying the back button,
+the (correctly sized) 48px key badge, the title and the subtitle — badge
+*beside* the title rather than stacked above it, which halves the header's
+height. A soft off-canvas white disc at 5% keeps it from reading as a plain
+black rectangle. The back button is a white-on-ink chip rather than
+`SandBackButton`: that widget's chip is `ak.surface`, which is dark in the Ink
+theme, and the header is the same dark gradient in *both* themes.
+
+**Two channel cards → one sliding segmented control.** `AuthChannelCard`
+(icon + title + subtitle, twice, side by side) is replaced by
+`AuthChannelSwitch` — one track, a thumb that slides on `easeOutCubic`, and
+the delivery detail demoted to a single line underneath that changes with the
+selection. About a third of the height. The thumb uses
+`AlignmentDirectional`, so under RTL it starts on the same side the flipped
+segment row does.
+
+**One wide code field → four boxes.** `AuthOtpBlock`'s single field faked its
+gaps with `letterSpacing: 10`, which showed no progress — how many digits were
+wanted, and how many had landed, could only be worked out by counting
+characters. `AuthOtpBoxes` draws one box per digit, lights the next one to
+fill, and reddens all four on error. There is still exactly **one** real
+`TextField`: an invisible one (`Opacity(0)`, which still hit-tests) stretched
+across the row, so paste, autofill and the OS one-time-code suggestion keep
+working and the boxes are only a rendering of its value.
+
+**The two steps are now actually two steps.** The identifier field used to
+stay on screen after sending, locked `readOnly` with no way to unlock it — a
+mistyped digit meant leaving the screen and coming back. It is now replaced by
+a "Code sent to +968 …" summary with a **Change** button that returns to step
+one. The channel switch and the account-kind notice are gone from step two:
+there is one thing to do there. The steps cross-fade through an
+`AnimatedSwitcher`.
+
+**The dead space is gone.** The form sits in `Expanded > Center >
+SingleChildScrollView`, so a short form is vertically centred between header
+and button instead of pinned under the header with a wall of empty sand below
+it. The footer's hard `border(top:)` divider is gone — it was drawing a box
+around that emptiness.
+
+### Overflow caught in review
+
+The first cut of the resend line was `Row[Text("Didn't get it?"),
+TextButton(countdown)]`, which overflowed by 4.3px in English and would have
+been far worse in Arabic (the Arabic countdown is about half again as long).
+It is now a single centred element: a countdown `Text` while the timer runs, a
+`TextButton.icon` once it expires.
+
+### Scope
+
+`AuthChannelCard` and `AuthOtpBlock` were **login-only** — `grep` found no
+other call sites, and `register_screen.dart` uses only `AuthNoticeCard`,
+`AuthSectionLabel`, `AuthFieldRow`, `AuthPhone`, `AuthChannel` and
+`OmanMobileFormatter`, none of which changed. So they were replaced rather
+than left behind as dead code. **No logic changed**: validation, `findAccount`
+/ `login` calls, the rate-limit and OTP error copy from the 2026-08-25 entry,
+and the resend countdown are all byte-identical.
+
+### Verified
+
+- `flutter analyze` — no issues.
+- `flutter test` — all 566 tests pass, including
+  `login_error_messages_test.dart`, whose four cases still drive the screen
+  through both steps (its anchors held: the phone field is still the first
+  `TextField`, the code field still the last).
+- A **temporary** layout test pumped the screen at 402×874 in both `ar` and
+  `en`, through step 1 → send → partial code → Change, asserting
+  `takeException()` was null at each stop. That is what caught the resend-row
+  overflow. Deleted after it went green; it is not in the suite.
+- **Not** verified on a device or emulator: the gradient, the thumb slide, the
+  box-lighting animation and the step cross-fade were never seen rendering —
+  only asserted not to overflow.
+
+---
+
+## 2026-08-25 (3) · The login/register choice is a dialog now, not a page of its own
+
+**Baseline:** `00e1d90`, on top of the uncommitted working tree from the
+entries below. Request, verbatim: "I want to update the idea of login page
+display. now its a new page open to view two options: register new account or
+login. I want this idea display as dialog popup box in modern way instead of
+open new page."
+
+### What changed
+
+`AuthGateScreen` was a full route at `/auth`: a `Scaffold` with a back button,
+a brand mark, and the two option cards. Every gated action — adding a car,
+checking out, posting an ad — pushed it, so answering "which kind of account
+is this?" looked like leaving the task behind.
+
+It is now `showAuthGate(BuildContext)`, a `showGeneralDialog` over whatever
+screen asked. The two option cards, their copy, and their press animation are
+unchanged; what is new is the presentation:
+
+- Blurred backdrop (`BackdropFilter`, sigma ramped 0→6 with the animation) so
+  the screen underneath stays visible and the interruption reads as temporary.
+- Fade plus a 0.94→1.0 scale on `easeOutCubic`, 240ms — the card settles
+  forward rather than growing into place.
+- An X in the top corner (labelled for screen readers) replaces the back
+  button; the barrier is dismissible, so tapping outside or pressing back
+  cancels and leaves the user exactly where the gated action was.
+- Capped at 420px wide and centered, with `viewInsets` padding for the short
+  screens where the keyboard would otherwise overlap it.
+
+The dialog **returns a choice** (`_GateChoice.login` / `.register`) rather than
+navigating from inside itself — `showAuthGate` awaits the pop, then pushes
+`/login` or `/register` through a `GoRouter` captured before the await. Popping
+and pushing from the same callback would have raced the exit animation, and the
+captured router avoids using a `BuildContext` whose widget may be unmounted by
+then.
+
+### Call sites
+
+- `ensureRegistered` (`lib/core/router/app_router.dart`) now calls
+  `unawaited(showAuthGate(context))` instead of `context.push('/auth')`. That
+  covers the eight gated actions in `cars_screen`, `my_ads_screen`,
+  `home_screen`, `service_detail_screen`, `product_detail_screen`, and
+  `shop_screen` — none of those files needed a change.
+- `profile_screen.dart` had three direct pushes to `/auth` (the register
+  prompt card, the "Complete your details" menu row, and the identity card).
+  All three now open the dialog; the registered-user branches still push
+  `/register` as before.
+- The `GoRoute` for `/auth` was **removed**. Nothing else referenced it:
+  `AuthState.initialRoute` can only return `/splash`, `/start-choice`, or
+  `AppFlags.startLocation`, and a grep across `lib/` and `test/` found no
+  other push, redirect, or deep link naming it. Leaving a dead route
+  registered would have left two divergent ways to ask the same question.
+
+### Verified
+
+- `flutter analyze` — no issues.
+- `flutter test` — all 566 tests pass.
+- **Not** verified on a device: the blur, the entrance stagger, and the
+  RTL chevron direction inside the dialog were not looked at on a running
+  emulator, only reasoned about from the unchanged card code.
+---
+
+## 2026-08-25 (2) · Whole-project Flutter review, and the 13 fixes it produced — starting with a release build that would have trusted any TLS certificate
+
+**Baseline:** `00e1d90`, on top of the uncommitted working tree from the entry
+below. Request, verbatim: "review the whole flutter project", then "apply all
+fix suggested."
+
+A `/ecc:flutter-review` pass over all 240 files in `lib/`. Most of what it
+looked for was already right — every `.when(` has an `error:` branch, all 40
+files that create controllers dispose them, there are 86 `mounted` guards, and
+exactly two untranslated user-facing strings, both brand names. The findings
+below are what was left.
+
+### 1. CRITICAL — a release build would accept any TLS certificate if `AK_ENV` was missing or misspelled
+
+`DioApiClient` sets `badCertificateCallback = (_, _, _) => true` for
+`AppEnvironment.development`, to trust the ASP.NET Kestrel dev certificate.
+That is fine on its own. The problem was that everything guarding it failed
+open: `AK_ENV`'s dart-define defaults to `'development'`, and
+`AppEnvironment.fromKey` returned `development` for *any* unrecognised value.
+`kReleaseMode` appeared nowhere in the codebase.
+
+So a release build shipped without the define, or with `AK_ENV=prod`, would
+have disabled certificate validation on every request — bearer token, refresh
+token, CR/VAT numbers and customer phone numbers readable and modifiable by
+anyone on the network path, with nothing visible in the app to indicate it.
+
+Two changes, either of which closes it alone:
+- `dio_api_client.dart` — the guard is now `!kIsWeb && !kReleaseMode &&
+  config.environment.isDevelopment`. A compile-time constant, so it does not
+  depend on anyone getting a build command right.
+- `app_environment.dart` — `fromKey` now falls back to `production`, not
+  `development`. Every environment-gated concession in this app *loosens*
+  something, so the unknown case has to land on the strict end. A plain
+  `flutter run` is unaffected: the define's default is the literal string
+  `'development'`, which matches a real enum value and never reaches the
+  fallback.
+
+### 2. HIGH — the push subscription was never cancelled
+
+`NotificationsNotifier._subscribeToPush` called `.listen(...)` and dropped the
+`StreamSubscription`. `clear()`'s own doc comment had *identified* the
+consequence ("would rebuild the notifier and open a second push subscription
+without closing the first") and worked around the trigger instead of the
+cause. It is now held and cancelled via `ref.onDispose`, the same way
+`RequestsNotifier` handles its timers. `adopt` also gained the `_disposed`
+guard the class already had but was not using there. The two doc comments that
+described the leak as unavoidable were corrected.
+
+### 3. HIGH — `ChatHub` stream controllers were never closed or removed
+
+`_threadControllers` gained an entry per thread via `putIfAbsent` and lost one
+never — no `close()`, no `remove()`, no `dispose()` anywhere in the file. The
+map grew for the life of the process and survived sign-out (`chatHubProvider`
+is not rebuilt by `SessionRefresh`), leaving one account's thread ids keyed in
+a hub the next account on the same device was posting frames into.
+
+Added `ChatHub.release(threadId)`, which closes and forgets a controller only
+when `hasListener` is false — so a second open view of the same thread keeps it
+alive — called from `ApiChatService`'s existing `onCancel`; and
+`ChatHub.dispose()`, wired to `chatHubProvider`'s `onDispose`.
+
+### 4. HIGH — three unbounded lists were built eagerly
+
+`ListView(children: [...])` and `Column(children: [...])` instantiate every
+child, on screen or not. Converted:
+- `inventory_screen.dart` → `ListView.builder`. Worst of the three: a live
+  search field sat on top of it, so a workshop with 500 SKUs paid the full
+  build cost per keystroke. The field is now debounced 250 ms as well.
+- `orders_screen.dart`, `customers_screen.dart` → `CustomScrollView` with a
+  `SliverToBoxAdapter` header and `SliverList.builder` rows. Padding was split
+  top/bottom across the two slivers so the layout is unchanged.
+
+### 5. MEDIUM — `_invalidateSummary` re-introduced the eager-build bug from the 2026-08-15 entry
+
+`provider_dashboard_state.dart` called a bare
+`ref.invalidate(workshopSummaryProvider)`, which is exactly what
+`SessionRefresh._ifBuilt`'s doc comment spends twenty lines explaining is
+unsafe. Not hypothetical: `MyWorkshopProfileNotifier.save` is also reached from
+"بياناتي" in `register_screen.dart`, where the dashboard has never been opened
+and that provider does not exist. Guarded with `ref.exists`. The `save` method
+four lines below was already guarding `workshopScheduleConfigProvider`
+correctly. `ref.invalidate(workshopScheduleProvider)` was left bare — it is a
+`.family`, and a bare-family invalidate only touches existing instances.
+
+### 6. MEDIUM — screen readers could not reach the app's own tappables
+
+One `Semantics` widget existed in 240 files, against 96 `GestureDetector`s.
+`InkPill` and `SandPressable`, the two shared pressables, published no role and
+no tap action, so TalkBack and VoiceOver read them as static text.
+- Both now wrap in `Semantics(button: true, ...)`. `InkPill` passes its own
+  `label` and excludes the child's duplicate text node; `SandPressable` takes
+  an optional `semanticLabel` and otherwise lets the wrapped card's text serve
+  as the name.
+- `InkPill` also gained 7px of vertical tap padding, the same trick
+  `SandBackButton` already used, so the target clears 44px without changing the
+  painted pill (~31px before).
+- All 18 icon-only `IconButton`s that had no `tooltip:` got one, bilingual via
+  `s.t(...)`. Two files (`cart_screen.dart`, `review_widgets.dart`) needed an
+  `S.of(context)` first. The cart stepper's label changes with its icon at
+  qty 1, and the five star buttons are now distinguishable from each other.
+
+### 7. MEDIUM — the rest
+
+- `push_service.dart` — `onTokenRefresh.listen` fired an unawaited, unguarded
+  `_client.post`, in the one class whose stated contract is that push failures
+  are logged and swallowed. Routed through `registerCurrentDevice()`, which has
+  the try/catch.
+- `requests_state.dart` — `_scheduleAutoRelease`'s reminder timer resumed past
+  an `await` and used `ref` without re-checking `_disposed`. `ref.onDispose`
+  cancels timers that have not fired; it cannot cancel one already suspended at
+  the await. Second check added.
+- `token_store.dart` — was using default `FlutterSecureStorage()`. Now
+  `AndroidOptions(encryptedSharedPreferences: true)` and
+  `IOSOptions(accessibility: first_unlock_this_device)`. The `_this_device`
+  half keeps the refresh token out of iCloud/iTunes backups, which is the exact
+  threat that file's own doc comment names.
+- 20 `MediaQuery.of(context)` call sites narrowed to `sizeOf` / `viewInsetsOf` /
+  `paddingOf`. The over-broad form subscribes to every MediaQuery change, so
+  bottom sheets reading `.size.height` rebuilt on every keyboard-animation
+  frame. The one remaining `MediaQuery.of` is `working_hours_field.dart`'s
+  `copyWith`, which needs the whole object.
+- `contact.dart` — the one outstanding analyzer info
+  (`use_null_aware_elements`).
+
+**Verified:** `flutter analyze` → "No issues found!" across the project (it was
+1 info before this work).
+
+**NOT verified — read this before trusting the entry:** `flutter test` was
+**not** run after these changes. The command was blocked by the session's
+permission classifier and the suite has not been executed since. The last known
+state is 566/566 passing *before* any edit. The highest-risk item is the
+`InkPill` tap padding in §6, which changes layout and could move
+`test/goldens/dashboard_home_*.png` — `dashboard_home_screen.dart` does not
+reference `InkPill` directly, so it may well pass, but that is reasoning, not a
+test run. Run `flutter test` before committing.
+
+**A mistake made and mostly undone, recorded because the diff shows traces of
+it:** `dart format lib/` was run to tidy the new code. Dart 3.12's "tall style"
+formatter restyled ~150 files that had nothing to do with this work, turning a
+38-file change into a 193-file one. All 197 tracked files outside the
+already-dirty working set were restored with `git checkout HEAD --`, bringing
+`lib/` back to 67 changed files (37 pre-existing + 30 from this entry).
+`dart format` was deliberately **not** re-run afterwards; the new code is
+hand-formatted to match its surroundings instead. The 37 files that were already
+dirty did pass through the formatter once — but their uncommitted diffs were
+already in tall style before this session (visible in `session_refresh.dart`'s
+pre-existing hunks), so it was most likely a no-op there. Worth a skim of
+`git diff` on those 37 before committing.
+
+**Left alone:**
+- 17 files still exceed the 800-line ceiling in `CLAUDE.md` §5
+  (`admin_screen.dart` at 1930 is the worst). Splitting them is a real
+  refactor, not a review fix, and §13.4 says confirm scope first.
+- `_sharedApiBaseUrl` is still `https://localhost:7291/api/v1` for *every*
+  environment, so a production build points at localhost. That is the
+  2026-08-09 instruction in `app_config.dart` ("do not change until told to"),
+  left as-is deliberately — but it will have to change before any real release,
+  and it is now the only thing standing between §1's fix and a shippable build.
+
+---
+
+## 2026-08-25 · The workshop record reads first and edits on purpose — in both places, with shared validation
+
+**Baseline:** entry (6). Request, verbatim, against a screenshot of "بياناتي"
+showing an **empty** workshop section on an account that had registered one:
+"now, add validations in this page to let user of workshop rol see what he
+registerd and give him the chois to edit and update there workshop info. also
+in the workshop profile in the workshop dashboard same thing."
+
+**This reverses part of entry (6) §3 and entry (4) §4, deliberately and at the
+owner's request.** Those made the filed record view-only. It is now
+*read-first, editable on purpose*: the owner sees exactly what is on file and
+can change it in one tap. The reasoning that produced the lock still holds for
+one field only — the CR certificate — and that is the only thing still not
+editable by its owner.
+
+---
+
+### 1 · The bug in the screenshot: the section was empty
+
+The workshop half of "My details" seeds its controllers in `initState` from
+`profile.workshop`. After a fresh sign-in that is **null** — `GET /me` answers
+with the account, not with the application it filed months ago — so an owner
+who had registered, been approved, and was live in the marketplace opened "My
+details" to a blank registration form. No name, no area, no certificate, and
+nothing saying the platform still had the record.
+
+Seeding now falls back to the marketplace roster entry (`providerOwnedBy`),
+which is the record the founder approved: name (ar/en), CR number, VAT number,
+area, fulfillments and the certificate itself.
+
+### 2 · Read first, then edit — the same shape in both screens
+
+Neither screen opens as a wall of live inputs over a verified business record.
+
+**"My details"** shows the filed record read-only under a header that names it
+("Your filed record") with **Edit workshop details**. Tapping it turns the
+section into ordinary validated fields; **Discard changes** puts every one of
+them — including the chips and the area picker — back to what is on file.
+
+**The dashboard's workshop profile** does the same at screen scale: the
+reading view from entry (6), an Edit action in the app bar and a full-width
+button at the foot, then the editor with Save changes / Cancel. Hours in that
+editor are the [entry (6)] `WorkingHoursField` picker, so the owner and the
+founder now edit hours the same way.
+
+A rejected application still opens **in edit mode**: correcting it is the only
+reason its owner came.
+
+### 3 · Saving means two different things, and the screen says which
+
+The trap here is `resubmitWorkshopApplication` → `submitWorkshopApplication`,
+which **files an application for review**. Entry (4) hit this: an approved
+owner correcting their phone number was put back into the founder's pipeline.
+
+So the save path forks on the stage, and the notice says so before anything is
+typed:
+
+- **Approved** → `PUT /my-workshop`. The live `ServiceProvider` *is* the
+  record; the change reaches customers on save and no review re-opens.
+  ("Your workshop is approved — what you save here reaches customers
+  directly.")
+- **Anything else** → re-file the application, as before. ("Saving re-submits
+  your application for the founder to review.")
+
+Both paths then refresh the marketplace roster, because it is a separate cache
+— without it the status dialog on "My account" and the services list would
+keep showing the old name until the next cold start. That refresh is never
+allowed to fail the save it follows: the record is already written by then, and
+reporting "couldn't save" because an optional fetch timed out would be a lie.
+
+### 4 · The validations
+
+New `lib/core/utils/workshop_validation.dart` — `WorkshopRules`, one set of
+rules for all three screens that touch this record. Rules written per screen
+drift, and the owner finds out which screen was lying only after a rejected
+review.
+
+| Field | Rule |
+|---|---|
+| CR name (Arabic) | required |
+| CR number | 6–10 digits; required at registration, optional on an existing record |
+| VAT number | **optional**, shape-checked when given (`OM1100059183` or the bare digits) |
+| Phone | 8 Oman digits, `2`/`7`/`9` — a workshop line may be a landline |
+| WhatsApp | 8 digits, mobile only — there is no WhatsApp on a landline |
+| Area / region | required |
+| Fulfillments | at least one, or the listing cannot be booked at all |
+| Pickup fee | a non-negative number, or empty |
+
+Nothing here contacts a registry. A CR number is shape-checked, never
+verified — the founder reads the certificate, and a client-side check
+pretending otherwise would be false assurance.
+
+### 5 · Two fixes that fell out of the above
+
+- **`_buildApplication` could throw.** It read `_crDocs.first`, safe only
+  while validation demanded a certificate for every workshop save. An approved
+  workshop legitimately has none in this form (the document lives on its
+  record), so it now returns null and the caller keeps the filed application
+  untouched.
+- **Saving an address change no longer re-dates the application.** Only an
+  actual edit pass sets a new `submittedAt`.
+
+### Files
+
+| File | Change |
+|---|---|
+| `lib/core/utils/workshop_validation.dart` | **new** — `WorkshopRules`, the shared field rules |
+| `lib/features/auth/register_screen.dart` | roster fallback seeding; `_workshopEditing` + `_WorkshopRecordNotice` (read/edit/discard); validation via `WorkshopRules` + fulfillments; stage-forked save (`_saveApprovedWorkshopRecord`); `_buildApplication` nullable; `_workshopErrorKeys` |
+| `lib/features/workshop_dashboard/workshop_profile_screen.dart` | view + editor, validation, hours picker, roster refresh after save |
+| `lib/state/provider_dashboard_state.dart` | `save`'s doc comment: it has callers again, and why they use it instead of re-filing |
+| `test/workshop_validation_test.dart` | **new** — 16 tests over the shared rules, both languages |
+| `test/workshop_dashboard_test.dart` | view/edit/cancel and the malformed CR/VAT/phone refusal; the entry (6) view-only tests replaced |
+| `test/account_business_panel_test.dart` | read-then-edit-then-discard; a profile with no application still shows what it registered |
+
+### Verified
+
+- `flutter test` — **566 passed** (547 before, +19).
+- `flutter analyze lib test` — clean; the one remaining info
+  (`use_null_aware_elements`, `lib/core/utils/contact.dart:23`) is pre-existing.
+- **Not** run on a device or emulator. In particular the approved-workshop save
+  path (`PUT /my-workshop` from "My details") is covered by the shared rules
+  and the mock service, not by a real API round trip.
+
+### Known-adjacent, left alone
+
+- **The CR certificate is still owner-read-only.** There is no owner-side
+  endpoint to replace it — `updateCrDocument` is on `adminActionsProvider` —
+  so both screens say "contact support" instead of offering a control that
+  cannot work. An owner-side "request a document change" flow would need a
+  founder-side inbox.
+- **"My details" edits a subset.** Phone, WhatsApp, hours, capabilities and
+  the pickup fee are passed back through unchanged from the current record
+  when an approved workshop saves there: a screen that does not show a field
+  has no business rewriting it. Those live on the dashboard's workshop
+  profile.
+- **Area and region are free text in the dashboard editor**, while "My details"
+  picks them from `LocationCatalog`. A typo there produces a governorate the
+  services filter cannot match. Worth giving that editor the same picker.
+- **No optimistic-concurrency check.** If a founder and an owner edit the same
+  workshop at the same time, the later `PUT` wins silently.
+
+---
+
+## 2026-08-24 (6) · Status dialog rebuilt, working hours picked instead of typed, and the owner's workshop profile made read-only
+
+**Baseline:** entry (5). Request, verbatim, against two screenshots (the
+workshop-status dialog, and the founder's workshop editor): "needs to improve
+and update to be modern. also when login as founder, and open any workshop
+profile to edit, the date time of works hours need to change as real picker not
+as text. also, when workshop owner open's his profile to edit, do not allow to
+edit the workshop information's. only display them. the only who can edit is
+the founder user in the founder dashboard."
+
+---
+
+### 1 · The workshop-status dialog
+
+Entry (4) created it as a plain title/body/actions `AlertDialog`: a small icon
+tile, a badge, two paragraphs, a list of facts, and two text buttons in a
+corner. It read as a system alert, not as the workshop's own card.
+
+Rebuilt as a sheet — still an `AlertDialog`, so the barrier, the dismiss
+behaviour and the platform padding stay standard, but the whole shape now
+lives in `content` with zero title/content padding:
+
+- **Tinted header band** in the stage's own colour (green approved / red
+  suspended / amber under review), carrying the icon on a surface tile, the
+  workshop name, `area · region`, and the stage badge.
+- **A four-step rail** — `applied → documentsSubmitted → verified → approved`,
+  the stages the backend actually has, with "Step 3 of 4 · Verified" under it.
+  An applicant asking "where is this" now gets a position rather than a
+  paragraph. Suspended has no rail on purpose: it is not a step on the path,
+  it is the path ending, and the founder's reason above already says so.
+- **The record in its own grouped card** — divider-separated rows on the dim
+  surface instead of loose lines. Working hours were added to it: they are on
+  the record and the owner has no other read-only view of them.
+- **A full-width primary action** (Dashboard / Edit and re-submit) with Close
+  under it, instead of two small words in the corner.
+
+### 2 · Working hours are picked, not typed
+
+`WorkingHoursField` (new, `lib/core/widgets/working_hours_field.dart`) replaces
+the founder editor's two free-text boxes — `ساعات العمل (عربي)` and `Hours
+(English)` — with day chips, two `showTimePicker` tiles (forced 24-hour), and a
+preview of the exact sentence that will be stored in each language.
+
+The API still stores `hours` as a free-text `{ar, en}` pair, so the widget's
+`WorkingHours` value type carries the structure and renders back to that string
+on save: `Sat–Thu 08:00–18:00 · Fri closed`. Contiguous days collapse into a
+range, two loose days read as a pair, and a full week has nothing to call
+closed.
+
+**Reading existing values back is the hard half**, and it is where the first
+implementation was wrong. `WorkingHours.parse` normalises Arabic-Indic digits,
+the four dashes, the alef and ta-marbuta spellings and case, then groups day
+names into phrases and decides open-vs-closed by *adjacency* to the word
+"closed"/"مغلق". The first version split on `·` instead, which got the real
+database value — `السبت–الخميس ٧:٣٠–١٩:٠٠ الجمعة مغلق`, with no separator at
+all before `الجمعة` — exactly backwards: the whole line contained "مغلق", so
+every day was marked closed and the parse returned null. Caught by the test
+written from that screenshot.
+
+Text that still cannot be read (`By appointment`, `حسب الطلب`) parses to null,
+and the field then **shows the stored text verbatim** with a "Set them with the
+picker" button, and the screen saves it back unchanged unless the founder takes
+it over. Quietly replacing hours the founder was never shown would be worse
+than the free-text box this replaced.
+
+### 3 · The owner's workshop profile is view-only
+
+`workshop_profile_screen.dart` was a full editor — every field of the approved
+record, plus Save. It is now a read-only view: grouped fact cards for identity,
+contact + hours, registration + fees, and non-interactive pills for
+fulfillments and capabilities.
+
+Why: this record is what the founder approved and what customers search, call
+and book against. An owner who could rewrite their own name, governorate,
+phone or commercial numbers after approval would leave an approval standing
+over details nobody checked — the same reasoning that locked the filed
+application in "My details" in entry (4). Editing now lives in exactly one
+place, `admin_workshop_detail_screen.dart`.
+
+**The completeness meter stays**, with reworded copy. The owner still needs to
+know which fields the platform is missing — that is what they have to ask
+support for — so locking the fields does not mean hiding the gaps.
+
+**A notice says who to ask**, and names what the owner *does* still control
+from the dashboard: offerings, add-ons, inventory, team, and the schedule's
+slots/capacity/closed days. A locked screen with no explanation reads as a
+broken screen.
+
+**Entry (4)'s lock notice in "My details" was corrected** in the same pass: it
+told owners that "opening hours, phone and services are managed from the
+workshop dashboard", which stopped being true the moment the dashboard's
+profile went read-only. It now points at support for hours and phone, and at
+the dashboard for offerings/inventory/team/schedule.
+
+### Files
+
+| File | Change |
+|---|---|
+| `lib/core/widgets/working_hours_field.dart` | **new** — `WorkingHours` (format/parse/round-trip) and `WorkingHoursField` (day chips, time pickers, both-language preview, unparsed-text fallback) |
+| `lib/features/operations/admin_workshop_detail_screen.dart` | founder editor: two hours `TextField`s → `WorkingHoursField`; unreadable stored text passed back unchanged on save |
+| `lib/features/workshop_dashboard/workshop_profile_screen.dart` | rewritten as a read-only view: fact cards, view-only notice, completeness meter reworded; no `PUT` |
+| `lib/features/profile/profile_screen.dart` | `_WorkshopStatusDialog` rebuilt (header band, `_StageRail`, grouped record card, `_DialogAction`); `_DialogFact` gained a `last` flag |
+| `lib/features/auth/register_screen.dart` | locked-application notice corrected — it no longer promises the dashboard can edit hours/phone |
+| `lib/state/provider_dashboard_state.dart` | `MyWorkshopProfileNotifier.save` documented as caller-less, and why it was kept |
+| `test/workshop_dashboard_test.dart` | +12 tests: owner profile is uneditable, `WorkingHours` format/parse cases, `WorkingHoursField` interaction |
+| `test/account_business_panel_test.dart` | +1 assertion: the dialog shows the review step rail |
+
+### Verified
+
+- `flutter test` — **547 passed** (534 before, +13).
+- `flutter analyze lib test` — clean; the one remaining info
+  (`use_null_aware_elements`, `lib/core/utils/contact.dart:23`) is pre-existing.
+- **Not** run on a device or emulator — no visual confirmation of the rebuilt
+  dialog, the time pickers, or the read-only profile.
+
+### Known-adjacent, left alone
+
+- **`PUT /my-workshop` is now unreachable from the app.** The notifier,
+  repository, service and API client for it all still exist. Left in place
+  deliberately (see the comment on `MyWorkshopProfileNotifier.save`) rather
+  than ripped out across four layers on the strength of one UI decision.
+- **There is still no in-app "ask support to change my record" route.** Both
+  view-only notices say "contact support", which in practice is the WhatsApp /
+  phone sheet on My account. Same gap entry (4) recorded; a real request flow
+  would need a founder-side inbox.
+- **One workshop, one set of hours.** The picker models a single opening and
+  closing time across all open days. A workshop with different Thursday hours,
+  or a lunch break, still cannot express that — `hours` would have to stop
+  being a string on the server before the client could offer it.
+- **The schedule screen's config sheet still owns slots/capacity/closed days**
+  and passes `hours` through untouched, so the two cannot disagree on the
+  string. Its closed days and the profile's open days are, however, two
+  separate records that a founder and an owner could set inconsistently.
+
+---
+
+## 2026-08-24 (5) · Every provider/offering read 500'd: the Photo mapping shipped without its migration
+
+**Baseline:** entry (4). Reported as a runtime log: `SqlException … Invalid column
+name 'PhotoCaption' / 'PhotoData' / 'PhotoFileName' / 'PhotoId' /
+'PhotoMimeType'`, turning `GET /service-marketplace/providers` and
+`/offerings` into 500s and taking the app's whole catalogue with them.
+
+### What happened
+
+Entry (3)/(4) added `ServiceProvider.Photo` and its `OwnsOne` mapping, but the
+migration was never generated — `dotnet ef` could not build while the API was
+running, and the one attempt produced an empty migration off stale assemblies
+(and, worse, removed the wrong one — see below). EF therefore queried five
+columns per table that SQL Server did not have.
+
+The error named the columns **twice** on the offerings query, which was the
+useful detail: `ServiceOfferings.Photo*` was missing too. So the offering-photo
+work from a previous session had never reached this database either.
+
+### The fix
+
+One migration covering both, since neither had ever been applied:
+`20260824190700_AddServiceProviderAndOfferingPhoto` — ten nullable columns,
+five per table (`PhotoId uniqueidentifier`, `PhotoData varbinary(max)`,
+`PhotoMimeType nvarchar(100)`, `PhotoFileName nvarchar(255)`,
+`PhotoCaption nvarchar(500)`), applied to `AKCarsMobileDb`.
+
+### Resolves the warning left in entry (3)
+
+That entry flagged that the accidentally-deleted `20260818194205_AddServiceOfferingPhoto`
+might leave `__EFMigrationsHistory` referencing a migration no longer in source,
+needing a hand cleanup. **It does not.** `dotnet ef migrations list` shows no
+such row: the migration was never applied anywhere, which is exactly why the
+offering columns were missing at runtime. Nothing to clean up, and the new
+migration restores those columns as a side effect. The only lasting trace is
+that the offering-photo columns now arrive under a differently-named migration.
+
+### Verified
+
+- `dotnet ef database update` → Done; `sys.columns` confirms all ten columns on
+  both tables.
+- API started and both previously-500ing endpoints re-checked over real HTTP:
+  `/providers` **200** (10 records, each carrying `photo: null` — the field is
+  live and correctly empty), `/offerings` **200**. Zero `[ERR]` lines in the
+  server log after startup.
+- `dotnet test` — **941 passed**.
+- The API was started by this session for that check and **stopped again**
+  afterwards, so the Visual Studio debug session owns the ports again — it
+  needs restarting from VS.
+
+### Still open
+
+The Flutter half of the storefront photo is unstarted: `ServiceProvider.photo`
+on the Dart model, the service/repository plumbing, `ServicePhotoField` on the
+dashboard's workshop-profile screen, and rendering on the marketplace provider
+cards. The column and the API contract are ready for it.
+
+---
+
+## 2026-08-24 (4) · My-account cleanup: status as a dialog, About as a dialog, and a filed workshop record made read-only
+
+**Baseline:** `00e1d90`, on top of entry (3). Request, verbatim: "the settings
+button at the top left is no longer needed. in the account section in my
+account page, make the workshop status as popup box dialog shows the workshop
+short cut info with status as dialog popup box. in the settings page, the about
+about button, update it to be as dialog pop up box shows app info with the
+version. in my info page. workshop owners they can't change there workshop
+info. it should view only registered data as disable for editing."
+
+---
+
+### 1 · Settings cog removed from the My-account header
+
+It was a second door to the screen the "Language & appearance" row in the
+Account section already opens. `_CircleButton` existed only to host it and went
+with it.
+
+### 2 · Workshop status → a dialog
+
+The row still shows the verdict as a badge (green approved / red suspended /
+amber everything else). Tapping it now opens `_WorkshopStatusDialog`: workshop
+name, area · region, the stage badge, the owner-facing sentence, and the record
+behind it — phone, WhatsApp, CR number, verification. An approved workshop gets
+a **Dashboard** action; a rejected one gets **Edit and re-submit** carrying the
+founder's own unedited reason.
+
+Read-only by design: everything in it is either the founder's decision or the
+registered record, and neither belongs behind an edit control in a status
+popup.
+
+The old behaviour — tapping the row silently restored a dismissed status card —
+is now an explicit "Show the status card again" button inside the dialog, shown
+only while the card is actually hidden.
+
+Name falls back to the filed application's `businessNameAr` when the workshop
+has no roster entry yet: an application under review genuinely has none, and an
+em-dash there would read as lost data rather than "not live".
+
+### 3 · Settings "About the app" → a dialog
+
+It was a dead row: it printed a version and did nothing when tapped. Now it
+opens a dialog with what the app is, the market, the currency and the version.
+
+**It also fixed a real inconsistency.** Two hardcoded version strings had
+drifted apart on the same build — Settings said `v2.0`, the profile screen said
+`v1.0.0`, and `pubspec.yaml` said `1.0.0+1`. Both now read
+`AppConstants.appVersion` (`1.0.0`, matching pubspec). A version the app cannot
+state consistently is worse than one it does not show, since it is the first
+thing a support conversation asks for.
+
+### 4 · A filed workshop record is view-only in "My details"
+
+Business name (ar/en), CR number, VAT number, the certificate, the area picker
+and the fulfilment chips are all locked once an application has been filed. The
+certificate renders as read-only `AttachmentThumb`s instead of the `MediaStrip`
+uploader — the founder approved *that* document, and silently swapping it would
+leave an approval standing over a file nobody checked. A notice at the top of
+the section says so and points at the two places that *are* editable: support
+for the CR record, the workshop dashboard for hours/phone/services.
+
+**Two deliberate exceptions**, both flagged rather than assumed:
+
+- **A rejected application stays editable.** Correcting it is the entire point,
+  and the status card already tells the owner to "edit and re-submit". The lock
+  is `stage != suspended`, not "is a workshop".
+- **A first-time registration is not locked** — there is nothing filed yet to
+  protect.
+
+**A bug found while doing this.** `_submit` called
+`resubmitWorkshopApplication` on *every* save by a workshop account, and that
+call goes through `submitWorkshopApplication`, which re-files the application.
+An approved workshop owner who corrected their own phone number would have been
+put back into the founder's review pipeline with nothing to review. Resubmission
+is now gated on the same `!_workshopLocked` condition, so it only fires when the
+owner could actually change the application.
+
+### Files
+
+| File | Change |
+|---|---|
+| `lib/core/constants/app_constants.dart` | `appVersion`, the single source for both places that show it |
+| `lib/features/profile/profile_screen.dart` | header cog + `_CircleButton` removed; `_WorkshopStatusRow` opens `_WorkshopStatusDialog`; `_stageBadge`/`_DialogFact` helpers |
+| `lib/features/settings/settings_screen.dart` | About row wired to `_showAboutDialog`; `_AboutFact` helper; version from the constant |
+| `lib/features/auth/register_screen.dart` | `_workshopLocked`; read-only fields, picker, chips and certificate; lock notice; resubmission gated |
+| `test/account_business_panel_test.dart` | 5 new tests; the dismiss/restore test corrected (see below) |
+
+### Verified
+
+- `flutter test` — **534 passed** (529 before, +5).
+- `flutter analyze` — clean; the one remaining info
+  (`use_null_aware_elements`, `lib/core/utils/contact.dart:23`) is pre-existing.
+- **A test from entry (3) was passing for the wrong reason and is now fixed.**
+  "the row brings the card back" asserted on the status sentence alone — which
+  the new dialog also prints, so it would have passed whether or not the card
+  came back. It now asserts an `AlertDialog` appeared, taps the dialog's own
+  restore control, and checks the dismissal actually cleared.
+- **Not** run on a device or emulator — no visual confirmation of either
+  dialog or of the locked form.
+
+### Known-adjacent, left alone
+
+- The locked notice points at "contact support" for CR-record changes, but
+  there is no in-app route that files such a request — support is the WhatsApp
+  / phone sheet on My account. Good enough for the pilot; a real "request a
+  change to my CR record" flow would need a founder-side inbox.
+- `AuthFieldRow.readOnly` locks input but does not restyle the field. A locked
+  field looks the same as an editable one until you tap it; the section notice
+  is what carries the message. Greying them would read better.
+
+---
+
+## 2026-08-24 (3) · Workshop dashboard review: the profile screen never loaded, the schedule config never came back, and "open my dashboard" was buried in Settings
+
+**Baseline:** `00e1d90` (HEAD). Request, verbatim: "the workshop dashboard needs
+to be review. test and check each section of the dashboard, some of them needs
+to update and fix bugs and some needs improve. check the profile page, its not
+working and fix it. make this dashboard modern and familiar and friendly for
+users. review from the internet what this type of dashboards need to be modern
+and then decide and apply the changes then check what you changed. […] the card
+of explaining the approving message, add x button […] to allow the user to hide
+this card and not view it again. add soothing that describe for the workshop
+owner if his account approved or not in the my account page. the option of
+opening dashboard for founder users or for workshop owner should be in the my
+account page and it should be in modern way."
+
+---
+
+### Bug 1 — the workshop profile screen could never load (the reported one)
+
+`GET /service-marketplace/my-workshop` does not answer with a `ServiceProvider`.
+It answers with an envelope:
+
+```jsonc
+{ "provider": { … }, "isComplete": false, "missingFields": ["whatsapp", …] }
+```
+
+`ApiWorkshopService.getMyWorkshop()` parsed that whole object as a bare
+`ServiceProvider`. There is no top-level `id` on it, so `requireString('id')`
+threw on every single call and `WorkshopProfileScreen` rendered nothing but its
+error state — "تعذّر تحميل الملف الشخصي" — for every workshop, forever. The
+dashboard home worked because `/my-workshop/summary` *is* flat, which is why
+this looked like one broken screen rather than a broken account.
+
+Modelled the envelope as `MyWorkshopProfile` instead of unwrapping it inline,
+because two of its three fields were being thrown away and both are worth
+having:
+
+- `missingFields` is the server's own completeness answer, from the same
+  handler the founder's review reads. The screen used to re-derive it from the
+  provider it had on hand — the same six checks, written twice, free to drift.
+  It now renders the server's list and **names** each missing field as a chip;
+  a bare "70%" tells nobody which three fields to go and fill in.
+- `schedule` — see Bug 2.
+
+`PUT /my-workshop` still answers with the bare provider, so `MyWorkshopProfile`
+parses both shapes, and `MyWorkshopProfile.of()` re-derives the completeness
+report after a save (six checks mirroring `GetMyWorkshopQueryHandler`, in its
+order) so the meter reflects the edit instead of the last `GET`.
+
+### Bug 2 — a saved schedule never came back
+
+`WorkshopScheduleConfigNotifier.build()` returned
+`WorkshopSchedule(hours: (await loadMyWorkshop()).hours)` — hours only. Slot
+template, capacity per slot and closed days all fell back to their defaults, so
+the working-hours sheet reopened blank after every save, and a workshop that
+had set "closed Fridays, 3 bays, 08:00/10:00/12:00" saw an empty box and one
+bay next time it looked.
+
+The cause is on the API side: those three fields are written by
+`PUT /my-workshop/schedule` and **no route ever read them back**. Added them to
+`MyWorkshopDto` (`GET /my-workshop`), which is where the rest of the profile
+already lives, rather than inventing a fourth schedule route.
+
+Also: saving the config did not invalidate `workshopScheduleProvider`, so the
+day grid behind the sheet kept showing slots generated from the settings that
+had just been replaced. It does now.
+
+### Bug 3 — smaller ones, found while going through each section
+
+| Screen | Was | Now |
+|---|---|---|
+| Add-ons | editor dialog was a fixed `Column` — four fields plus a keyboard overflowed on a short phone | wrapped in `SingleChildScrollView` |
+| Add-ons | a rejected save was swallowed by a bare `finally`: spinner stopped, dialog open, nothing said | snackbar on failure, same as every other editor |
+| Add-ons | a rejected delete threw straight out of the callback | caught, snackbar |
+| Schedule | day arrows were fixed `chevronRight`/`chevronLeft` — correct in Arabic, pointing backwards in English | direction-aware, plus a tappable date opening a real `showDatePicker` and a "Today" shortcut |
+| Schedule | closed-day chips were hardcoded English `Monday…Sunday`, Monday-first | localised labels (wire value stays English — `UpdateScheduleCommand` parses it back to a `DayOfWeek`), ordered Saturday-first for the Omani week |
+| Statistics | no pull-to-refresh; the only way to re-read the figures was to leave and come back | `RefreshIndicator` |
+| Dashboard home | quick action labelled "الملف الشخصي / Profile" | "ملف الورشة / Workshop profile" — the account has a *different* screen called Profile, and two things with one name is how someone edits their own phone number meaning the shop's |
+
+### Dashboard home — rebuilt as a priority ladder
+
+Research first, as asked. The consistent findings across current dashboard-UX
+writing: a reader should understand the most important thing within about five
+seconds; visual hierarchy has to rank the metrics rather than present them as
+equals; show only decision-critical figures up front and put the rest behind a
+drill-down. Sources are listed at the end of this entry.
+
+The old screen was a 2×2 grid of four identical `OperatorFigure` tiles, where
+"3 jobs are waiting on you" and "your average rating" had the same size, the
+same weight and the same colour. Nothing on it said what to do first, and no
+tile was tappable, so every number was a dead end.
+
+Now, top to bottom:
+
+1. **Identity strip** — workshop name, area · region, live/stage badge. Costs
+   no request: `/my-workshop/summary` already carried `provider` and it was
+   being discarded.
+2. **Alerts** — unchanged; already the right thing, already the top.
+3. **Needs your action** — one number, largest type on the screen, amber card,
+   straight through to the job list. At zero it becomes a plain "Nothing is
+   waiting on you" with a green check rather than a grey `0` in a grid: an
+   empty queue is good news and should look like it. Overdue count rides along
+   underneath in danger colour when there is one.
+4. **Today** — booked today / in progress / awaiting customer.
+5. **Money** — held in escrow *and* payout due (the second was already in the
+   payload and never shown). The standing off-app-transfer caveat moved inside
+   this card, next to the figures it qualifies, instead of floating on its own
+   further down where it read as a page-level disclaimer.
+6. **Workshop health** — low stock, rating, customers, active team.
+7. **Quick actions** — nine tiles, reordered the way a workshop's day runs
+   (jobs → schedule → what you sell → what you stock → who does the work →
+   numbers → settings).
+
+Every figure is now a tap target into the list that produced it.
+
+### My account — status, dismissal, and the way into a panel
+
+- **X button on the status card.** Dismissal is keyed on the *stage*, not a
+  boolean. Hiding "your workshop is approved" must not also hide a later "your
+  workshop was stopped" — different sentence, different decision. When the
+  stage changes the key no longer matches and the card returns on its own.
+  Persisted in `SharedPreferences`, so it stays hidden across launches.
+- **A permanent "Workshop status" row** in the Account section, with the real
+  stage as a badge (green approved / red suspended / amber everything else).
+  This is what makes the card safe to dismiss: the explanation can be put away,
+  the fact cannot. Tapping the row while the card is hidden brings it back, so
+  dismissing is never a one-way door.
+- **"My business" moved from Settings to My account**, as a card rather than a
+  settings row: workshop dashboard for an approved owner, founder panel for a
+  founder, both for an account that is both. Nothing at all for an unapproved
+  applicant — `_guardOperatorPanels` would bounce them straight back, and a
+  button that cannot work is worse than no button.
+- The section was **removed** from Settings rather than duplicated. Two doors
+  to one room drift apart the first time one is edited.
+- Consequently `_guardOperatorPanels` and the founder panel's back button now
+  land on `/profile` instead of `/settings` — the screen that actually explains
+  why the panel was refused.
+
+### Files
+
+| File | Change |
+|---|---|
+| `lib/data/models/my_workshop_profile.dart` | **new** — the `GET /my-workshop` envelope, plus `.of()` to rebuild it after a `PUT` |
+| `lib/data/services/workshop_service.dart`, `.../api/api_workshop_service.dart` | `getMyWorkshop()` returns the envelope |
+| `lib/data/repositories/workshop_repository.dart` | caches the envelope; `updateMyWorkshop` re-wraps the PUT's bare provider |
+| `lib/state/provider_dashboard_state.dart` | profile provider holds `MyWorkshopProfile`; schedule config reads the real config; config save invalidates the day view |
+| `lib/features/workshop_dashboard/dashboard_home_screen.dart` | rebuilt (see above) |
+| `lib/features/workshop_dashboard/workshop_profile_screen.dart` | server-sourced completeness, missing fields named |
+| `lib/features/workshop_dashboard/schedule_screen.dart` | `_DayPicker`, localised weekdays |
+| `lib/features/workshop_dashboard/add_ons_screen.dart` | scrollable dialog, save/delete error handling |
+| `lib/features/workshop_dashboard/statistics_screen.dart` | pull-to-refresh |
+| `lib/features/profile/profile_screen.dart` | dismissible status card, `_WorkshopStatusRow`, `_BusinessPanelSection`, `_PanelCard` |
+| `lib/features/settings/settings_screen.dart` | "My business" section removed |
+| `lib/state/settings_state.dart`, `lib/core/constants/app_constants.dart` | `workshopNoticeDismissalProvider` + its prefs key |
+| `lib/core/router/app_router.dart`, `lib/features/operations/admin_screen.dart` | operator-panel refusals and the founder back button land on `/profile` |
+| `docs/api_contract.md` | `GET /my-workshop` envelope documented, including the `PUT` asymmetry |
+| **API** `.../MyWorkshop/Common/MyWorkshopDtos.cs`, `.../GetMyWorkshop/GetMyWorkshopQuery.cs` | `MyWorkshopDto` carries `Schedule` |
+| `test/account_business_panel_test.dart` | **new** — replaces `settings_business_section_test.dart` (deleted); 7 tests |
+| `test/workshop_dashboard_test.dart` | envelope parsing, completeness re-derivation, schedule round-trip; smoke tests updated to the new layout |
+| `tests/AKCars.Tests/Integration/MyWorkshopEndpointsIntegrationTests.cs` | 2 new tests pinning the envelope shape and the schedule round-trip over real HTTP |
+| `test/goldens/dashboard_home_*.png` | regenerated for the new layout |
+
+### Verified
+
+- `flutter test` — **529 passed** (522 before; +7 net after replacing the
+  settings suite with a larger account one).
+- `flutter analyze` — clean. The one remaining info
+  (`use_null_aware_elements`, `lib/core/utils/contact.dart:23`) is pre-existing
+  and untouched.
+- API: `dotnet test` — **941 passed** (939 before). Built into a scratch output
+  directory because a running `AKCars.Api` process held `src/AKCars.Api/bin`
+  locked; the source change itself compiles clean (`dotnet build` on
+  `AKCars.Application` succeeded).
+- Golden images regenerated and **visually inspected** — the ladder renders in
+  the intended order with no overflow. One real overflow was caught this way
+  (`_Figure` at `childAspectRatio: 1.9`, "Low stock items" wrapping to two
+  lines over a hint line) and fixed to `1.6`.
+- **Not** run against a live device, emulator or the real API. No manual
+  sign-in as a workshop owner was performed, so the fixed profile screen has
+  been proven against the fake service and the API's own integration tests, not
+  against a real end-to-end round trip.
+
+### Known-adjacent, left alone
+
+- A stage change made by the founder does not reach the owner's already-open
+  screen on its own — `providerOwnedBy` reads a warm cache and only re-reads on
+  a `WarmCacheNotice.announce()` (session refresh). Correct in production
+  (different devices), and the test drives the announce explicitly rather than
+  pretending it is live.
+- `test/failures/` holds golden-diff artifacts from the intermediate failing
+  runs. Untracked and stale now that the goldens are regenerated; left in place
+  rather than deleted, since it predates this session.
+- The dashboard still shows no trend on any home-screen figure (only the
+  Statistics screen has a chart). A sparkline on "Money" would be the next
+  honest improvement, but it needs a bucketed series in
+  `/my-workshop/summary` that the payload does not carry yet.
+
+### Sources consulted
+
+- [Dashboard UI Design Principles & Best Practices Guide 2026 — DesignStudio](https://www.designstudiouiux.com/blog/dashboard-ui-design-guide/)
+- [Dashboard Design Principles: The Definitive Guide (2026) — UXPin](https://www.uxpin.com/studio/blog/dashboard-design-principles/)
+- [Dashboard UI: 4 Best Practices for Mobile Clarity — Spaceberry](https://spaceberry.studio/blog/dashboard-ui-four-best-practices-for-mobile-clarity)
+- [Dashboard Design Guide (2026): UX Best Practices & Examples — Aufait UX](https://www.aufaitux.com/blog/dashboard-design-examples-inspiration-best-practices/)
+
+---
+
+## 2026-08-24 (2) · The settings screen's back button did nothing whenever settings was reached by a route that replaces the stack
+
+**Baseline:** `00e1d90` (HEAD). Request, verbatim: "back button in the
+settings page not working. fix it"
+
+`SettingsScreen` rendered `SandHeader(s.settings)` with no `onBack`, so
+`SandBackButton` fell through to its default `Navigator.of(context).maybePop()`
+(`lib/core/widgets/sand_widgets.dart:171`). That is correct only when something
+is actually on the stack — and three real paths land on `/settings` via
+`context.go()`, which *replaces* the stack rather than pushing onto it:
+
+- the founder panel's own back button (`admin_screen.dart:58`,
+  `context.canPop() ? context.pop() : context.go('/settings')`),
+- the workshop dashboard's back button (`dashboard_home_screen.dart:47`, same
+  idiom),
+- `_guardOperatorPanels` redirecting a non-founder, an unidentified user, or an
+  unapproved workshop owner to `/settings` (`app_router.dart:381-389`).
+
+In all three `/settings` is the only page there is, `maybePop()` returns false,
+and the button is inert. Reaching settings the ordinary way — the profile tab's
+`context.push('/settings')` (`profile_screen.dart:65`, `:208`) — always worked,
+which is why this survived: the dead path is the operator one, hit while
+working in the founder panel.
+
+Fixed with the idiom this codebase had already settled on for exactly this
+problem everywhere else. `_TrackingExit` (`tracking_screen.dart:651`) carries it
+with a comment describing the identical bug — "a customer who had just paid for
+something landed on a page with no back button, no bottom navigation, and no way
+out of it at all" — as do the founder panel and workshop dashboard. Settings was
+the screen that got missed.
+
+| File | Change |
+|---|---|
+| `lib/features/settings/settings_screen.dart` | `SandHeader` now passes `onBack: () => context.canPop() ? context.pop() : context.go('/profile')`. `/profile` is the fallback because it is a shell-tab root and the only screen that opens settings. |
+
+**Verified:** `flutter analyze lib/features/settings/settings_screen.dart` →
+"No issues found!"; `flutter test test/settings_business_section_test.dart
+test/screens_smoke_test.dart` → 37/37 pass (both build `SettingsScreen`
+directly, without a `GoRouter` in the tree — safe because `onBack` is a closure
+that only calls `context.canPop()` when actually tapped, and neither test taps
+it). **Not** verified: the fix was not exercised in a running app — the two
+`go()`-entered paths (founder panel → back → settings → back, and the
+unapproved-workshop redirect) were traced through the router by reading, not by
+tapping through a device.
+
+**Left alone:** the Android system back gesture on a single-page `/settings`
+stack is still whatever `GoRouter` does by default — this change only fixes the
+on-screen chevron. Worth a `PopScope` if it turns out to matter, but it is a
+different mechanism and was not part of the report.
+
+---
+
+## 2026-08-24 (1) · Approving a workshop appeared to do nothing, because `GET /providers` was served from a 5-minute browser cache
+
+**Baseline:** `00e1d90` (HEAD). Request, verbatim: "there is an issue when
+admin click on approve button to verify the workshop: [server log excerpt] check
+this logs and fix the issue"
+
+The pasted log showed only a successful `AppendAuditCommand` (HTTP 201) — the
+audit write succeeding, not the failure. Querying `AKCarsMobileDb` directly
+showed what actually went wrong:
+
+```
+provider.approved  documentsSubmitted → approved   23:57:03
+provider.approved  documentsSubmitted → approved   23:58:21   (same provider)
+```
+
+The same workshop approved twice, 78 seconds apart, both computing
+`documentsSubmitted` as the prior state — so after a successful approve the
+app's roster still believed the workshop was pending.
+
+**Root cause:** `GET /service-marketplace/providers` — the endpoint the founder
+panel re-fetches through `warmUp`/pull-to-refresh — set
+`Cache-Control: public, max-age=300`. On a Flutter **web** build the browser's
+own HTTP cache honours that header regardless of the `Authorization` header, so
+any re-fetch within five minutes of a prior request to that URL can return the
+**pre-approval** snapshot even though the `PATCH` had already committed. The
+founder sees the workshop still pending, taps Approve again, and the cycle
+repeats. It also meant a real customer could fail to see a newly-approved
+workshop for up to five minutes — directly contradicting the app's own success
+message, "the workshop is now visible to customers and takes bookings".
+
+| File | Change |
+|---|---|
+| `AKCarsMobileAPI/src/AKCars.Api/Endpoints/MarketplaceEndpoints.cs` | Dropped `Cacheable(http)` from `GET /providers` only. Categories/offerings/promotions keep the 5-minute cache — they don't flip on a single admin click. |
+| `lib/features/operations/admin_screen.dart` | `_ApplicationCard` became a `ConsumerStatefulWidget` with a `_submitting` guard, so a second tap can't fire a second `setStage` before the first response lands — which is what let the stale "before" state reach the audit trail twice. |
+
+**Verified:** backend compiles (`dotnet build`, no `error CS`); `flutter
+analyze` clean across the project apart from one pre-existing unrelated
+`use_null_aware_elements` info in `lib/core/utils/contact.dart`. **Not**
+verified: the running API was not restarted — Visual Studio held
+`AKCars.Application.dll` / `AKCars.Infrastructure.dll` locked under the
+debugger, so the backend fix had not taken effect at the time of writing. The
+end-to-end approve flow was not re-tested against a live server.
+
+**Left alone:** the connection string carries `MultipleActiveResultSets=true`,
+which is what produces the "Savepoints are disabled because MARS is enabled"
+warning in the log. Nothing in the codebase needs MARS (no raw ADO.NET, no
+concurrent readers on one connection), but changing a connection string is the
+user's call, so it was flagged rather than edited.
+
+---
+
 ## 2026-08-18 · README rewritten as a real project README; the old design-handoff content moved to DESIGN_HANDOFF.md
 
 **Baseline:** `62ad8e0` (HEAD). Request: rewrite `README.md` and

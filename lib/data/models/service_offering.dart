@@ -4,6 +4,7 @@ import '../../core/i18n/strings.dart';
 import '../../core/json/json_utils.dart';
 import '../../core/utils/guid.dart';
 import '../../core/utils/search_match.dart';
+import 'media_attachment.dart';
 import 'service_provider.dart';
 
 /// A concrete service a specific provider sells within a category.
@@ -20,6 +21,7 @@ class ServiceOffering {
     this.includes = const [],
     this.warrantyMonths,
     this.isActive = true,
+    this.photo,
   });
 
   final String id;
@@ -63,6 +65,11 @@ class ServiceOffering {
   /// public catalogue read only ever returns `true` rows; `/my-workshop`
   /// reads return both so the owner can see what they have unpublished.
   final bool isActive;
+
+  /// The workshop owner's chosen photo for this service. Optional — a screen
+  /// showing an offering with no photo falls back to a default placeholder
+  /// rather than an empty frame.
+  final MediaAttachment? photo;
 
   /// The catalogue id a "request a part + installation" booking files itself
   /// under. Not a real category in the marketplace catalogue — nothing lists
@@ -136,6 +143,9 @@ class ServiceOffering {
     ],
     warrantyMonths: json.intOrNull('warrantyMonths'),
     isActive: json.boolOr('isActive', true),
+    photo: json['photo'] == null
+        ? null
+        : MediaAttachment.fromJson(json.requireObject('photo')),
   );
 
   JsonMap toJson() => {
@@ -150,6 +160,7 @@ class ServiceOffering {
     'includes': [for (final item in includes) item.toJson()],
     'warrantyMonths': warrantyMonths,
     'isActive': isActive,
+    'photo': photo?.toJson(),
   };
 
   ServiceOffering copyWith({
@@ -164,6 +175,8 @@ class ServiceOffering {
     List<L>? includes,
     int? warrantyMonths,
     bool? isActive,
+    MediaAttachment? photo,
+    bool clearPhoto = false,
   }) => ServiceOffering(
     id: id ?? this.id,
     categoryId: categoryId ?? this.categoryId,
@@ -176,6 +189,7 @@ class ServiceOffering {
     includes: includes ?? this.includes,
     warrantyMonths: warrantyMonths ?? this.warrantyMonths,
     isActive: isActive ?? this.isActive,
+    photo: clearPhoto ? null : (photo ?? this.photo),
   );
 
   @override
@@ -191,6 +205,7 @@ class ServiceOffering {
       other.durationMin == durationMin &&
       other.warrantyMonths == warrantyMonths &&
       other.isActive == isActive &&
+      other.photo == photo &&
       const ListEquality<L>().equals(other.includes, includes);
 
   @override
@@ -205,6 +220,7 @@ class ServiceOffering {
     durationMin,
     warrantyMonths,
     isActive,
+    photo,
     Object.hashAll(includes),
   );
 }

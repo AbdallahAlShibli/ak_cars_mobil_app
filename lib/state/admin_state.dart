@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/i18n/strings.dart';
 import '../data/models/audit_entry.dart';
+import '../data/models/media_attachment.dart';
 import '../data/models/payout_record.dart';
 import '../data/models/service_provider.dart';
 import '../di/providers.dart';
@@ -24,8 +25,9 @@ final rosterProvider = Provider<List<ServiceProvider>>((ref) {
 });
 
 /// How many workshops sit in each onboarding stage (§5, tab 2).
-final onboardingPipelineProvider =
-    Provider<Map<ProviderOnboardingStage, int>>((ref) {
+final onboardingPipelineProvider = Provider<Map<ProviderOnboardingStage, int>>((
+  ref,
+) {
   ref.watch(adminRevisionProvider);
   return ref.watch(serviceMarketplaceRepositoryProvider).onboardingPipeline;
 });
@@ -37,15 +39,16 @@ final onboardingPipelineProvider =
 /// founder is actually looking at is "workshops I have not decided about yet".
 final pendingApplicationsProvider = Provider<List<ServiceProvider>>((ref) {
   final roster = ref.watch(rosterProvider);
-  final pending = [
-    for (final p in roster)
-      if (p.stage.awaitsFounder) p,
-  ]..sort((a, b) {
-      final aAt = a.stageSince;
-      final bAt = b.stageSince;
-      if (aAt == null || bAt == null) return 0;
-      return aAt.compareTo(bAt);
-    });
+  final pending =
+      [
+        for (final p in roster)
+          if (p.stage.awaitsFounder) p,
+      ]..sort((a, b) {
+        final aAt = a.stageSince;
+        final bAt = b.stageSince;
+        if (aAt == null || bAt == null) return 0;
+        return aAt.compareTo(bAt);
+      });
   return List.unmodifiable(pending);
 });
 
@@ -144,7 +147,9 @@ class AdminActions {
     String? vatNumber,
     String? crNumber,
   }) async {
-    final updated = await _ref.read(adminWorkshopRepositoryProvider).updateProvider(
+    final updated = await _ref
+        .read(adminWorkshopRepositoryProvider)
+        .updateProvider(
           providerId,
           name: name,
           area: area,
@@ -171,6 +176,20 @@ class AdminActions {
     await _ref.read(adminWorkshopRepositoryProvider).deleteProvider(providerId);
     await _ref.read(serviceMarketplaceRepositoryProvider).refreshProviders();
     _ref.read(adminRevisionProvider.notifier).state++;
+  }
+
+  /// Replaces the CR certificate on an applicant's behalf — see
+  /// `AdminWorkshopService.updateCrDocument`.
+  Future<ServiceProvider> updateCrDocument(
+    String providerId,
+    MediaAttachment document,
+  ) async {
+    final updated = await _ref
+        .read(adminWorkshopRepositoryProvider)
+        .updateCrDocument(providerId, document);
+    await _ref.read(serviceMarketplaceRepositoryProvider).refreshProviders();
+    _ref.read(adminRevisionProvider.notifier).state++;
+    return updated;
   }
 }
 

@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../config/home_ranking_config.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/car_media.dart';
 import '../../core/widgets/sand_widgets.dart';
@@ -85,13 +86,15 @@ class _HomeOffersRailState extends ConsumerState<HomeOffersRail> {
         SandSectionHeader(s.offersTitle),
         const SizedBox(height: 2),
         Text(
-          s.t('خصومات فعلية من ورش معتمدة — بتاريخ انتهاء',
-              'Real discounts from approved workshops — with an end date'),
-          style: TextStyle(fontSize: 10.5, color: AkColors.of(context).inkSub),
+          s.t(
+            'خصومات فعلية من ورش معتمدة — بتاريخ انتهاء',
+            'Real discounts from approved workshops — with an end date',
+          ),
+          style: TextStyle(fontSize: 12.5, color: AkColors.of(context).inkSub),
         ),
         const SizedBox(height: 11),
         SizedBox(
-          height: 158,
+          height: 186,
           child: PageView.builder(
             controller: _controller,
             padEnds: false,
@@ -171,7 +174,7 @@ class _DiscountCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 14,
                       height: 1.25,
                       fontWeight: FontWeight.w700,
                       color: ak.promoTitle,
@@ -182,8 +185,10 @@ class _DiscountCard extends StatelessWidget {
                 // The percentage is computed from the two prices below it, so
                 // the ribbon and the numbers cannot disagree.
                 SandStatusPill(
-                  s.t('خصم ${offer.discountPercent.round()}٪',
-                      '${offer.discountPercent.round()}% off'),
+                  s.t(
+                    'خصم ${offer.discountPercent.round()}٪',
+                    '${offer.discountPercent.round()}% off',
+                  ),
                   background: ak.danger,
                   foreground: ak.onPrimary,
                 ),
@@ -195,7 +200,7 @@ class _DiscountCard extends StatelessWidget {
                 offering.provider.name.of(s),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 10.5, color: ak.promoSub),
+                style: TextStyle(fontSize: 12.5, color: ak.promoSub),
               ),
             ),
             Row(
@@ -203,7 +208,7 @@ class _DiscountCard extends StatelessWidget {
               children: [
                 RialAmount.formatted(
                   _money.format(offer.discountedPrice),
-                  style: AppTheme.numeric(size: 17, color: ak.promoTitle),
+                  style: AppTheme.numeric(size: 18, color: ak.promoTitle),
                 ),
                 const SizedBox(width: 7),
                 // The published price, struck through. Read from the catalogue
@@ -213,7 +218,7 @@ class _DiscountCard extends StatelessWidget {
                   child: RialAmount.formatted(
                     _money.format(offer.referencePrice),
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 12.5,
                       color: ak.promoSub,
                       decoration: TextDecoration.lineThrough,
                     ),
@@ -230,20 +235,24 @@ class _DiscountCard extends StatelessWidget {
                   child: Text(
                     days <= 0
                         ? s.t('ينتهي اليوم', 'ends today')
-                        : s.t('ينتهي بعد ${s.days(days)}',
-                            'ends in ${s.days(days)}'),
+                        : s.t(
+                            'ينتهي بعد ${s.days(days)}',
+                            'ends in ${s.days(days)}',
+                          ),
                     style: TextStyle(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
-                        color: ak.promoSub),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: ak.promoSub,
+                    ),
                   ),
                 ),
                 Text(
                   s.t('احجز بالعرض', 'Book this offer'),
                   style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: ak.promoTitle),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: ak.promoTitle,
+                  ),
                 ),
                 const SizedBox(width: 4),
                 Icon(LucideIcons.arrowRight, size: 13, color: ak.promoTitle),
@@ -273,8 +282,7 @@ class HomeAnnouncementsRail extends ConsumerStatefulWidget {
       _HomeAnnouncementsRailState();
 }
 
-class _HomeAnnouncementsRailState
-    extends ConsumerState<HomeAnnouncementsRail> {
+class _HomeAnnouncementsRailState extends ConsumerState<HomeAnnouncementsRail> {
   final _controller = PageController(viewportFraction: 0.88);
   double _page = 0;
 
@@ -305,7 +313,7 @@ class _HomeAnnouncementsRailState
         SandSectionHeader(s.announcementsTitle),
         const SizedBox(height: 10),
         SizedBox(
-          height: 150,
+          height: 178,
           child: PageView.builder(
             controller: _controller,
             padEnds: false,
@@ -360,110 +368,43 @@ class _AnnouncementCard extends ConsumerWidget {
           return;
         }
         final query = offer.query;
-        context.go(query == null
-            ? '/services'
-            : '/services?q=${Uri.encodeQueryComponent(query)}');
+        context.go(
+          query == null
+              ? '/services'
+              : '/services?q=${Uri.encodeQueryComponent(query)}',
+        );
       },
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              ak.promoBgA.withValues(alpha: fade),
-              ak.promoBgB.withValues(alpha: fade),
-            ],
-          ),
-          border: Border.all(color: ak.promoBorder.withValues(alpha: fade)),
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: ak.surface.withValues(alpha: 0.55),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(offer.icon, size: 17, color: ak.promoTitle),
+      // The card itself is [PromotionCardFace], shared verbatim with the
+      // founder's content editor so the preview there cannot drift from what a
+      // customer is actually shown. Everything resolved from data — the
+      // offering, its price, the day count — stays here.
+      child: PromotionCardFace(
+        fade: fade,
+        icon: offer.icon,
+        title: offer.title.of(s),
+        body: offer.body.of(s),
+        badge: offer.badge?.of(s),
+        deadline: days == null
+            ? null
+            : days <= 0
+            ? s.t('آخر يوم', 'last day')
+            : s.t('باقي ${s.days(days)}', '${s.days(days)} left'),
+        trailing: price != null
+            ? RialAmount.formatted(
+                _money.format(price),
+                prefix: s.t('من ', 'from '),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: ak.promoTitle,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    offer.title.of(s),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.25,
-                      fontWeight: FontWeight.w700,
-                      color: ak.promoTitle,
-                    ),
-                  ),
-                ),
-                if (offer.badge != null) ...[
-                  const SizedBox(width: 8),
-                  SandStatusPill(
-                    offer.badge!.of(s),
-                    background: ak.surface.withValues(alpha: 0.7),
-                    foreground: ak.promoSub,
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: Text(
-                offer.body.of(s),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style:
-                    TextStyle(fontSize: 10.5, height: 1.5, color: ak.promoSub),
-              ),
-            ),
-            Row(
-              children: [
-                if (price != null)
-                  RialAmount.formatted(
-                    _money.format(price),
-                    prefix: s.t('من ', 'from '),
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
-                      color: ak.promoTitle,
-                    ),
-                  )
-                else if (offering != null)
-                  Text(
-                    s.t('عرض سعر بعد الفحص', 'quote after inspection'),
-                    style: TextStyle(fontSize: 10, color: ak.promoSub),
-                  ),
-                const Spacer(),
-                // A deadline is only shown when the campaign really has one.
-                if (days != null) ...[
-                  Icon(LucideIcons.clock, size: 11, color: ak.promoSub),
-                  const SizedBox(width: 4),
-                  Text(
-                    days <= 0
-                        ? s.t('آخر يوم', 'last day')
-                        : s.t('باقي ${s.days(days)}', '${s.days(days)} left'),
-                    style: TextStyle(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
-                        color: ak.promoSub),
-                  ),
-                  const SizedBox(width: 9),
-                ],
-                Icon(LucideIcons.arrowRight, size: 14, color: ak.promoTitle),
-              ],
-            ),
-          ],
-        ),
+              )
+            : offering != null
+            ? Text(
+                s.t('عرض سعر بعد الفحص', 'quote after inspection'),
+                style: TextStyle(fontSize: 12.5, color: ak.promoSub),
+              )
+            : null,
       ),
     );
   }
@@ -528,7 +469,9 @@ class HomeCarCard extends ConsumerWidget {
     final estimated = projected != null && book.isProjected();
     final governorate = car.governorate == null
         ? null
-        : ref.watch(locationCatalogProvider).localized(car.governorate!, s.isAr);
+        : ref
+              .watch(locationCatalogProvider)
+              .localized(car.governorate!, s.isAr);
 
     return SandPressable(
       onTap: () {
@@ -596,11 +539,15 @@ class HomeCarCard extends ConsumerWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w700),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      Text('${s.details} ›',
-                          style: TextStyle(fontSize: 10.5, color: ak.inkSub)),
+                      Text(
+                        '${s.details} ›',
+                        style: TextStyle(fontSize: 12.5, color: ak.inkSub),
+                      ),
                     ],
                   ),
                   // The make/model line is worth repeating only when the owner
@@ -609,7 +556,7 @@ class HomeCarCard extends ConsumerWidget {
                     const SizedBox(height: 2),
                     Text(
                       car.label,
-                      style: TextStyle(fontSize: 10.5, color: ak.inkSub),
+                      style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                     ),
                   ],
                   const SizedBox(height: 10),
@@ -632,7 +579,9 @@ class HomeCarCard extends ConsumerWidget {
                         ),
                       if (car.plate != null)
                         _MetaChip(
-                            icon: LucideIcons.creditCard, label: car.plate!)
+                          icon: LucideIcons.creditCard,
+                          label: car.plate!,
+                        )
                       else
                         _MetaChip(
                           icon: LucideIcons.creditCard,
@@ -640,10 +589,12 @@ class HomeCarCard extends ConsumerWidget {
                           muted: true,
                         ),
                       if (governorate != null)
-                        _MetaChip(
-                            icon: LucideIcons.mapPin, label: governorate),
+                        _MetaChip(icon: LucideIcons.mapPin, label: governorate),
                       if (car.trim != null)
-                        _MetaChip(icon: LucideIcons.settings2, label: car.trim!),
+                        _MetaChip(
+                          icon: LucideIcons.settings2,
+                          label: car.trim!,
+                        ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -688,13 +639,21 @@ class _DueStrip extends ConsumerWidget {
               Expanded(
                 child: Text(
                   d == null
-                      ? s.t('لا سجل صيانة بعد — أضف آخر خدمة ليبدأ العد.',
-                          'No service history yet — add your last service to start the countdown.')
+                      ? s.t(
+                          'لا سجل صيانة بعد — أضف آخر خدمة ليبدأ العد.',
+                          'No service history yet — add your last service to start the countdown.',
+                        )
                       // Naming the item is the difference between a chore and
                       // a question the owner can answer in one tap.
-                      : s.t('متى غيّرت ${d.shortTitle.ar} آخر مرة؟',
-                          'When did you last do ${d.shortTitle.en.toLowerCase()}?'),
-                  style: TextStyle(fontSize: 10, color: ak.inkSub, height: 1.4),
+                      : s.t(
+                          'متى غيّرت ${d.shortTitle.ar} آخر مرة؟',
+                          'When did you last do ${d.shortTitle.en.toLowerCase()}?',
+                        ),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: ak.inkSub,
+                    height: 1.4,
+                  ),
                 ),
               ),
             ],
@@ -710,11 +669,15 @@ class _DueStrip extends ConsumerWidget {
               InkPill(
                 label: d == null
                     ? s.t('أضف آخر خدمة', 'Add last service')
-                    : s.t('أضف آخر ${d.shortTitle.ar}',
-                        'Add last ${d.shortTitle.en.toLowerCase()}'),
-                fontSize: 10.5,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    : s.t(
+                        'أضف آخر ${d.shortTitle.ar}',
+                        'Add last ${d.shortTitle.en.toLowerCase()}',
+                      ),
+                fontSize: 12.5,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
                 onTap: () {
                   if (d == null) {
                     ref.read(selectedMaintenanceCarIdProvider.notifier).state =
@@ -729,10 +692,13 @@ class _DueStrip extends ConsumerWidget {
                 InkPill(
                   label: s.bookNow,
                   outlined: true,
-                  fontSize: 10.5,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  onTap: () => bookMaintenanceItem(context, ref, car: car, item: d),
+                  fontSize: 12.5,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 7,
+                  ),
+                  onTap: () =>
+                      bookMaintenanceItem(context, ref, car: car, item: d),
                 ),
             ],
           ),
@@ -747,13 +713,13 @@ class _DueStrip extends ConsumerWidget {
     final color = overdue
         ? ak.danger
         : near
-            ? ak.amber
-            : ak.success;
+        ? ak.amber
+        : ak.success;
     final textColor = overdue
         ? ak.dangerText
         : near
-            ? ak.amberText
-            : ak.success;
+        ? ak.amberText
+        : ak.success;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -765,16 +731,17 @@ class _DueStrip extends ConsumerWidget {
                 d.shortTitle.of(s),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: ak.inkSub),
+                style: TextStyle(fontSize: 12.5, color: ak.inkSub),
               ),
             ),
             const SizedBox(width: 6),
             Text(
               _remaining(s, d),
               style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: textColor),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: textColor,
+              ),
             ),
           ],
         ),
@@ -795,7 +762,7 @@ class _DueStrip extends ConsumerWidget {
               child: Text(
                 overdue ? s.overdueBookNow : s.bookNow,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w800,
                   color: ak.onPrimary,
                 ),
@@ -844,8 +811,10 @@ class HomeAddCarCard extends StatelessWidget {
             Container(
               width: 44,
               height: 44,
-              decoration:
-                  BoxDecoration(color: ak.surfaceDim, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: ak.surfaceDim,
+                shape: BoxShape.circle,
+              ),
               child: Icon(LucideIcons.carFront, size: 21, color: ak.inkSub),
             ),
             const SizedBox(width: 13),
@@ -856,14 +825,21 @@ class HomeAddCarCard extends StatelessWidget {
                   Text(
                     s.t('سجّل سيارتك', 'Register your car'),
                     style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w700),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    s.t('دقيقة واحدة، وتصير الصفحة عن سيارتك: مواعيد الصيانة والخدمات المناسبة لها.',
-                        'One minute, and this page becomes about your car — its service countdowns and the work that suits it.'),
-                    style:
-                        TextStyle(fontSize: 10.5, color: ak.inkSub, height: 1.5),
+                    s.t(
+                      'دقيقة واحدة، وتصير الصفحة عن سيارتك: مواعيد الصيانة والخدمات المناسبة لها.',
+                      'One minute, and this page becomes about your car — its service countdowns and the work that suits it.',
+                    ),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: ak.inkSub,
+                      height: 1.5,
+                    ),
                   ),
                 ],
               ),
@@ -906,13 +882,15 @@ class HomeRecommendationsRail extends ConsumerWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          s.t('من ممشى سيارتك وسجل خدماتها',
-              'From your mileage and service history'),
-          style: TextStyle(fontSize: 10.5, color: AkColors.of(context).inkSub),
+          s.t(
+            'من ممشى سيارتك وسجل خدماتها',
+            'From your mileage and service history',
+          ),
+          style: TextStyle(fontSize: 12.5, color: AkColors.of(context).inkSub),
         ),
         const SizedBox(height: 11),
         SizedBox(
-          height: 152,
+          height: 180,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: items.length,
@@ -942,7 +920,8 @@ class _RecommendationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
     final s = S.of(context);
-    final urgent = item.reason == RecommendationReason.dueNow ||
+    final urgent =
+        item.reason == RecommendationReason.dueNow ||
         item.reason == RecommendationReason.dueSoon;
 
     return SandPressable(
@@ -956,8 +935,13 @@ class _RecommendationCard extends StatelessWidget {
         context.go('/services?q=${Uri.encodeQueryComponent(query)}');
       },
       child: Container(
-        width: 176,
-        padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+        width: 190,
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg - 2,
+          AppSpacing.md + 1,
+          AppSpacing.lg - 2,
+          AppSpacing.md,
+        ),
         decoration: BoxDecoration(
           color: ak.surface,
           border: Border.all(color: urgent ? ak.amberBorder : ak.border),
@@ -975,13 +959,21 @@ class _RecommendationCard extends StatelessWidget {
                     color: urgent ? ak.amberBgSoft : ak.surfaceDim,
                     borderRadius: BorderRadius.circular(11),
                   ),
-                  child: Icon(item.category.icon,
-                      size: 16, color: urgent ? ak.amber : ak.ink),
+                  child: Icon(
+                    item.category.icon,
+                    size: 16,
+                    color: urgent ? ak.amber : ak.ink,
+                  ),
                 ),
                 const Spacer(),
-                Text(
-                  s.workshops(item.workshops),
-                  style: TextStyle(fontSize: 9, color: ak.inkFaint),
+                Flexible(
+                  child: Text(
+                    s.workshops(item.workshops),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
+                  ),
                 ),
               ],
             ),
@@ -991,7 +983,10 @@ class _RecommendationCard extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w700, height: 1.25),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
             ),
             const SizedBox(height: 4),
             Expanded(
@@ -999,7 +994,11 @@ class _RecommendationCard extends StatelessWidget {
                 _reason(s),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 9.5, color: ak.inkSub, height: 1.45),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: ak.inkSub,
+                  height: 1.45,
+                ),
               ),
             ),
             Row(
@@ -1021,7 +1020,7 @@ class _RecommendationCard extends StatelessWidget {
         s.t('سعر بعد الفحص', 'quote after check'),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 9.5, color: ak.inkSub),
+        style: TextStyle(fontSize: 12.5, color: ak.inkSub),
       );
     }
     return RialAmount.formatted(
@@ -1030,7 +1029,10 @@ class _RecommendationCard extends StatelessWidget {
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
-          fontSize: 9.5, fontWeight: FontWeight.w700, color: ak.inkSub),
+        fontSize: 12.5,
+        fontWeight: FontWeight.w700,
+        color: ak.inkSub,
+      ),
     );
   }
 
@@ -1059,8 +1061,10 @@ class _RecommendationCard extends StatelessWidget {
         final bookings = item.bookings;
         final window = item.windowDays ?? 30;
         if (bookings == null) return s.t('شائعة في عُمان', 'popular in Oman');
-        return s.t('${s.bookings(bookings)} في آخر ${s.days(window)}',
-            '${s.bookings(bookings)} in the last ${s.days(window)}');
+        return s.t(
+          '${s.bookings(bookings)} في آخر ${s.days(window)}',
+          '${s.bookings(bookings)} in the last ${s.days(window)}',
+        );
     }
   }
 }
@@ -1090,9 +1094,11 @@ class HomeMostBookedSection extends ConsumerWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          s.t('في كل عُمان — آخر ${s.days(window)}',
-              'Across Oman — last ${s.days(window)}'),
-          style: TextStyle(fontSize: 10.5, color: AkColors.of(context).inkSub),
+          s.t(
+            'في كل عُمان — آخر ${s.days(window)}',
+            'Across Oman — last ${s.days(window)}',
+          ),
+          style: TextStyle(fontSize: 12.5, color: AkColors.of(context).inkSub),
         ),
         const SizedBox(height: 11),
         for (final (i, entry) in ranked.indexed) ...[
@@ -1120,10 +1126,14 @@ class _MostBookedRow extends ConsumerWidget {
     final region = ref.watch(regionProvider);
     final marketplace = ref.watch(serviceMarketplaceRepositoryProvider);
     final scope = region.isEmpty ? null : region;
-    final cheapest =
-        marketplace.cheapestOfferingFor(entry.category.id, region: scope);
-    final workshops =
-        marketplace.providerCountFor(entry.category.id, region: scope);
+    final cheapest = marketplace.cheapestOfferingFor(
+      entry.category.id,
+      region: scope,
+    );
+    final workshops = marketplace.providerCountFor(
+      entry.category.id,
+      region: scope,
+    );
     final name = entry.category.name.of(s).replaceAll('\n', ' ');
 
     return SandPressable(
@@ -1148,7 +1158,9 @@ class _MostBookedRow extends ConsumerWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 12.5, fontWeight: FontWeight.w700),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -1157,7 +1169,7 @@ class _MostBookedRow extends ConsumerWidget {
                     '${s.bookings(entry.demand.bookings)} · ${s.workshops(workshops)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 9.5, color: ak.inkSub),
+                    style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                   ),
                 ],
               ),
@@ -1166,7 +1178,7 @@ class _MostBookedRow extends ConsumerWidget {
             if (cheapest?.price != null)
               RialAmount.formatted(
                 _money.format(cheapest!.price),
-                style: AppTheme.numeric(size: 12.5, color: ak.ink),
+                style: AppTheme.numeric(size: 14, color: ak.ink),
               )
             else
               Icon(LucideIcons.chevronRight, size: 15, color: ak.inkFaint),
@@ -1215,8 +1227,9 @@ class _HomeTrustedWorkshopsSectionState
     final requested = ref.watch(mostRequestedWorkshopsProvider);
     final approved = ref.watch(approvedWorkshopsProvider);
     final region = ref.watch(regionProvider);
-    final regionLabel =
-        ref.watch(locationCatalogProvider).localized(region, s.isAr);
+    final regionLabel = ref
+        .watch(locationCatalogProvider)
+        .localized(region, s.isAr);
 
     // Nothing to stand behind at all — not even an approved workshop. The
     // section is omitted by the page rather than rendered as a headline with
@@ -1232,22 +1245,31 @@ class _HomeTrustedWorkshopsSectionState
     final String subtitle;
     if (showDemand) {
       subtitle = requested.nationwide
-          ? s.t('في كل عُمان — حجوزات مكتملة في آخر ${s.days(HomeRankingConfig.popularWindowDays)}',
-              'Across Oman — bookings completed in the last ${s.days(HomeRankingConfig.popularWindowDays)}')
-          : s.t('في $regionLabel — حجوزات مكتملة في آخر ${s.days(HomeRankingConfig.popularWindowDays)}',
-              'In $regionLabel — bookings completed in the last ${s.days(HomeRankingConfig.popularWindowDays)}');
+          ? s.t(
+              'في كل عُمان — حجوزات مكتملة في آخر ${s.days(HomeRankingConfig.popularWindowDays)}',
+              'Across Oman — bookings completed in the last ${s.days(HomeRankingConfig.popularWindowDays)}',
+            )
+          : s.t(
+              'في $regionLabel — حجوزات مكتملة في آخر ${s.days(HomeRankingConfig.popularWindowDays)}',
+              'In $regionLabel — bookings completed in the last ${s.days(HomeRankingConfig.popularWindowDays)}',
+            );
     } else if (hasRatings) {
       subtitle = rated.nationwide
-          ? s.t('في كل عُمان — بتقييمات العملاء',
-              'Across Oman — from customer ratings')
-          : s.t('في $regionLabel — بتقييمات العملاء',
-              'In $regionLabel — from customer ratings');
+          ? s.t(
+              'في كل عُمان — بتقييمات العملاء',
+              'Across Oman — from customer ratings',
+            )
+          : s.t(
+              'في $regionLabel — بتقييمات العملاء',
+              'In $regionLabel — from customer ratings',
+            );
     } else {
       // The honest version of an empty leaderboard: say what these workshops
       // are (approved, close) and do not imply a ranking nobody has earned.
       subtitle = s.t(
-          'لا تقييمات كافية بعد — هذه ورش معتمدة من المنصة، الأقرب أولاً',
-          'Not enough ratings yet — these are platform-approved workshops, nearest first');
+        'لا تقييمات كافية بعد — هذه ورش معتمدة من المنصة، الأقرب أولاً',
+        'Not enough ratings yet — these are platform-approved workshops, nearest first',
+      );
     }
 
     return Column(
@@ -1257,7 +1279,7 @@ class _HomeTrustedWorkshopsSectionState
           hasRatings ? s.trustedWorkshopsTitle : s.approvedNearbyTitle,
         ),
         const SizedBox(height: 2),
-        Text(subtitle, style: TextStyle(fontSize: 10.5, color: ak.inkSub)),
+        Text(subtitle, style: TextStyle(fontSize: 12.5, color: ak.inkSub)),
         // The switch appears only when there really are two boards to switch
         // between.
         if (hasRatings && hasDemand) ...[
@@ -1330,28 +1352,36 @@ class _BoardTabs extends StatelessWidget {
     return Row(
       children: [
         for (final (isSecond, label) in [(false, labels.$1), (true, labels.$2)])
-          Padding(
-            padding: const EdgeInsetsDirectional.only(end: 8),
-            child: SandPressable(
-              onTap: () => onSelect(isSecond),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  color: isSecond == secondSelected ? ak.primary : ak.surface,
-                  border: Border.all(
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(end: 8),
+              child: SandPressable(
+                onTap: () => onSelect(isSecond),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSecond == secondSelected ? ak.primary : ak.surface,
+                    border: Border.all(
                       color: isSecond == secondSelected
                           ? ak.primary
-                          : ak.border),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color:
-                        isSecond == secondSelected ? ak.onPrimary : ak.inkSub,
+                          : ak.border,
+                    ),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: isSecond == secondSelected
+                          ? ak.onPrimary
+                          : ak.inkSub,
+                    ),
                   ),
                 ),
               ),
@@ -1383,7 +1413,8 @@ class _WorkshopRow extends ConsumerWidget {
     final ak = AkColors.of(context);
     final s = S.of(context);
     final locations = ref.watch(locationCatalogProvider);
-    final place = '${locations.localized(provider.area, s.isAr)}'
+    final place =
+        '${locations.localized(provider.area, s.isAr)}'
         ' · ${locations.localized(provider.region, s.isAr)}';
 
     return SandPressable(
@@ -1391,7 +1422,8 @@ class _WorkshopRow extends ConsumerWidget {
       // with its own prices, rather than a profile page that cannot be booked
       // from.
       onTap: () => context.go(
-          '/services?q=${Uri.encodeQueryComponent(provider.name.of(s))}'),
+        '/services?q=${Uri.encodeQueryComponent(provider.name.of(s))}',
+      ),
       child: SandCard(
         radius: 18,
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
@@ -1413,7 +1445,9 @@ class _WorkshopRow extends ConsumerWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              fontSize: 12.5, fontWeight: FontWeight.w700),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                       // Platform approval is a condition of appearing on any of
@@ -1429,7 +1463,7 @@ class _WorkshopRow extends ConsumerWidget {
                         : place,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 9.5, color: ak.inkSub),
+                    style: TextStyle(fontSize: 12.5, color: ak.inkSub),
                   ),
                 ],
               ),
@@ -1461,7 +1495,7 @@ class _RatingTrailing extends StatelessWidget {
             const SizedBox(width: 3),
             Text(
               _rating.format(rating.rating),
-              style: AppTheme.numeric(size: 12.5, color: ak.ink),
+              style: AppTheme.numeric(size: 14, color: ak.ink),
             ),
           ],
         ),
@@ -1470,7 +1504,7 @@ class _RatingTrailing extends StatelessWidget {
         // anything, and it is why a 4.9 from four people is not on this list.
         Text(
           s.reviews(rating.reviews),
-          style: TextStyle(fontSize: 9, color: ak.inkFaint),
+          style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
         ),
       ],
     );
@@ -1491,12 +1525,12 @@ class _DemandTrailing extends StatelessWidget {
       children: [
         Text(
           _fmt.format(demand.completedBookings),
-          style: AppTheme.numeric(size: 12.5, color: ak.ink),
+          style: AppTheme.numeric(size: 14, color: ak.ink),
         ),
         const SizedBox(height: 2),
         Text(
           s.t('حجز مكتمل', 'completed'),
-          style: TextStyle(fontSize: 9, color: ak.inkFaint),
+          style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
         ),
       ],
     );
@@ -1517,12 +1551,12 @@ class _DistanceTrailing extends StatelessWidget {
       children: [
         Text(
           '${provider.distanceKm.toStringAsFixed(1)} ${s.km}',
-          style: AppTheme.numeric(size: 12, color: ak.ink),
+          style: AppTheme.numeric(size: 13, color: ak.ink),
         ),
         const SizedBox(height: 2),
         Text(
           s.approvedBadge,
-          style: TextStyle(fontSize: 9, color: ak.inkFaint),
+          style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
         ),
       ],
     );
@@ -1551,7 +1585,7 @@ class _RankBadge extends StatelessWidget {
       child: Text(
         '$rank',
         style: AppTheme.numeric(
-          size: 11,
+          size: 12,
           color: top ? ak.onPrimary : ak.inkSub,
         ),
       ),
@@ -1560,7 +1594,11 @@ class _RankBadge extends StatelessWidget {
 }
 
 class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label, this.muted = false});
+  const _MetaChip({
+    required this.icon,
+    required this.label,
+    this.muted = false,
+  });
 
   final IconData icon;
   final String label;
@@ -1586,7 +1624,7 @@ class _MetaChip extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontSize: 9.5,
+              fontSize: 12.5,
               fontWeight: FontWeight.w600,
               color: muted ? ak.inkFaint : ak.ink,
             ),

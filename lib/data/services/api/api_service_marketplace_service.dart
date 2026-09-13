@@ -1,4 +1,8 @@
+import 'package:flutter/widgets.dart' show IconData;
+
 import '../../../core/constants/api_endpoints.dart';
+import '../../../core/i18n/strings.dart';
+import '../../../core/json/icon_codec.dart';
 import '../../../core/network/api_client.dart';
 import '../../models/add_on.dart';
 import '../../models/audit_entry.dart';
@@ -34,24 +38,22 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
 
   @override
   Future<List<ServiceCategory>> fetchCategories() async =>
-      (await _client.getList(ApiEndpoints.serviceCategories))
-          .map(ServiceCategory.fromJson)
-          .toList();
+      (await _client.getList(
+        ApiEndpoints.serviceCategories,
+      )).map(ServiceCategory.fromJson).toList();
 
   @override
   Future<List<ServiceProvider>> fetchProviders() async =>
-      (await _client.getList(ApiEndpoints.serviceProviders))
-          .map(ServiceProvider.fromJson)
-          .toList();
+      (await _client.getList(
+        ApiEndpoints.serviceProviders,
+      )).map(ServiceProvider.fromJson).toList();
 
   @override
   Future<List<ServiceOffering>> fetchOfferings({String? categoryId}) async =>
       (await _client.getList(
         ApiEndpoints.serviceOfferings,
         queryParameters: {'categoryId': ?categoryId},
-      ))
-          .map(ServiceOffering.fromJson)
-          .toList();
+      )).map(ServiceOffering.fromJson).toList();
 
   @override
   Future<ServiceOffering> fetchOffering(String offeringId) async =>
@@ -60,16 +62,49 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
       );
 
   @override
-  Future<List<Promotion>> fetchPromotions() async =>
-      (await _client.getList(ApiEndpoints.servicePromotions))
-          .map(Promotion.fromJson)
-          .toList();
+  Future<ServiceCategory> updateCategoryBadge(
+    String categoryId, {
+    L? badge,
+  }) async => ServiceCategory.fromJson(
+    await _client.put(
+      ApiEndpoints.serviceCategoryBadge(categoryId),
+      // Explicit nulls, not omitted keys: sending no key at all would leave
+      // whatever ribbon is already on the category, and clearing one is the
+      // whole point of passing null.
+      body: {'badgeAr': badge?.ar, 'badgeEn': badge?.en},
+    ),
+  );
 
   @override
-  Future<List<Offer>> fetchOffers() async =>
-      (await _client.getList(ApiEndpoints.serviceOffers))
-          .map(Offer.fromJson)
-          .toList();
+  Future<ServiceCategory> createCategory(ServiceCategoryDraft draft) async =>
+      ServiceCategory.fromJson(
+        await _client.post(ApiEndpoints.serviceCategories, body: draft.toJson()),
+      );
+
+  @override
+  Future<ServiceCategory> updateCategory(
+    String categoryId,
+    ServiceCategoryDraft draft,
+  ) async => ServiceCategory.fromJson(
+    await _client.put(
+      ApiEndpoints.serviceCategory(categoryId),
+      body: draft.toJson(),
+    ),
+  );
+
+  @override
+  Future<void> deleteCategory(String categoryId) =>
+      _client.delete(ApiEndpoints.serviceCategory(categoryId));
+
+  @override
+  Future<List<Promotion>> fetchPromotions() async => (await _client.getList(
+    ApiEndpoints.servicePromotions,
+  )).map(Promotion.fromJson).toList();
+
+  @override
+  Future<List<Offer>> fetchOffers() async => (await _client.getList(
+    ApiEndpoints.serviceOffers,
+  )).map(Offer.fromJson).toList();
 
   @override
   Future<Offer> setOfferActive(String offerId, {required bool active}) async =>
@@ -81,28 +116,179 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
       );
 
   @override
+  Future<List<Offer>> fetchAllOffersForFounder() async =>
+      (await _client.getList(
+        ApiEndpoints.allServiceOffers,
+      )).map(Offer.fromJson).toList();
+
+  @override
+  Future<Offer> createOffer({
+    required String workshopId,
+    required String serviceOfferingId,
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    bool activeByFounder = false,
+  }) async => Offer.fromJson(
+    await _client.post(
+      ApiEndpoints.serviceOffers,
+      body: {
+        'workshopId': workshopId,
+        'serviceOfferingId': serviceOfferingId,
+        'referencePrice': referencePrice,
+        'discountedPrice': discountedPrice,
+        'startsAt': startsAt.toIso8601String(),
+        'endsAt': endsAt.toIso8601String(),
+        'regions': regions.toList(),
+        'activeByFounder': activeByFounder,
+      },
+    ),
+  );
+
+  @override
+  Future<Offer> updateOffer(
+    String offerId, {
+    required double referencePrice,
+    required double discountedPrice,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    Set<String> regions = const {},
+    required bool activeByFounder,
+  }) async => Offer.fromJson(
+    await _client.put(
+      ApiEndpoints.serviceOffer(offerId),
+      body: {
+        'referencePrice': referencePrice,
+        'discountedPrice': discountedPrice,
+        'startsAt': startsAt.toIso8601String(),
+        'endsAt': endsAt.toIso8601String(),
+        'regions': regions.toList(),
+        'activeByFounder': activeByFounder,
+      },
+    ),
+  );
+
+  @override
+  Future<void> deleteOffer(String offerId) =>
+      _client.delete(ApiEndpoints.serviceOffer(offerId));
+
+  @override
+  Future<List<Promotion>> fetchAllPromotionsForFounder() async =>
+      (await _client.getList(
+        ApiEndpoints.allServicePromotions,
+      )).map(Promotion.fromJson).toList();
+
+  Map<String, dynamic> _promotionBody({
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  }) => {
+    'titleAr': title.ar,
+    'titleEn': title.en,
+    'bodyAr': body.ar,
+    'bodyEn': body.en,
+    'icon': IconCodec.encode(icon),
+    'badgeAr': ?badge?.ar,
+    'badgeEn': ?badge?.en,
+    'providerId': ?providerId,
+    'offeringId': ?offeringId,
+    'query': ?query,
+    'regions': regions.toList(),
+    'endsAt': ?endsAt?.toIso8601String(),
+  };
+
+  @override
+  Future<Promotion> createPromotion({
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  }) async => Promotion.fromJson(
+    await _client.post(
+      ApiEndpoints.servicePromotions,
+      body: _promotionBody(
+        title: title,
+        body: body,
+        icon: icon,
+        badge: badge,
+        providerId: providerId,
+        offeringId: offeringId,
+        query: query,
+        regions: regions,
+        endsAt: endsAt,
+      ),
+    ),
+  );
+
+  @override
+  Future<Promotion> updatePromotion(
+    String promotionId, {
+    required L title,
+    required L body,
+    required IconData icon,
+    L? badge,
+    String? providerId,
+    String? offeringId,
+    String? query,
+    Set<String> regions = const {},
+    DateTime? endsAt,
+  }) async => Promotion.fromJson(
+    await _client.put(
+      ApiEndpoints.servicePromotion(promotionId),
+      body: _promotionBody(
+        title: title,
+        body: body,
+        icon: icon,
+        badge: badge,
+        providerId: providerId,
+        offeringId: offeringId,
+        query: query,
+        regions: regions,
+        endsAt: endsAt,
+      ),
+    ),
+  );
+
+  @override
+  Future<void> deletePromotion(String promotionId) =>
+      _client.delete(ApiEndpoints.servicePromotion(promotionId));
+
+  @override
   Future<List<CategoryDemand>> fetchCategoryDemand() async =>
-      (await _client.getList(ApiEndpoints.serviceCategoryDemand))
-          .map(CategoryDemand.fromJson)
-          .toList();
+      (await _client.getList(
+        ApiEndpoints.serviceCategoryDemand,
+      )).map(CategoryDemand.fromJson).toList();
 
   @override
   Future<List<WorkshopDemand>> fetchWorkshopDemand() async =>
-      (await _client.getList(ApiEndpoints.serviceWorkshopDemand))
-          .map(WorkshopDemand.fromJson)
-          .toList();
+      (await _client.getList(
+        ApiEndpoints.serviceWorkshopDemand,
+      )).map(WorkshopDemand.fromJson).toList();
 
   @override
   Future<List<WorkshopRating>> fetchWorkshopRatings() async =>
-      (await _client.getList(ApiEndpoints.serviceWorkshopRatings))
-          .map(WorkshopRating.fromJson)
-          .toList();
+      (await _client.getList(
+        ApiEndpoints.serviceWorkshopRatings,
+      )).map(WorkshopRating.fromJson).toList();
 
   @override
   Future<List<AddOn>> fetchAddOns(String providerId) async =>
-      (await _client.getList(ApiEndpoints.providerAddOns(providerId)))
-          .map(AddOn.fromJson)
-          .toList();
+      (await _client.getList(
+        ApiEndpoints.providerAddOns(providerId),
+      )).map(AddOn.fromJson).toList();
 
   @override
   Future<BookingAvailability> fetchAvailability(
@@ -159,18 +345,17 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
       );
 
   @override
-  Future<List<ServiceRequest>> fetchRequests() async =>
-      (await _client.getList(ApiEndpoints.serviceRequests))
-          .map(ServiceRequest.fromJson)
-          .toList();
+  Future<List<ServiceRequest>> fetchRequests() async => (await _client.getList(
+    ApiEndpoints.serviceRequests,
+  )).map(ServiceRequest.fromJson).toList();
 
   @override
   Future<List<ServiceRequest>> fetchOperatorQueue() async =>
       // A different endpoint, not a wider filter — only an operator may ask
       // for it, and the server authorises it on that basis.
-      (await _client.getList(ApiEndpoints.operatorRequests))
-          .map(ServiceRequest.fromJson)
-          .toList();
+      (await _client.getList(
+        ApiEndpoints.operatorRequests,
+      )).map(ServiceRequest.fromJson).toList();
 
   @override
   Future<ServiceRequest> applyEscrowEvent(
@@ -220,25 +405,23 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
     required String ownerUserId,
     required WorkshopApplication application,
     required String region,
-  }) async =>
-      ServiceProvider.fromJson(
-        await _client.post(
-          ApiEndpoints.workshopApplications,
-          body: {
-            'ownerUserId': ownerUserId,
-            'region': region,
-            ...application.toJson(),
-          },
-        ),
-      );
+  }) async => ServiceProvider.fromJson(
+    await _client.post(
+      ApiEndpoints.workshopApplications,
+      body: {
+        'ownerUserId': ownerUserId,
+        'region': region,
+        ...application.toJson(),
+      },
+    ),
+  );
 
   // ------------------------------------------------------ ledgers and audit
 
   @override
-  Future<List<PayoutRecord>> fetchPayouts() async =>
-      (await _client.getList(ApiEndpoints.payouts))
-          .map(PayoutRecord.fromJson)
-          .toList();
+  Future<List<PayoutRecord>> fetchPayouts() async => (await _client.getList(
+    ApiEndpoints.payouts,
+  )).map(PayoutRecord.fromJson).toList();
 
   @override
   Future<PayoutRecord> recordPayout(PayoutRecord payout) async =>
@@ -247,13 +430,12 @@ class ApiServiceMarketplaceService implements ServiceMarketplaceService {
       );
 
   @override
-  Future<List<AuditEntry>> fetchAuditLog() async =>
-      (await _client.getList(ApiEndpoints.auditLog))
-          .map(AuditEntry.fromJson)
-          .toList();
+  Future<List<AuditEntry>> fetchAuditLog() async => (await _client.getList(
+    ApiEndpoints.auditLog,
+  )).map(AuditEntry.fromJson).toList();
 
   @override
   Future<AuditEntry> appendAudit(AuditEntry entry) async => AuditEntry.fromJson(
-        await _client.post(ApiEndpoints.auditLog, body: entry.toJson()),
-      );
+    await _client.post(ApiEndpoints.auditLog, body: entry.toJson()),
+  );
 }

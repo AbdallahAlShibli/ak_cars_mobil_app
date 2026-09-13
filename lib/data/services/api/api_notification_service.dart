@@ -32,6 +32,26 @@ class ApiNotificationService implements NotificationService {
           .toList();
 
   @override
+  Future<List<AppNotification>> markRead(String id) async =>
+      (await _client.postList(ApiEndpoints.markNotificationRead(id)))
+          .map(AppNotification.fromJson)
+          .toList();
+
+  // DELETE is the verb the caller means — it leaves their inbox. What the
+  // server does with the row is its business, and it keeps it.
+  @override
+  Future<List<AppNotification>> dismiss(String id) async =>
+      (await _client.deleteList(ApiEndpoints.notification(id)))
+          .map(AppNotification.fromJson)
+          .toList();
+
+  @override
+  Future<List<AppNotification>> dismissAll() async =>
+      (await _client.deleteList(ApiEndpoints.notifications))
+          .map(AppNotification.fromJson)
+          .toList();
+
+  @override
   Future<AppNotification> push({
     required L title,
     required L body,

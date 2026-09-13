@@ -9,7 +9,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/error/app_exception.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/widgets/sand_widgets.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
 import 'auth_form_widgets.dart';
@@ -155,10 +155,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final identifier = _identifier;
     setState(() => _sending = true);
     try {
-      final account =
-          await ref.read(authProvider.notifier).findAccount(identifier);
+      final found =
+          await ref.read(authProvider.notifier).requestOtp(identifier);
       if (!mounted) return;
-      if (account == null) {
+      if (!found) {
         HapticFeedback.heavyImpact();
         setState(() => _errors[_channel == AuthChannel.phone
                 ? 'phone'
@@ -286,170 +286,80 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             'Could not log in — try again'),
       };
 
+  /// Back out of the code step to correct the address it was sent to.
+  ///
+  /// The identifier field used to stay on screen, locked (`readOnly`), with
+  /// no way to unlock it — a mistyped digit meant leaving the screen and
+  /// coming back. Now the field is replaced by a summary of where the code
+  /// went, and this is the way back to it.
+  void _editIdentifier() {
+    HapticFeedback.selectionClick();
+    _resendTimer?.cancel();
+    setState(() {
+      _otpSent = false;
+      _resendIn = 0;
+      _otp.clear();
+      _errors.remove('otp');
+    });
+  }
+
   // ----------------------------------------------------------------- build
 
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
     final s = S.of(context);
+    final busy = _sending || _verifying;
 
     return Scaffold(
       backgroundColor: ak.bg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                children: [
-                  SandBackButton(onTap: () => context.pop()),
-                  const SizedBox(height: 18),
-                  Entrance(
-                    child: Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        gradient: AppColors.brandGradient,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: const Icon(LucideIcons.keyRound,
-                          size: 26, color: Colors.white),
+      body: Column(
+        children: [
+          _LoginHero(
+            onBack: () => context.pop(),
+            title: s.t('تسجيل الدخول', 'Log in'),
+            subtitle: _otpSent
+                ? s.t('أدخل الرمز المكوّن من 4 أرقام الذي أرسلناه إليك.',
+                    'Enter the 4-digit code we just sent you.')
+                : s.t('اختر كيف سجّلت حسابك، وسنرسل لك رمزاً لمرة واحدة.',
+                    "Choose how you registered, and we'll send you a one-time code."),
+          ),
+          // Centred rather than top-aligned. The form is short, and pinning it
+          // directly under the header left a wall of empty sand between it and
+          // the button — which read as a screen that had not finished loading.
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.05),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Entrance(
-                    delayMs: 40,
-                    child: Text(
-                      s.t('تسجيل الدخول', 'Log in'),
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        height: 1.25,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Entrance(
-                    delayMs: 80,
-                    child: Text(
-                      s.t(
-                        'اختر كيف سجّلت حسابك، وسنرسل لك رمزاً لمرة واحدة.',
-                        "Choose how you registered, and we'll send you a one-time code.",
-                      ),
-                      style:
-                          TextStyle(fontSize: 13, color: ak.inkSub, height: 1.6),
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  AuthSectionLabel(s.t('الدخول عبر', 'Log in with')),
-                  Entrance(
-                    delayMs: 100,
-                    child: Row(
-                      children: [
-                        AuthChannelCard(
-                          selected: _channel == AuthChannel.phone,
-                          icon: LucideIcons.smartphone,
-                          title: s.t('رقم الهاتف', 'Phone number'),
-                          subtitle: s.t('رمز عبر SMS', 'SMS code'),
-                          onTap: () => _switchChannel(AuthChannel.phone),
-                        ),
-                        const SizedBox(width: 10),
-                        AuthChannelCard(
-                          selected: _channel == AuthChannel.email,
-                          icon: LucideIcons.mail,
-                          title: s.t('البريد الإلكتروني', 'Email'),
-                          subtitle: s.t('رمز بالبريد', 'Code by email'),
-                          onTap: () => _switchChannel(AuthChannel.email),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Entrance(
-                    delayMs: 130,
-                    // Rebuilt from scratch (not just its content swapped) on
-                    // every channel switch, via the `ValueKey` — the two
-                    // channels are different fields with different
-                    // formatters and keyboards, not the same field relabelled.
-                    child: _channel == AuthChannel.phone
-                        ? AuthFieldRow(
-                            key: const ValueKey('phone'),
-                            icon: LucideIcons.smartphone,
-                            label: s.t('رقم الهاتف', 'Phone number'),
-                            hint: '9200 1234',
-                            prefix: '+968 ',
-                            controller: _phone,
-                            error: _currentFieldError,
-                            keyboardType: TextInputType.phone,
-                            numeric: true,
-                            forceLtr: true,
-                            autofocus: true,
-                            readOnly: _otpSent,
-                            formatters: const [OmanMobileFormatter()],
-                            onChanged: (_) => _clearFieldError('phone'),
-                          )
-                        : AuthFieldRow(
-                            key: const ValueKey('email'),
-                            icon: LucideIcons.mail,
-                            label: s.t('البريد الإلكتروني', 'Email'),
-                            hint: 'name@example.om',
-                            controller: _email,
-                            error: _currentFieldError,
-                            keyboardType: TextInputType.emailAddress,
-                            autofocus: true,
-                            readOnly: _otpSent,
-                            onChanged: (_) => _clearFieldError('email'),
-                          ),
-                  ),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 240),
-                    curve: Curves.easeOut,
-                    alignment: Alignment.topCenter,
-                    child: !_otpSent
-                        ? const SizedBox(width: double.infinity)
-                        : Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: AuthOtpBlock(
-                              sent: true,
-                              controller: _otp,
-                              target: _identifier,
-                              error: _errors['otp'],
-                              resendIn: _resendIn,
-                              onSend: _sendCode,
-                              onChanged: (_) => _clearFieldError('otp'),
-                            ),
-                          ),
-                  ),
-                  const SizedBox(height: 20),
-                  Entrance(
-                    delayMs: 160,
-                    child: AuthNoticeCard(
-                      icon: LucideIcons.shieldCheck,
-                      background: ak.amberBgSoft,
-                      foreground: ak.amberText,
-                      message: s.t(
-                        'حسابك — وما يظهر لك فيه — يبقى كما سجّلته: عميل أو ورشة.',
-                        'Your account — and what you see in it — stays exactly as you registered it: customer or workshop.',
-                      ),
-                    ),
-                  ),
-                ],
+                  child: _otpSent ? _codeStep(ak, s) : _identifierStep(ak, s),
+                ),
               ),
             ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              decoration: BoxDecoration(
-                color: ak.bg,
-                border: Border(top: BorderSide(color: ak.divider)),
-              ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   FilledButton(
-                    onPressed: _sending || _verifying
-                        ? null
-                        : (_otpSent ? _verify : _sendCode),
-                    child: (_sending || _verifying)
+                    onPressed: busy ? null : (_otpSent ? _verify : _sendCode),
+                    child: busy
                         ? SizedBox(
                             width: 22,
                             height: 22,
@@ -460,7 +370,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ? s.t('تأكيد ودخول', 'Verify and log in')
                             : s.t('إرسال الرمز', 'Send the code')),
                   ),
-                  const SizedBox(height: 10),
                   TextButton.icon(
                     onPressed: () => context.pushReplacement('/register'),
                     icon: const Icon(LucideIcons.userPlus, size: 15),
@@ -470,7 +379,374 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Step one: which address, and what is it.
+  Widget _identifierStep(AkColors ak, S s) => Column(
+        key: const ValueKey('identifier'),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Entrance(
+            child: AuthChannelSwitch(
+              value: _channel,
+              onChanged: _switchChannel,
+            ),
+          ),
+          const SizedBox(height: 9),
+          Entrance(
+            delayMs: 40,
+            child: Text(
+              _channel == AuthChannel.phone
+                  ? s.t('سنرسل الرمز في رسالة SMS', "We'll text the code by SMS")
+                  : s.t('سنرسل الرمز إلى بريدك', "We'll email the code"),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11.5,
+                color: ak.inkFaint,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Entrance(
+            delayMs: 80,
+            // Rebuilt from scratch (not just its content swapped) on every
+            // channel switch, via the `ValueKey` — the two channels are
+            // different fields with different formatters and keyboards, not
+            // the same field relabelled.
+            child: _channel == AuthChannel.phone
+                ? AuthFieldRow(
+                    key: const ValueKey('phone'),
+                    icon: LucideIcons.smartphone,
+                    label: s.t('رقم الهاتف', 'Phone number'),
+                    hint: '9200 1234',
+                    prefix: '+968 ',
+                    controller: _phone,
+                    error: _currentFieldError,
+                    keyboardType: TextInputType.phone,
+                    numeric: true,
+                    forceLtr: true,
+                    autofocus: true,
+                    formatters: const [OmanMobileFormatter()],
+                    onChanged: (_) => _clearFieldError('phone'),
+                  )
+                : AuthFieldRow(
+                    key: const ValueKey('email'),
+                    icon: LucideIcons.mail,
+                    label: s.t('البريد الإلكتروني', 'Email'),
+                    hint: 'name@example.om',
+                    controller: _email,
+                    error: _currentFieldError,
+                    keyboardType: TextInputType.emailAddress,
+                    autofocus: true,
+                    onChanged: (_) => _clearFieldError('email'),
+                  ),
+          ),
+          const SizedBox(height: 10),
+          Entrance(
+            delayMs: 120,
+            child: AuthNoticeCard(
+              icon: LucideIcons.shieldCheck,
+              background: ak.amberBgSoft,
+              foreground: ak.amberText,
+              message: s.t(
+                'حسابك — وما يظهر لك فيه — يبقى كما سجّلته: عميل أو ورشة.',
+                'Your account — and what you see in it — stays exactly as you registered it: customer or workshop.',
+              ),
+            ),
+          ),
+        ],
+      );
+
+  /// Step two: the code, and nothing else.
+  ///
+  /// The gate notice and the channel switch are deliberately gone here —
+  /// there is exactly one thing to do on this step, and the address the code
+  /// went to is the only context needed to do it.
+  Widget _codeStep(AkColors ak, S s) => Column(
+        key: const ValueKey('code'),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Entrance(
+            child: _SentToCard(target: _identifier, onEdit: _editIdentifier),
+          ),
+          const SizedBox(height: 18),
+          Entrance(
+            delayMs: 60,
+            child: AuthOtpBoxes(
+              controller: _otp,
+              error: _errors['otp'],
+              onChanged: (_) => _clearFieldError('otp'),
+            ),
+          ),
+          const SizedBox(height: 6),
+          // One centred element, not a label beside a button: the Arabic
+          // countdown is half again as long as the English one, and a Row
+          // holding both overflowed on a 402pt screen.
+          Entrance(
+            delayMs: 100,
+            child: Center(
+              child: _resendIn > 0
+                  ? Text(
+                      s.t('يمكنك طلب رمز جديد خلال $_resendIn ثانية',
+                          'You can ask for a new code in ${_resendIn}s'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
+                    )
+                  : TextButton.icon(
+                      onPressed: _sending ? null : _sendCode,
+                      icon: const Icon(LucideIcons.rotateCw, size: 15),
+                      label: Text(
+                        s.t('لم يصلك الرمز؟ أعد الإرسال',
+                            "Didn't get it? Resend"),
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      );
+}
+
+/// Where the code went, plus the way back to change it.
+class _SentToCard extends StatelessWidget {
+  const _SentToCard({required this.target, required this.onEdit});
+
+  final String target;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    return Container(
+      padding: const EdgeInsetsDirectional.fromSTEB(14, 10, 6, 10),
+      decoration: BoxDecoration(
+        color: ak.surfaceDim,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ak.border),
+      ),
+      child: Row(
+        children: [
+          Icon(LucideIcons.sendHorizontal, size: 18, color: ak.inkFaint),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  s.t('أُرسل الرمز إلى', 'Code sent to'),
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: ak.inkFaint,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                // Neither a phone number nor an email is ever Arabic-ordered.
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Text(
+                    target,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.numeric(
+                        size: 13.5, weight: FontWeight.w700, color: ak.ink),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onEdit,
+            child: Text(
+              s.t('تغيير', 'Change'),
+              style: const TextStyle(fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ink gradient cap over the form.
+///
+/// The screen used to be one flat sheet of sand — a brand tile, a title, a
+/// subtitle and the fields, all the same colour, all stacked from the top,
+/// with the button marooned at the bottom of a lot of nothing. The tile was
+/// not even the 56px it asked for: inside a `ListView` the cross-axis
+/// constraint is tight, so `Container(width: 56)` stretched into a full-width
+/// black bar. Capping the screen in ink gives the title somewhere to sit and
+/// the form somewhere to start.
+class _LoginHero extends StatelessWidget {
+  const _LoginHero({
+    required this.title,
+    required this.subtitle,
+    required this.onBack,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
+      child: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(gradient: AppColors.brandGradient),
+        child: Stack(
+          children: [
+            // Soft off-canvas disc — the one thing keeping the panel from
+            // reading as a plain black rectangle.
+            PositionedDirectional(
+              top: -48,
+              end: -36,
+              child: Container(
+                width: 150,
+                height: 150,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.05),
+                ),
+              ),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 26),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: _HeroBackButton(onTap: onBack),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Entrance(
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.16)),
+                            ),
+                            child: const Icon(LucideIcons.keyRound,
+                                size: 22, color: Colors.white),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Entrance(
+                                delayMs: 40,
+                                child: Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 23,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Entrance(
+                                delayMs: 80,
+                                child: Text(
+                                  subtitle,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    height: 1.5,
+                                    color: Colors.white.withValues(alpha: 0.72),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// `SandBackButton` in reverse: white on ink.
+///
+/// The sand chip that widget draws is `ak.surface`, which is dark in the Ink
+/// theme — on a header that is the same dark gradient in *both* themes, it
+/// would disappear into its own background.
+class _HeroBackButton extends StatefulWidget {
+  const _HeroBackButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  State<_HeroBackButton> createState() => _HeroBackButtonState();
+}
+
+class _HeroBackButtonState extends State<_HeroBackButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    return Semantics(
+      button: true,
+      label: MaterialLocalizations.of(context).backButtonTooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          widget.onTap();
+        },
+        // Keeps a 44px tap target without growing the 38px visual.
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: AnimatedScale(
+            scale: _pressed ? 0.9 : 1,
+            duration: const Duration(milliseconds: 110),
+            curve: Curves.easeOut,
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+              ),
+              child: Icon(
+                rtl ? LucideIcons.chevronRight : LucideIcons.chevronLeft,
+                size: 18,
+                color: Colors.white,
+              ),
+            ),
+          ),
         ),
       ),
     );

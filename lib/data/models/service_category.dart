@@ -6,6 +6,63 @@ import '../../core/json/json_utils.dart';
 import 'powertrain.dart';
 import 'service_provider.dart';
 
+/// The editable half of a [ServiceCategory], as the founder's editor submits
+/// it — everything except [ServiceCategory.id] (assigned by the server) and
+/// [ServiceCategory.badge] (which has its own one-field write, because it is
+/// the field that changes most often and the only one carrying no behaviour).
+///
+/// A separate type rather than a bag of named arguments on the service, because
+/// create and update take exactly the same fields and a second parameter list
+/// is how the two drift apart.
+class ServiceCategoryDraft {
+  const ServiceCategoryDraft({
+    required this.slug,
+    required this.name,
+    required this.icon,
+    this.note,
+    this.emergency = false,
+    this.primary = false,
+    this.powertrains = const {},
+    this.requires,
+  });
+
+  /// See [ServiceCategory.slug] — this is behaviour, not wording.
+  final String slug;
+  final L name;
+  final IconData icon;
+  final L? note;
+  final bool emergency;
+  final bool primary;
+  final Set<Powertrain> powertrains;
+  final ProviderCapability? requires;
+
+  /// The wire body both the create and the update endpoint accept.
+  JsonMap toJson() => {
+        'slug': slug,
+        'nameAr': name.ar,
+        'nameEn': name.en,
+        'icon': IconCodec.encode(icon),
+        'noteAr': note?.ar,
+        'noteEn': note?.en,
+        'emergency': emergency,
+        'primary': primary,
+        'powertrains': [for (final p in powertrains) p.key],
+        'requires': requires?.key,
+      };
+
+  /// Seeds the editor from the row being edited.
+  factory ServiceCategoryDraft.of(ServiceCategory c) => ServiceCategoryDraft(
+        slug: c.slug,
+        name: c.name,
+        icon: c.icon,
+        note: c.note,
+        emergency: c.emergency,
+        primary: c.primary,
+        powertrains: c.powertrains,
+        requires: c.requires,
+      );
+}
+
 /// A bookable service family (major service, tyres, roadside …).
 class ServiceCategory {
   const ServiceCategory({
@@ -124,6 +181,10 @@ class ServiceCategory {
     bool? primary,
     Set<Powertrain>? powertrains,
     ProviderCapability? requires,
+    // `badge: null` cannot mean "clear" in a copyWith — it is indistinguishable
+    // from "leave alone". Taking a ribbon down is a real operation the founder
+    // panel performs, so it gets its own flag.
+    bool clearBadge = false,
   }) =>
       ServiceCategory(
         id: id ?? this.id,
@@ -132,7 +193,7 @@ class ServiceCategory {
         icon: icon ?? this.icon,
         note: note ?? this.note,
         emergency: emergency ?? this.emergency,
-        badge: badge ?? this.badge,
+        badge: clearBadge ? null : (badge ?? this.badge),
         primary: primary ?? this.primary,
         powertrains: powertrains ?? this.powertrains,
         requires: requires ?? this.requires,

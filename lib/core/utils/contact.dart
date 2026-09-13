@@ -19,9 +19,7 @@ abstract final class Contact {
     String? message,
   }) async {
     final normalized = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    final uri = Uri.https('wa.me', '/$normalized', {
-      if (message != null) 'text': message,
-    });
+    final uri = Uri.https('wa.me', '/$normalized', {'text': ?message});
     final messenger = ScaffoldMessenger.of(context);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       messenger.showSnackBar(

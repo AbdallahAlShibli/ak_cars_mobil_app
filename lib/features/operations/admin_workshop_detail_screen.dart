@@ -9,10 +9,13 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/widgets.dart';
+import '../../core/widgets/working_hours_field.dart';
 import '../../data/models/models.dart';
 import '../../di/providers.dart';
 import '../../state/admin_state.dart';
 import '../../state/admin_workshop_detail_state.dart';
+import '../services/service_photo_field.dart';
+import 'admin_workshops_tab.dart' show PhoneField, showCrDocumentDialog;
 
 /// The founder's "manage this workshop" screen — profile, offerings and
 /// add-ons for one workshop picked from the roster (`_RosterRow`'s "Manage"
@@ -108,8 +111,12 @@ class _ProfileSectionState extends ConsumerState<_ProfileSection> {
   late final _region = TextEditingController(text: widget.provider.region);
   late final _phone = TextEditingController(text: widget.provider.phone);
   late final _whatsapp = TextEditingController(text: widget.provider.whatsapp);
-  late final _hoursAr = TextEditingController(text: widget.provider.hours?.ar);
-  late final _hoursEn = TextEditingController(text: widget.provider.hours?.en);
+
+  /// Opening hours are picked, not typed — see [WorkingHoursField]. Null
+  /// means the stored sentence could not be read back as days and times; the
+  /// field then shows it verbatim and this screen saves it unchanged unless
+  /// the founder takes it over.
+  late WorkingHours? _hours = WorkingHours.parse(widget.provider.hours);
   late final _pickupFee = TextEditingController(
     text: widget.provider.pickupFee.toString(),
   );
@@ -131,8 +138,6 @@ class _ProfileSectionState extends ConsumerState<_ProfileSection> {
     _region.dispose();
     _phone.dispose();
     _whatsapp.dispose();
-    _hoursAr.dispose();
-    _hoursEn.dispose();
     _pickupFee.dispose();
     _vatNumber.dispose();
     _crNumber.dispose();
@@ -153,9 +158,10 @@ class _ProfileSectionState extends ConsumerState<_ProfileSection> {
             whatsapp: _whatsapp.text.trim().isEmpty
                 ? null
                 : _whatsapp.text.trim(),
-            hours: _hoursAr.text.trim().isEmpty && _hoursEn.text.trim().isEmpty
-                ? null
-                : L(_hoursAr.text.trim(), _hoursEn.text.trim()),
+            // Unreadable stored text is passed straight back rather than
+            // blanked: the founder has not been shown a picker for it, so
+            // nothing here is a decision to change it.
+            hours: _hours?.format() ?? widget.provider.hours,
             fulfillments: _fulfillments,
             capabilities: _capabilities,
             pickupFee:
@@ -201,6 +207,24 @@ class _ProfileSectionState extends ConsumerState<_ProfileSection> {
         children: [
           SectionHeader(s.t('الملف الشخصي', 'Profile')),
           const SizedBox(height: AppSpacing.headingGap),
+          PhoneField(provider: widget.provider),
+          const SizedBox(height: AppSpacing.sm),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: () => showCrDocumentDialog(context, widget.provider),
+              icon: const Icon(LucideIcons.fileText, size: 15),
+              label: Text(
+                widget.provider.crDocument == null
+                    ? s.t('رفع وثيقة السجل التجاري', 'Upload CR document')
+                    : s.t(
+                        'عرض/استبدال وثيقة السجل التجاري',
+                        'View / replace CR document',
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _nameAr,
             decoration: const InputDecoration(labelText: 'الاسم (عربي)'),
@@ -242,17 +266,13 @@ class _ProfileSectionState extends ConsumerState<_ProfileSection> {
             controller: _whatsapp,
             decoration: InputDecoration(labelText: s.t('واتساب', 'WhatsApp')),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          TextField(
-            controller: _hoursAr,
-            decoration: const InputDecoration(labelText: 'ساعات العمل (عربي)'),
+          const SizedBox(height: AppSpacing.md),
+          WorkingHoursField(
+            value: _hours,
+            savedText: widget.provider.hours?.of(s),
+            onChanged: (hours) => setState(() => _hours = hours),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          TextField(
-            controller: _hoursEn,
-            decoration: const InputDecoration(labelText: 'Hours (English)'),
-          ),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _pickupFee,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -443,7 +463,10 @@ class _AdminOfferingCard extends ConsumerWidget {
 
     return AppCard(
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          OfferingPhotoThumb(photo: offering.photo),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -562,6 +585,7 @@ class _AdminOfferingEditorSheetState
   late bool _quoteAfterInspection = widget.existing?.quoteOnly ?? false;
   late String? _categoryId = widget.existing?.categoryId;
   late List<L> _includes = [...?widget.existing?.includes];
+  late MediaAttachment? _photo = widget.existing?.photo;
   bool _saving = false;
 
   bool get _ready =>
@@ -606,6 +630,7 @@ class _AdminOfferingEditorSheetState
           durationMin: durationMin,
           includes: _includes,
           warrantyMonths: warrantyMonths,
+          photo: _photo,
         );
       } else {
         await notifier.edit(
@@ -617,6 +642,7 @@ class _AdminOfferingEditorSheetState
           durationMin: durationMin,
           includes: _includes,
           warrantyMonths: warrantyMonths,
+          photo: _photo,
         );
       }
       if (mounted) Navigator.of(context).pop();
@@ -696,9 +722,7 @@ class _AdminOfferingEditorSheetState
         .categories;
 
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: DraggableScrollableSheet(
         initialChildSize: 0.9,
         maxChildSize: 0.95,
@@ -771,6 +795,11 @@ class _AdminOfferingEditorSheetState
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: AppSpacing.md),
+                ServicePhotoField(
+                  value: _photo,
+                  onChanged: (photo) => setState(() => _photo = photo),
+                ),
+                const SizedBox(height: AppSpacing.md),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
@@ -831,6 +860,7 @@ class _AdminOfferingEditorSheetState
                     contentPadding: EdgeInsets.zero,
                     title: Text(include.of(s)),
                     trailing: IconButton(
+                      tooltip: s.t('إزالة البند', 'Remove item'),
                       icon: const Icon(LucideIcons.x, size: 16),
                       onPressed: () => setState(
                         () => _includes = [
@@ -951,11 +981,13 @@ class _AdminAddOnCard extends ConsumerWidget {
             ),
           ),
           IconButton(
+            tooltip: s.t('تعديل الإضافة', 'Edit add-on'),
             icon: const Icon(LucideIcons.pencil, size: 16),
             onPressed: () =>
                 _showAdminAddOnEditor(context, providerId, existing: addOn),
           ),
           IconButton(
+            tooltip: s.t('حذف الإضافة', 'Delete add-on'),
             icon: Icon(LucideIcons.trash2, size: 16, color: ak.danger),
             onPressed: () async {
               final confirmed = await showDialog<bool>(

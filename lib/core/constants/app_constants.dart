@@ -1,5 +1,14 @@
 /// Cross-cutting values that are neither theme tokens nor API paths.
 abstract final class AppConstants {
+  /// Marketing version, kept in step with `pubspec.yaml`'s `version:`.
+  ///
+  /// One constant because there were two hardcoded strings that had already
+  /// drifted apart — the profile screen claimed "v1.0.0" while Settings
+  /// claimed "v2.0" on the same build. A version the app cannot state
+  /// consistently is worse than one it does not show at all, since it is the
+  /// first thing a support conversation asks for.
+  static const appVersion = '1.0.0';
+
   /// ISO code of the only currency the app trades in.
   static const currencyCode = 'OMR';
 
@@ -45,6 +54,14 @@ abstract final class AppConstants {
   /// The user's own records, stored on the device until the backend owns them.
   /// Registering a car is the app's first real piece of data entry — losing it
   /// on the next launch reads as the Save button never having worked.
+  /// Which workshop-application status the owner has dismissed the "My
+  /// account" status card for. Holds the *stage key* rather than a boolean on
+  /// purpose: dismissing "your workshop is approved" must not also swallow a
+  /// later suspension, so the card comes back the moment the decision
+  /// changes. Device-local — hiding a card is a preference, not account data.
+  static const prefsWorkshopNoticeDismissedStage =
+      'akcars_workshop_notice_dismissed_stage';
+
   static const prefsGarage = 'akcars_garage';
   static const prefsMaintenance = 'akcars_maintenance';
 }

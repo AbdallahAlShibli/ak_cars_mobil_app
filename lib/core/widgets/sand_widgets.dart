@@ -69,6 +69,10 @@ class InkPill extends StatefulWidget {
   /// Outline variant (white bg, ink border) — e.g. "أضف سجلاً يدوياً".
   final bool outlined;
 
+  /// Vertical padding added around the pill so the *tap* target clears 44px
+  /// while the painted pill keeps its designed height.
+  static const _minTapPadding = 7.0;
+
   @override
   State<InkPill> createState() => _InkPillState();
 }
@@ -80,48 +84,66 @@ class _InkPillState extends State<InkPill> {
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
     final fg = widget.outlined ? ak.ink : ak.onPrimary;
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTap: () {
-        HapticFeedback.selectionClick();
-        widget.onTap();
-      },
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 120),
-        opacity: _pressed ? 0.85 : 1,
-        child: Container(
-          padding: widget.padding,
-          decoration: BoxDecoration(
-            color: widget.outlined ? ak.surface : ak.primary,
-            borderRadius: BorderRadius.circular(999),
-            border: widget.outlined
-                ? Border.all(color: ak.ink, width: 1.5)
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.icon != null) ...[
-                Icon(widget.icon, size: widget.fontSize + 2, color: fg),
-                const SizedBox(width: 6),
-              ],
-              // Flexible so a long label in a narrow column ellipsizes
-              // instead of overflowing the pill.
-              Flexible(
-                child: Text(
-                  widget.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: widget.fontSize,
-                    fontWeight: FontWeight.w700,
-                    color: fg,
-                  ),
-                ),
+    // Without this a screen reader reads the label as static text: a bare
+    // `GestureDetector` publishes no role and no tap action, so the control
+    // is simply unreachable with TalkBack or VoiceOver.
+    return Semantics(
+      button: true,
+      label: widget.label,
+      // The label is already announced here; letting the child's own Text
+      // node through as well would have it read twice.
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          widget.onTap();
+        },
+        // Keeps a 44px tap target without growing the pill itself — the same
+        // trick, for the same reason, as [SandBackButton] below. The default
+        // pill is about 31px tall, which is under both Material's and the
+        // iOS HIG's minimum.
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: InkPill._minTapPadding),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 120),
+            opacity: _pressed ? 0.85 : 1,
+            child: Container(
+              padding: widget.padding,
+              decoration: BoxDecoration(
+                color: widget.outlined ? ak.surface : ak.primary,
+                borderRadius: BorderRadius.circular(999),
+                border: widget.outlined
+                    ? Border.all(color: ak.ink, width: 1.5)
+                    : null,
               ),
-            ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.icon != null) ...[
+                    Icon(widget.icon, size: widget.fontSize + 2, color: fg),
+                    const SizedBox(width: 6),
+                  ],
+                  // Flexible so a long label in a narrow column ellipsizes
+                  // instead of overflowing the pill.
+                  Flexible(
+                    child: Text(
+                      widget.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: widget.fontSize,
+                        fontWeight: FontWeight.w700,
+                        color: fg,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -145,9 +167,12 @@ class SandBackButton extends StatefulWidget {
 
   /// Presentation-only variant used where the tap is handled by a parent
   /// (e.g. the [IconButton] Material builds for an `AppBar` leading).
-  const SandBackButton.icon({super.key, this.translucent = false, this.size = 34})
-      : onTap = null,
-        _decorative = true;
+  const SandBackButton.icon({
+    super.key,
+    this.translucent = false,
+    this.size = 34,
+  }) : onTap = null,
+       _decorative = true;
 
   final VoidCallback? onTap;
 
@@ -218,10 +243,7 @@ class _SandBackButtonState extends State<SandBackButton> {
         onTapUp: (_) => setState(() => _pressed = false),
         onTap: _back,
         // Keeps a 44px tap target without growing the 38px visual.
-        child: Padding(
-          padding: const EdgeInsets.all(3),
-          child: chip,
-        ),
+        child: Padding(padding: const EdgeInsets.all(3), child: chip),
       ),
     );
   }
@@ -254,14 +276,14 @@ class SandProgressBar extends StatelessWidget {
     final ak = AkColors.of(context);
     final target = value.clamp(0.0, 1.0);
     Widget fill(double v) => FractionallySizedBox(
-          widthFactor: v,
-          child: Container(
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(height / 2),
-            ),
-          ),
-        );
+      widthFactor: v,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(height / 2),
+        ),
+      ),
+    );
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(height / 2),
@@ -297,11 +319,20 @@ class SandPressable extends StatefulWidget {
     required this.child,
     required this.onTap,
     this.scale = 0.97,
+    this.semanticLabel,
   });
 
   final Widget child;
   final VoidCallback onTap;
   final double scale;
+
+  /// Overrides what a screen reader announces for this control.
+  ///
+  /// Usually unnecessary: this wraps whole cards, and leaving it null lets
+  /// the card's own text through as the button's label, which is both
+  /// accurate and self-maintaining. Set it where the child is purely visual
+  /// and would otherwise announce nothing.
+  final String? semanticLabel;
 
   @override
   State<SandPressable> createState() => _SandPressableState();
@@ -312,20 +343,27 @@ class _SandPressableState extends State<SandPressable> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTap: () {
-        HapticFeedback.selectionClick();
-        widget.onTap();
-      },
-      child: AnimatedScale(
-        scale: _pressed ? widget.scale : 1,
-        duration: const Duration(milliseconds: 110),
-        curve: Curves.easeOut,
-        child: widget.child,
+    // A bare `GestureDetector` has no role and no tap action in the semantics
+    // tree, so everything this wraps — the cards on Home, the tiles in the
+    // dashboard — read to a screen reader as unactionable text.
+    return Semantics(
+      button: true,
+      label: widget.semanticLabel,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          widget.onTap();
+        },
+        child: AnimatedScale(
+          scale: _pressed ? widget.scale : 1,
+          duration: const Duration(milliseconds: 110),
+          curve: Curves.easeOut,
+          child: widget.child,
+        ),
       ),
     );
   }
@@ -333,8 +371,12 @@ class _SandPressableState extends State<SandPressable> {
 
 /// Small colored status pill ("قريب", "بوضع جيد", "لا يوجد سجل"…).
 class SandStatusPill extends StatelessWidget {
-  const SandStatusPill(this.label,
-      {super.key, required this.background, required this.foreground});
+  const SandStatusPill(
+    this.label, {
+    super.key,
+    required this.background,
+    required this.foreground,
+  });
 
   final String label;
   final Color background;
@@ -344,7 +386,9 @@ class SandStatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm + 2, vertical: AppSpacing.xs),
+        horizontal: AppSpacing.sm + 2,
+        vertical: AppSpacing.xs,
+      ),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(999),
@@ -423,6 +467,91 @@ class SandSectionHeader extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// The header every **tab root** wears — the five screens reachable from the
+/// bottom bar.
+///
+/// Before this existed those five screens introduced themselves five different
+/// ways: two Material `AppBar`s, one [SandHeader], one bare `Text(fontSize:
+/// 19)` and one greeting row. Switching tabs therefore moved the title, moved
+/// the first card down by a different amount each time, and changed whether
+/// the title stayed put while scrolling — which reads as five apps rather than
+/// five tabs of one.
+///
+/// It scrolls with the content rather than pinning as an app bar, because on a
+/// tab root the title is the least useful thing on screen once the user has
+/// arrived: the bottom bar already says which tab this is, so the top of the
+/// viewport is better spent on the content. [Services] pins its *search field*
+/// instead, which is the part of its header that is worth the space.
+///
+/// [subtitle] is for the one line that says what the screen is *for* when that
+/// is not obvious from the title alone. Leave it null rather than writing a
+/// caption that only restates the title.
+class SandTabHeader extends StatelessWidget {
+  const SandTabHeader(this.title, {super.key, this.subtitle, this.trailing});
+
+  final String title;
+  final String? subtitle;
+
+  /// A single control, right-aligned — the tab's one global action.
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title, style: context.text.screenTitle),
+              if (subtitle != null) ...[
+                const SizedBox(height: AppSpacing.xs / 2),
+                Text(subtitle!, style: context.text.bodySecondary),
+              ],
+            ],
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: AppSpacing.md),
+          trailing!,
+        ],
+      ],
+    );
+  }
+}
+
+/// Pull-to-refresh, in the app's own colours.
+///
+/// A thin wrapper so the five tabs cannot each pick their own spinner tint and
+/// displacement. The displacement is raised off Material's default because
+/// these screens have no app bar to sit under — at the stock value the
+/// spinner lands on top of the screen title.
+///
+/// The child must be a scrollable that always accepts an overscroll, so short
+/// content still refreshes: pass `physics: AlwaysScrollableScrollPhysics()` on
+/// any list that can be shorter than the viewport.
+class SandRefresh extends StatelessWidget {
+  const SandRefresh({super.key, required this.onRefresh, required this.child});
+
+  final Future<void> Function() onRefresh;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      color: ak.ink,
+      backgroundColor: ak.surface,
+      displacement: 52,
+      strokeWidth: 2.4,
+      child: child,
     );
   }
 }

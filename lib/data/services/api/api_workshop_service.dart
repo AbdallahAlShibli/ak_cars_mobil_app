@@ -18,8 +18,8 @@ class ApiWorkshopService implements WorkshopService {
   // ------------------------------------------------------------- profile
 
   @override
-  Future<ServiceProvider> getMyWorkshop() async =>
-      ServiceProvider.fromJson(await _client.get(ApiEndpoints.myWorkshop));
+  Future<MyWorkshopProfile> getMyWorkshop() async =>
+      MyWorkshopProfile.fromJson(await _client.get(ApiEndpoints.myWorkshop));
 
   @override
   Future<ServiceProvider> updateMyWorkshop({
@@ -77,6 +77,7 @@ class ApiWorkshopService implements WorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) => {
     'categoryId': categoryId,
     'nameAr': name.ar,
@@ -89,6 +90,10 @@ class ApiWorkshopService implements WorkshopService {
       for (final i in includes) {'ar': i.ar, 'en': i.en},
     ],
     'warrantyMonths': warrantyMonths,
+    'photoId': ?photo?.id,
+    'photoBase64': ?photo?.base64Data,
+    'photoMimeType': ?photo?.mimeType,
+    'photoFileName': ?photo?.fileName,
   };
 
   @override
@@ -100,6 +105,7 @@ class ApiWorkshopService implements WorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async => ServiceOffering.fromJson(
     await _client.post(
       ApiEndpoints.myWorkshopOfferings,
@@ -111,6 +117,7 @@ class ApiWorkshopService implements WorkshopService {
         durationMin: durationMin,
         includes: includes,
         warrantyMonths: warrantyMonths,
+        photo: photo,
       ),
     ),
   );
@@ -125,6 +132,7 @@ class ApiWorkshopService implements WorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async => ServiceOffering.fromJson(
     await _client.put(
       ApiEndpoints.myWorkshopOffering(offeringId),
@@ -136,6 +144,7 @@ class ApiWorkshopService implements WorkshopService {
         durationMin: durationMin,
         includes: includes,
         warrantyMonths: warrantyMonths,
+        photo: photo,
       ),
     ),
   );

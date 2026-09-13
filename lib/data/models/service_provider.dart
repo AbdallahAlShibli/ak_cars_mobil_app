@@ -10,17 +10,19 @@ enum Fulfillment { workshop, pickup, roadside }
 
 extension FulfillmentX on Fulfillment {
   String label(S s) => switch (this) {
-        Fulfillment.workshop => s.t('زيارة الورشة', 'Visit workshop'),
-        Fulfillment.pickup => s.t('استلام وإعادة', 'Pickup & return'),
-        Fulfillment.roadside =>
-          s.t('مساعدة على الطريق (طارئ)', 'Roadside (emergency)'),
-      };
+    Fulfillment.workshop => s.t('زيارة الورشة', 'Visit workshop'),
+    Fulfillment.pickup => s.t('استلام وإعادة', 'Pickup & return'),
+    Fulfillment.roadside => s.t(
+      'مساعدة على الطريق (طارئ)',
+      'Roadside (emergency)',
+    ),
+  };
 
   IconData get icon => switch (this) {
-        Fulfillment.workshop => LucideIcons.store,
-        Fulfillment.pickup => LucideIcons.truckElectric,
-        Fulfillment.roadside => LucideIcons.triangleAlert,
-      };
+    Fulfillment.workshop => LucideIcons.store,
+    Fulfillment.pickup => LucideIcons.truckElectric,
+    Fulfillment.roadside => LucideIcons.triangleAlert,
+  };
 
   /// Stable wire value — persisted on a service request.
   String get key => name;
@@ -47,16 +49,20 @@ extension ProviderCapabilityX on ProviderCapability {
   String get key => name;
 
   L get label => switch (this) {
-        ProviderCapability.evService =>
-          const L('معتمد لخدمة السيارات الكهربائية', 'EV-certified'),
-        ProviderCapability.evChargerInstall =>
-          const L('تركيب وفحص شواحن منزلية', 'Home charger installation'),
-      };
+    ProviderCapability.evService => const L(
+      'معتمد لخدمة السيارات الكهربائية',
+      'EV-certified',
+    ),
+    ProviderCapability.evChargerInstall => const L(
+      'تركيب وفحص شواحن منزلية',
+      'Home charger installation',
+    ),
+  };
 
   IconData get icon => switch (this) {
-        ProviderCapability.evService => LucideIcons.zap,
-        ProviderCapability.evChargerInstall => LucideIcons.plugZap,
-      };
+    ProviderCapability.evService => LucideIcons.zap,
+    ProviderCapability.evChargerInstall => LucideIcons.plugZap,
+  };
 
   static ProviderCapability? fromKey(String? key) {
     for (final value in ProviderCapability.values) {
@@ -120,36 +126,44 @@ enum ProviderOnboardingStage {
 
 extension ProviderOnboardingStageX on ProviderOnboardingStage {
   String label(S s) => switch (this) {
-        ProviderOnboardingStage.applied => s.t('قُدِّم الطلب', 'Applied'),
-        ProviderOnboardingStage.documentsSubmitted =>
-          s.t('الوثائق مرفوعة', 'Documents submitted'),
-        ProviderOnboardingStage.verified => s.t('تم التحقّق', 'Verified'),
-        ProviderOnboardingStage.approved => s.t('معتمدة', 'Approved'),
-        ProviderOnboardingStage.suspended => s.t('موقوفة', 'Suspended'),
-      };
+    ProviderOnboardingStage.applied => s.t('قُدِّم الطلب', 'Applied'),
+    ProviderOnboardingStage.documentsSubmitted => s.t(
+      'الوثائق مرفوعة',
+      'Documents submitted',
+    ),
+    ProviderOnboardingStage.verified => s.t('تم التحقّق', 'Verified'),
+    ProviderOnboardingStage.approved => s.t('معتمدة', 'Approved'),
+    ProviderOnboardingStage.suspended => s.t('موقوفة', 'Suspended'),
+  };
 
   /// What the *workshop owner* is told, which is not what the founder's
   /// pipeline column says: "documents submitted" is an internal position, and
   /// what the applicant needs to know is that somebody is reading them (§11
   /// step 5).
   String ownerStatus(S s) => switch (this) {
-        ProviderOnboardingStage.applied ||
-        ProviderOnboardingStage.documentsSubmitted ||
-        ProviderOnboardingStage.verified =>
-          s.t('طلب ورشتك قيد المراجعة', 'Your workshop application is under review'),
-        ProviderOnboardingStage.approved =>
-          s.t('تم اعتماد ورشتك', 'Your workshop is approved'),
-        ProviderOnboardingStage.suspended =>
-          s.t('طلبك يحتاج تعديلاً', 'Your application needs a change'),
-      };
+    ProviderOnboardingStage.applied ||
+    ProviderOnboardingStage.documentsSubmitted ||
+    ProviderOnboardingStage.verified => s.t(
+      'طلب ورشتك قيد المراجعة',
+      'Your workshop application is under review',
+    ),
+    ProviderOnboardingStage.approved => s.t(
+      'تم اعتماد ورشتك',
+      'Your workshop is approved',
+    ),
+    ProviderOnboardingStage.suspended => s.t(
+      'طلبك يحتاج تعديلاً',
+      'Your application needs a change',
+    ),
+  };
 
   IconData get icon => switch (this) {
-        ProviderOnboardingStage.applied => LucideIcons.filePlus,
-        ProviderOnboardingStage.documentsSubmitted => LucideIcons.fileText,
-        ProviderOnboardingStage.verified => LucideIcons.badgeCheck,
-        ProviderOnboardingStage.approved => LucideIcons.circleCheck,
-        ProviderOnboardingStage.suspended => LucideIcons.circleSlash,
-      };
+    ProviderOnboardingStage.applied => LucideIcons.filePlus,
+    ProviderOnboardingStage.documentsSubmitted => LucideIcons.fileText,
+    ProviderOnboardingStage.verified => LucideIcons.badgeCheck,
+    ProviderOnboardingStage.approved => LucideIcons.circleCheck,
+    ProviderOnboardingStage.suspended => LucideIcons.circleSlash,
+  };
 }
 
 /// A workshop or roadside operator on the marketplace.
@@ -174,6 +188,7 @@ class ServiceProvider {
     this.vatNumber,
     this.crNumber,
     this.hours,
+    this.ownerPhone,
   });
 
   final String id;
@@ -263,6 +278,16 @@ class ServiceProvider {
   /// Opening hours, free text ("Sat–Thu 8:00–20:00").
   final L? hours;
 
+  /// The owner's personal account phone — the number they registered/log in
+  /// with — as opposed to [phone], the workshop's own published contact
+  /// number (usually null until the owner fills in "My workshop", including
+  /// for the whole time an application sits pending). Only ever populated for
+  /// the founder or the owner themselves; the server strips it for anyone
+  /// else, so a null here on a workshop that clearly has an owner is not a
+  /// bug — it means this viewer is not allowed to see it, not that the
+  /// number does not exist.
+  final String? ownerPhone;
+
   /// True once the workshop can issue a VAT invoice for a parts order.
   bool get vatRegistered => vatNumber != null && vatNumber!.isNotEmpty;
 
@@ -273,69 +298,71 @@ class ServiceProvider {
   bool get evCertified => capabilities.contains(ProviderCapability.evService);
 
   factory ServiceProvider.fromJson(JsonMap json) => ServiceProvider(
-        id: json.requireString('id'),
-        name: L.fromJson(json['name']),
-        area: json.stringOr('area', ''),
-        region: json.stringOr('region', ''),
-        distanceKm: json.doubleOr('distanceKm', 0),
-        verified: json.boolOr('verified', false),
-        // Back-compatible read: a payload from before the staged path only
-        // carries the boolean, and `isApproved: true` means exactly
-        // "approved". Anything else starts at the beginning of the path
-        // rather than being guessed at.
-        stage: json['stage'] == null
-            ? (json.boolOr('isApproved', false)
-                ? ProviderOnboardingStage.approved
-                : ProviderOnboardingStage.applied)
-            : ProviderOnboardingStage.fromKey(json.stringOrNull('stage')),
-        stageSince: json.dateTimeOrNull('stageSince'),
-        rejectionReason: json.stringOrNull('rejectionReason'),
-        crDocument: switch (json.objectOrNull('crDocument')) {
-          final JsonMap doc => MediaAttachment.fromJson(doc),
-          _ => null,
-        },
-        ownerUserId: json.stringOrNull('ownerUserId'),
-        fulfillments: json
-            .stringList('fulfillments')
-            .map(FulfillmentX.fromKey)
-            .toSet(),
-        capabilities: {
-          for (final key in json.stringList('capabilities'))
-            ?ProviderCapabilityX.fromKey(key),
-        },
-        pickupFee: json.doubleOr('pickupFee', 3),
-        phone: json.stringOrNull('phone'),
-        whatsapp: json.stringOrNull('whatsapp'),
-        vatNumber: json.stringOrNull('vatNumber'),
-        crNumber: json.stringOrNull('crNumber'),
-        hours: json['hours'] == null ? null : L.fromJson(json['hours']),
-      );
+    id: json.requireString('id'),
+    name: L.fromJson(json['name']),
+    area: json.stringOr('area', ''),
+    region: json.stringOr('region', ''),
+    distanceKm: json.doubleOr('distanceKm', 0),
+    verified: json.boolOr('verified', false),
+    // Back-compatible read: a payload from before the staged path only
+    // carries the boolean, and `isApproved: true` means exactly
+    // "approved". Anything else starts at the beginning of the path
+    // rather than being guessed at.
+    stage: json['stage'] == null
+        ? (json.boolOr('isApproved', false)
+              ? ProviderOnboardingStage.approved
+              : ProviderOnboardingStage.applied)
+        : ProviderOnboardingStage.fromKey(json.stringOrNull('stage')),
+    stageSince: json.dateTimeOrNull('stageSince'),
+    rejectionReason: json.stringOrNull('rejectionReason'),
+    crDocument: switch (json.objectOrNull('crDocument')) {
+      final JsonMap doc => MediaAttachment.fromJson(doc),
+      _ => null,
+    },
+    ownerUserId: json.stringOrNull('ownerUserId'),
+    fulfillments: json
+        .stringList('fulfillments')
+        .map(FulfillmentX.fromKey)
+        .toSet(),
+    capabilities: {
+      for (final key in json.stringList('capabilities'))
+        ?ProviderCapabilityX.fromKey(key),
+    },
+    pickupFee: json.doubleOr('pickupFee', 3),
+    phone: json.stringOrNull('phone'),
+    whatsapp: json.stringOrNull('whatsapp'),
+    vatNumber: json.stringOrNull('vatNumber'),
+    crNumber: json.stringOrNull('crNumber'),
+    hours: json['hours'] == null ? null : L.fromJson(json['hours']),
+    ownerPhone: json.stringOrNull('ownerPhone'),
+  );
 
   JsonMap toJson() => {
-        'id': id,
-        'name': name.toJson(),
-        'area': area,
-        'region': region,
-        'distanceKm': distanceKm,
-        'verified': verified,
-        'stage': stage.key,
-        // Written as well as read: it is derived here, but a client on an
-        // older build still reads the boolean, and it costs one line to keep
-        // that contract rather than silently downgrading every workshop.
-        'isApproved': isApproved,
-        'stageSince': stageSince?.toIso8601String(),
-        'rejectionReason': rejectionReason,
-        'crDocument': crDocument?.toJson(),
-        'ownerUserId': ownerUserId,
-        'fulfillments': [for (final f in fulfillments) f.key],
-        'capabilities': [for (final c in capabilities) c.key],
-        'pickupFee': pickupFee,
-        'phone': phone,
-        'whatsapp': whatsapp,
-        'vatNumber': vatNumber,
-        'crNumber': crNumber,
-        'hours': hours?.toJson(),
-      };
+    'id': id,
+    'name': name.toJson(),
+    'area': area,
+    'region': region,
+    'distanceKm': distanceKm,
+    'verified': verified,
+    'stage': stage.key,
+    // Written as well as read: it is derived here, but a client on an
+    // older build still reads the boolean, and it costs one line to keep
+    // that contract rather than silently downgrading every workshop.
+    'isApproved': isApproved,
+    'stageSince': stageSince?.toIso8601String(),
+    'rejectionReason': rejectionReason,
+    'crDocument': crDocument?.toJson(),
+    'ownerUserId': ownerUserId,
+    'fulfillments': [for (final f in fulfillments) f.key],
+    'capabilities': [for (final c in capabilities) c.key],
+    'pickupFee': pickupFee,
+    'phone': phone,
+    'whatsapp': whatsapp,
+    'vatNumber': vatNumber,
+    'crNumber': crNumber,
+    'hours': hours?.toJson(),
+    'ownerPhone': ownerPhone,
+  };
 
   ServiceProvider copyWith({
     String? id,
@@ -357,34 +384,37 @@ class ServiceProvider {
     String? vatNumber,
     String? crNumber,
     L? hours,
+    String? ownerPhone,
+
     /// Drops a previous rejection. Needed because the ordinary `?? this.x`
     /// pattern can only set a nullable field, never clear it — and re-approving
     /// a workshop that keeps showing its old rejection reason to its owner is
     /// the bug that pattern would cause (§11 step 5).
     bool clearRejectionReason = false,
-  }) =>
-      ServiceProvider(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        area: area ?? this.area,
-        region: region ?? this.region,
-        distanceKm: distanceKm ?? this.distanceKm,
-        verified: verified ?? this.verified,
-        stage: stage ?? this.stage,
-        stageSince: stageSince ?? this.stageSince,
-        rejectionReason:
-            clearRejectionReason ? null : (rejectionReason ?? this.rejectionReason),
-        crDocument: crDocument ?? this.crDocument,
-        ownerUserId: ownerUserId ?? this.ownerUserId,
-        fulfillments: fulfillments ?? this.fulfillments,
-        capabilities: capabilities ?? this.capabilities,
-        pickupFee: pickupFee ?? this.pickupFee,
-        phone: phone ?? this.phone,
-        whatsapp: whatsapp ?? this.whatsapp,
-        vatNumber: vatNumber ?? this.vatNumber,
-        crNumber: crNumber ?? this.crNumber,
-        hours: hours ?? this.hours,
-      );
+  }) => ServiceProvider(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    area: area ?? this.area,
+    region: region ?? this.region,
+    distanceKm: distanceKm ?? this.distanceKm,
+    verified: verified ?? this.verified,
+    stage: stage ?? this.stage,
+    stageSince: stageSince ?? this.stageSince,
+    rejectionReason: clearRejectionReason
+        ? null
+        : (rejectionReason ?? this.rejectionReason),
+    crDocument: crDocument ?? this.crDocument,
+    ownerUserId: ownerUserId ?? this.ownerUserId,
+    fulfillments: fulfillments ?? this.fulfillments,
+    capabilities: capabilities ?? this.capabilities,
+    pickupFee: pickupFee ?? this.pickupFee,
+    phone: phone ?? this.phone,
+    whatsapp: whatsapp ?? this.whatsapp,
+    vatNumber: vatNumber ?? this.vatNumber,
+    crNumber: crNumber ?? this.crNumber,
+    hours: hours ?? this.hours,
+    ownerPhone: ownerPhone ?? this.ownerPhone,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -406,6 +436,7 @@ class ServiceProvider {
       other.vatNumber == vatNumber &&
       other.crNumber == crNumber &&
       other.hours == hours &&
+      other.ownerPhone == ownerPhone &&
       other.fulfillments.length == fulfillments.length &&
       other.fulfillments.containsAll(fulfillments) &&
       other.capabilities.length == capabilities.length &&
@@ -413,24 +444,25 @@ class ServiceProvider {
 
   @override
   int get hashCode => Object.hash(
-        id,
-        name,
-        area,
-        region,
-        distanceKm,
-        verified,
-        stage,
-        stageSince,
-        rejectionReason,
-        crDocument,
-        ownerUserId,
-        pickupFee,
-        phone,
-        whatsapp,
-        vatNumber,
-        crNumber,
-        hours,
-        Object.hashAllUnordered(fulfillments),
-        Object.hashAllUnordered(capabilities),
-      );
+    id,
+    name,
+    area,
+    region,
+    distanceKm,
+    verified,
+    stage,
+    stageSince,
+    rejectionReason,
+    crDocument,
+    ownerUserId,
+    pickupFee,
+    phone,
+    whatsapp,
+    vatNumber,
+    crNumber,
+    hours,
+    ownerPhone,
+    Object.hashAllUnordered(fulfillments),
+    Object.hashAllUnordered(capabilities),
+  );
 }

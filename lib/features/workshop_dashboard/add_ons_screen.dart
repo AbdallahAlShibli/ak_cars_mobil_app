@@ -133,10 +133,12 @@ class _AddOnRow extends ConsumerWidget {
             ),
           ),
           IconButton(
+            tooltip: s.t('تعديل الإضافة', 'Edit add-on'),
             icon: const Icon(LucideIcons.pencil, size: 16),
             onPressed: () => _showEditor(context, ref, existing: addOn),
           ),
           IconButton(
+            tooltip: s.t('حذف الإضافة', 'Delete add-on'),
             icon: Icon(LucideIcons.trash2, size: 16, color: ak.danger),
             onPressed: () async {
               final confirmed = await showDialog<bool>(
@@ -156,10 +158,24 @@ class _AddOnRow extends ConsumerWidget {
                   ],
                 ),
               );
-              if (confirmed == true) {
+              if (confirmed != true) return;
+              try {
                 await ref
                     .read(workshopAddOnsProvider.notifier)
                     .delete(addOn.id);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        s.t(
+                          'تعذّر الحذف — حاول مرة أخرى.',
+                          'Couldn\'t delete — try again.',
+                        ),
+                      ),
+                    ),
+                  );
+                }
               }
             },
           ),
@@ -209,32 +225,38 @@ class _AddOnEditorDialogState extends ConsumerState<_AddOnEditorDialog> {
             ? s.t('إضافة جديدة', 'New add-on')
             : s.t('تعديل الإضافة', 'Edit add-on'),
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _nameAr,
-            decoration: const InputDecoration(labelText: 'عربي'),
-            onChanged: (_) => setState(() {}),
-          ),
-          TextField(
-            controller: _nameEn,
-            decoration: const InputDecoration(labelText: 'English'),
-            onChanged: (_) => setState(() {}),
-          ),
-          TextField(
-            controller: _price,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(labelText: s.t('السعر', 'Price')),
-            onChanged: (_) => setState(() {}),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(s.t('قطعة فعلية', 'Physical part')),
-            value: _isPart,
-            onChanged: (v) => setState(() => _isPart = v),
-          ),
-        ],
+      // Scrollable: four fields and an on-screen keyboard overflow a plain
+      // Column on a short phone, and an AlertDialog will not scroll for you.
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nameAr,
+              decoration: const InputDecoration(labelText: 'عربي'),
+              onChanged: (_) => setState(() {}),
+            ),
+            TextField(
+              controller: _nameEn,
+              decoration: const InputDecoration(labelText: 'English'),
+              onChanged: (_) => setState(() {}),
+            ),
+            TextField(
+              controller: _price,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(labelText: s.t('السعر', 'Price')),
+              onChanged: (_) => setState(() {}),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(s.t('قطعة فعلية', 'Physical part')),
+              value: _isPart,
+              onChanged: (v) => setState(() => _isPart = v),
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
@@ -248,6 +270,7 @@ class _AddOnEditorDialogState extends ConsumerState<_AddOnEditorDialog> {
                   final notifier = ref.read(workshopAddOnsProvider.notifier);
                   final name = L(_nameAr.text.trim(), _nameEn.text.trim());
                   final price = double.parse(_price.text.trim());
+                  final messenger = ScaffoldMessenger.of(context);
                   try {
                     if (widget.existing == null) {
                       await notifier.create(
@@ -264,6 +287,20 @@ class _AddOnEditorDialogState extends ConsumerState<_AddOnEditorDialog> {
                       );
                     }
                     if (context.mounted) Navigator.of(context).pop();
+                  } catch (_) {
+                    // Was a bare `finally`: a rejected save left the spinner
+                    // stopped, the dialog open and nothing said, which reads
+                    // as the button not working.
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          s.t(
+                            'تعذّر الحفظ — حاول مرة أخرى.',
+                            'Couldn\'t save — try again.',
+                          ),
+                        ),
+                      ),
+                    );
                   } finally {
                     if (mounted) setState(() => _saving = false);
                   }

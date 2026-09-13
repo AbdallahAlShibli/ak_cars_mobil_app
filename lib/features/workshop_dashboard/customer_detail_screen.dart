@@ -185,6 +185,7 @@ class _AddNoteFieldState extends ConsumerState<_AddNoteField> {
           ),
         ),
         IconButton(
+          tooltip: s.t('إرسال', 'Send'),
           icon: _saving
               ? const SizedBox(
                   width: 16,

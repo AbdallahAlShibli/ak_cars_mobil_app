@@ -97,9 +97,12 @@ class ApiChatService implements ChatService {
 
     scheduleNext();
 
-    controller.onCancel = () {
-      hubSubscription.cancel();
+    controller.onCancel = () async {
+      await hubSubscription.cancel();
       timer?.cancel();
+      // Cancelled first, so the hub sees this listener gone and can drop the
+      // thread's controller instead of holding it for the whole session.
+      _hub.release(threadId);
     };
 
     return controller.stream;

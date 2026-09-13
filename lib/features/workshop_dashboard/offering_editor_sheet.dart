@@ -9,6 +9,7 @@ import '../../core/widgets/rial_symbol.dart';
 import '../../data/models/models.dart';
 import '../../di/providers.dart';
 import '../../state/provider_dashboard_state.dart';
+import '../services/service_photo_field.dart';
 
 /// Create/edit form for one [ServiceOffering] — a modal sheet, following
 /// `workshop_screen.dart`'s `_QuoteSheet` pattern: controllers seeded from
@@ -60,6 +61,7 @@ class _OfferingEditorSheetState extends ConsumerState<_OfferingEditorSheet> {
   late bool _quoteAfterInspection = widget.existing?.quoteOnly ?? false;
   late String? _categoryId = widget.existing?.categoryId;
   late List<L> _includes = [...?widget.existing?.includes];
+  late MediaAttachment? _photo = widget.existing?.photo;
   bool _saving = false;
 
   bool get _ready =>
@@ -102,6 +104,7 @@ class _OfferingEditorSheetState extends ConsumerState<_OfferingEditorSheet> {
           durationMin: durationMin,
           includes: _includes,
           warrantyMonths: warrantyMonths,
+          photo: _photo,
         );
       } else {
         await notifier.edit(
@@ -113,6 +116,7 @@ class _OfferingEditorSheetState extends ConsumerState<_OfferingEditorSheet> {
           durationMin: durationMin,
           includes: _includes,
           warrantyMonths: warrantyMonths,
+          photo: _photo,
         );
       }
       if (mounted) Navigator.of(context).pop();
@@ -192,9 +196,7 @@ class _OfferingEditorSheetState extends ConsumerState<_OfferingEditorSheet> {
         .categories;
 
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: DraggableScrollableSheet(
         initialChildSize: 0.9,
         maxChildSize: 0.95,
@@ -258,6 +260,11 @@ class _OfferingEditorSheetState extends ConsumerState<_OfferingEditorSheet> {
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: AppSpacing.md),
+              ServicePhotoField(
+                value: _photo,
+                onChanged: (photo) => setState(() => _photo = photo),
+              ),
+              const SizedBox(height: AppSpacing.md),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(s.t('عرض سعر بعد الفحص', 'Quote after inspection')),
@@ -316,6 +323,7 @@ class _OfferingEditorSheetState extends ConsumerState<_OfferingEditorSheet> {
                   contentPadding: EdgeInsets.zero,
                   title: Text(include.of(s)),
                   trailing: IconButton(
+                    tooltip: s.t('إزالة البند', 'Remove item'),
                     icon: const Icon(LucideIcons.x, size: 16),
                     onPressed: () => setState(
                       () => _includes = [

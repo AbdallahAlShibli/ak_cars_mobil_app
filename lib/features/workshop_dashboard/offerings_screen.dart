@@ -9,6 +9,7 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../state/provider_dashboard_state.dart';
+import '../services/service_photo_field.dart';
 import 'offering_editor_sheet.dart';
 
 class OfferingsScreen extends ConsumerWidget {
@@ -144,7 +145,10 @@ class _OfferingCard extends ConsumerWidget {
 
     return AppCard(
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          OfferingPhotoThumb(photo: offering.photo),
+          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

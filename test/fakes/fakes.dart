@@ -65,6 +65,32 @@ export 'offline_api_client.dart';
 /// is the thing under test (`garage_persistence_test`). The wrapper's own
 /// routing rule has its own test — `guest_garage_test` — built on purpose-made
 /// fakes rather than on this harness.
+/// An access token the *real* [jwtHasFounderRole] decodes as a founder's.
+///
+/// A genuine three-part JWT — header, base64url payload, junk signature —
+/// because the claim is read by splitting and base64-decoding the payload, and
+/// nothing verifies the signature client-side. The payload is exactly
+/// `{"http://schemas.microsoft.com/ws/2008/06/identity/claims/role":"founder"}`,
+/// the full claim URI `TokenService.GenerateAccessToken` writes (see
+/// `jwt_claims.dart` for why it is the URI and not `"role"`).
+///
+/// The default token below is deliberately *not* this one. The founder-only
+/// warm-ups — the payout ledger, the audit log, the operator queue — are
+/// skipped unless the session's token says founder, so a container that wants
+/// that data has to ask for it, and the seven test files that sign in as an
+/// ordinary customer keep getting `activeRoleProvider == AppRole.customer`.
+const String founderTestAccessToken =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'
+    '.eyJodHRwOi8vc2NoZW1hcy5taWNyb3NvZnQuY29tL3dzLzIwMDgvMDYvaWRlbnRpdHkv'
+    'Y2xhaW1zL3JvbGUiOiJmb3VuZGVyIn0'
+    '.test-signature';
+
+/// Makes a test container's session a founder's. Pass in `overrides` — it
+/// comes after [fakeServiceOverrides] in the list, so it wins.
+Override founderSessionOverride() => tokenStoreProvider.overrideWithValue(
+  MemoryTokenStore(access: founderTestAccessToken, refresh: 'test-refresh'),
+);
+
 List<Override> fakeServiceOverrides(SharedPreferences prefs) => [
   sharedPrefsProvider.overrideWithValue(prefs),
   // Before anything else: the real store never answers under

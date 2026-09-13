@@ -126,6 +126,7 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                         isLabelVisible: cart.isNotEmpty,
                         label: Text('${cart.length}'),
                         child: IconButton(
+                          tooltip: s.t('سلة المشتريات', 'Cart'),
                           icon: const Icon(LucideIcons.shoppingBag),
                           onPressed: () {
                             if (!ensureRegistered(context, ref)) return;
@@ -412,8 +413,8 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: Icon(LucideIcons.x,
-                            size: 17, color: ak.inkSub),
+                        tooltip: s.t('مسح البحث', 'Clear search'),
+                        icon: Icon(LucideIcons.x, size: 17, color: ak.inkSub),
                         onPressed: () => setState(() => _query = ''),
                       ),
                 contentPadding: EdgeInsets.zero,

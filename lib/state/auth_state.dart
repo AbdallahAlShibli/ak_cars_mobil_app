@@ -58,13 +58,12 @@ class AuthState {
     bool? onboardingSeen,
     bool? startChoiceMade,
     bool? isFounder,
-  }) =>
-      AuthState(
-        profile: profile ?? this.profile,
-        onboardingSeen: onboardingSeen ?? this.onboardingSeen,
-        startChoiceMade: startChoiceMade ?? this.startChoiceMade,
-        isFounder: isFounder ?? this.isFounder,
-      );
+  }) => AuthState(
+    profile: profile ?? this.profile,
+    onboardingSeen: onboardingSeen ?? this.onboardingSeen,
+    startChoiceMade: startChoiceMade ?? this.startChoiceMade,
+    isFounder: isFounder ?? this.isFounder,
+  );
 }
 
 class AuthNotifier extends Notifier<AuthState> {
@@ -118,7 +117,10 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> restore() async {
     final stored = await ref.read(authRepositoryProvider).currentUser();
     if (stored != null) {
-      state = state.copyWith(profile: stored, isFounder: await _readIsFounder());
+      state = state.copyWith(
+        profile: stored,
+        isFounder: await _readIsFounder(),
+      );
     }
   }
 
@@ -126,8 +128,9 @@ class AuthNotifier extends Notifier<AuthState> {
   /// stored. Called after every call that can start or restore a session —
   /// see [restore], [login] and [register] — never on a timer or a guard
   /// check, so a guard reads [AuthState.isFounder] synchronously.
-  Future<bool> _readIsFounder() async =>
-      jwtHasFounderRole(await ref.read(tokenStoreProvider).tryReadAccessToken());
+  Future<bool> _readIsFounder() async => jwtHasFounderRole(
+    await ref.read(tokenStoreProvider).tryReadAccessToken(),
+  );
 
   void markOnboardingSeen() {
     state = state.copyWith(onboardingSeen: true);
@@ -157,7 +160,10 @@ class AuthNotifier extends Notifier<AuthState> {
     _markFirstRunDone();
     try {
       final stored = await ref.read(authRepositoryProvider).register(profile);
-      state = state.copyWith(profile: stored, isFounder: await _readIsFounder());
+      state = state.copyWith(
+        profile: stored,
+        isFounder: await _readIsFounder(),
+      );
 
       // §11 step 1: a workshop account files its application *as part of
       // registering*, not as a follow-up the user could abandon halfway. If it
@@ -169,7 +175,16 @@ class AuthNotifier extends Notifier<AuthState> {
       // application has to be filed against the id the server assigns; the two
       // are one operation from the user's point of view and one failure
       // rolls both back.
-      final application = stored.workshop;
+      //
+      // Deliberately `profile.workshop`, not `stored.workshop`: the server's
+      // `UserProfileDto` has no `workshop` field at all — registration and the
+      // CR-document submission are separate calls on the backend, by design
+      // (see `RegisterUserCommand`'s own comment) — so `stored.workshop` is
+      // unconditionally null on every response and this branch never used to
+      // run. The account still got created with `kind: workshop`; the
+      // application just silently never got filed, which is the same
+      // "founder was never asked" state the comment above warns about.
+      final application = profile.workshop;
       if (application != null) {
         await ref
             .read(serviceMarketplaceRepositoryProvider)
@@ -188,8 +203,8 @@ class AuthNotifier extends Notifier<AuthState> {
 
   /// Locates an existing account for the login screen. Null when nothing
   /// matches — the screen offers registration instead.
-  Future<UserProfile?> findAccount(String identifier) =>
-      ref.read(authRepositoryProvider).findAccount(identifier);
+  Future<bool> requestOtp(String identifier) =>
+      ref.read(authRepositoryProvider).requestOtp(identifier);
 
   /// Starts the session once the login screen has verified its OTP.
   ///
@@ -199,8 +214,9 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<void> login(String identifier, String code) async {
     final previous = state;
     try {
-      final stored =
-          await ref.read(authRepositoryProvider).login(identifier, code);
+      final stored = await ref
+          .read(authRepositoryProvider)
+          .login(identifier, code);
       state = state.copyWith(
         profile: stored,
         onboardingSeen: true,
@@ -300,7 +316,9 @@ class AuthNotifier extends Notifier<AuthState> {
     final merged = profile.copyWith(id: profile.id ?? previous.profile?.id);
     state = state.copyWith(profile: merged);
     try {
-      final stored = await ref.read(authRepositoryProvider).updateProfile(merged);
+      final stored = await ref
+          .read(authRepositoryProvider)
+          .updateProfile(merged);
       state = state.copyWith(profile: stored);
     } catch (_) {
       state = previous;
@@ -350,7 +368,9 @@ class AuthNotifier extends Notifier<AuthState> {
     }
     if (_disposed) return;
     unawaited(
-      ref.read(sessionRefreshProvider).clearAfterSignOut(generation: generation),
+      ref
+          .read(sessionRefreshProvider)
+          .clearAfterSignOut(generation: generation),
     );
   }
 
@@ -360,5 +380,6 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 }
 
-final authProvider =
-    NotifierProvider<AuthNotifier, AuthState>(AuthNotifier.new);
+final authProvider = NotifierProvider<AuthNotifier, AuthState>(
+  AuthNotifier.new,
+);

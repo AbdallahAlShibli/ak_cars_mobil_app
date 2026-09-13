@@ -1,5 +1,6 @@
 import '../../core/error/app_exception.dart';
 import '../../core/i18n/strings.dart';
+import '../../core/utils/guid.dart';
 import '../models/models.dart';
 import '../services/service_marketplace_service.dart';
 import '../services/workshop_service.dart';
@@ -29,9 +30,12 @@ import 'warm_cache.dart';
 /// the platform keeps one audit log, not two.
 abstract interface class WorkshopRepository {
   // ------------------------------------------------------------- profile
-  ServiceProvider? get cachedProfile;
+  MyWorkshopProfile? get cachedProfile;
 
-  Future<ServiceProvider> loadMyWorkshop();
+  /// The full `GET /my-workshop` envelope — provider, completeness report and
+  /// booking-schedule config in one round trip, since the API serves all
+  /// three from that single route and nowhere else.
+  Future<MyWorkshopProfile> loadMyWorkshop();
 
   Future<ServiceProvider> updateMyWorkshop({
     required L name,
@@ -62,6 +66,7 @@ abstract interface class WorkshopRepository {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   });
 
   Future<ServiceOffering> updateOffering(
@@ -73,6 +78,7 @@ abstract interface class WorkshopRepository {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   });
 
   Future<ServiceOffering> setOfferingActive(
@@ -222,7 +228,7 @@ class WorkshopRepositoryImpl implements WorkshopRepository {
   /// rather than growing a second one.
   final ServiceMarketplaceService _auditService;
 
-  ServiceProvider? _profile;
+  MyWorkshopProfile? _profile;
   final _offerings = WarmCache<List<ServiceOffering>>(fallback: const []);
   final _addOns = WarmCache<List<AddOn>>(fallback: const []);
   final _inventory = WarmCache<List<InventoryItem>>(fallback: const []);
@@ -239,11 +245,13 @@ class WorkshopRepositoryImpl implements WorkshopRepository {
     try {
       await _auditService.appendAudit(
         AuditEntry(
-          // Replaced by the service, which owns the identity sequence.
-          id: 'pending',
+          // A real GUID — see `ServiceMarketplaceRepositoryImpl._audit`'s
+          // longer note; `AppendAuditCommand` stores this id verbatim rather
+          // than replacing it, and it is `Guid`-typed on the wire.
+          id: newGuid(),
           at: DateTime.now(),
           actor: EscrowActor.workshop,
-          actorId: _profile?.id ?? 'workshop',
+          actorId: _profile?.provider.id ?? 'workshop',
           action: action,
           subjectType: subjectType,
           subjectId: subjectId,
@@ -259,10 +267,10 @@ class WorkshopRepositoryImpl implements WorkshopRepository {
   // ------------------------------------------------------------- profile
 
   @override
-  ServiceProvider? get cachedProfile => _profile;
+  MyWorkshopProfile? get cachedProfile => _profile;
 
   @override
-  Future<ServiceProvider> loadMyWorkshop() async {
+  Future<MyWorkshopProfile> loadMyWorkshop() async {
     _profile = await _service.getMyWorkshop();
     return _profile!;
   }
@@ -281,20 +289,30 @@ class WorkshopRepositoryImpl implements WorkshopRepository {
     String? vatNumber,
     String? crNumber,
   }) async {
-    _profile = await _service.updateMyWorkshop(
-      name: name,
-      area: area,
-      region: region,
-      phone: phone,
-      whatsapp: whatsapp,
-      hours: hours,
-      fulfillments: fulfillments,
-      capabilities: capabilities,
-      pickupFee: pickupFee,
-      vatNumber: vatNumber,
-      crNumber: crNumber,
-    );
-    return _profile!;
+    _profile = await _service
+        .updateMyWorkshop(
+          name: name,
+          area: area,
+          region: region,
+          phone: phone,
+          whatsapp: whatsapp,
+          hours: hours,
+          fulfillments: fulfillments,
+          capabilities: capabilities,
+          pickupFee: pickupFee,
+          vatNumber: vatNumber,
+          crNumber: crNumber,
+        )
+        .then(
+          // The PUT answers with the bare provider; re-wrap it so the cached
+          // envelope's completeness report reflects the edit that was just
+          // saved instead of the one from the last GET.
+          (updated) => MyWorkshopProfile.of(
+            updated,
+            schedule: _profile?.schedule ?? const WorkshopSchedule(),
+          ),
+        );
+    return _profile!.provider;
   }
 
   @override
@@ -318,6 +336,7 @@ class WorkshopRepositoryImpl implements WorkshopRepository {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async {
     final created = await _service.createOffering(
       categoryId: categoryId,
@@ -327,6 +346,7 @@ class WorkshopRepositoryImpl implements WorkshopRepository {
       durationMin: durationMin,
       includes: includes,
       warrantyMonths: warrantyMonths,
+      photo: photo,
     );
     _offerings.put([..._offerings.value, created]);
     return created;
@@ -342,6 +362,7 @@ class WorkshopRepositoryImpl implements WorkshopRepository {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async {
     final updated = await _service.updateOffering(
       offeringId,
@@ -352,6 +373,7 @@ class WorkshopRepositoryImpl implements WorkshopRepository {
       durationMin: durationMin,
       includes: includes,
       warrantyMonths: warrantyMonths,
+      photo: photo,
     );
     _replaceOffering(updated);
     return updated;

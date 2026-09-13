@@ -98,12 +98,17 @@ final pushServiceProvider = Provider<PushService>(
 /// The SignalR connection backing live chat delivery — a single connection
 /// shared by every open thread. Only constructed when the API path is bound;
 /// nothing touches it on the mock path.
-final chatHubProvider = Provider<ChatHub>(
-  (ref) => ChatHub(
+final chatHubProvider = Provider<ChatHub>((ref) {
+  final hub = ChatHub(
     config: ref.watch(appConfigProvider),
     tokens: ref.watch(tokenStoreProvider),
-  ),
-);
+  );
+  // The hub holds one broadcast controller per thread that has been watched.
+  // Nothing else closes them, and this provider outlives every screen that
+  // opened one, so teardown is the only place they can go.
+  ref.onDispose(hub.dispose);
+  return hub;
+});
 
 /// The HTTP transport every `Api*` service is written against.
 ///

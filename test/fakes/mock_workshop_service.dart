@@ -54,7 +54,8 @@ class MockWorkshopService with MockServiceBase implements WorkshopService {
   set provider(ServiceProvider value) => _provider = value;
 
   @override
-  Future<ServiceProvider> getMyWorkshop() => respond(_provider);
+  Future<MyWorkshopProfile> getMyWorkshop() =>
+      respond(MyWorkshopProfile.of(_provider, schedule: _schedule));
 
   @override
   Future<ServiceProvider> updateMyWorkshop({
@@ -133,6 +134,7 @@ class MockWorkshopService with MockServiceBase implements WorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) {
     final offering = ServiceOffering(
       id: _newId(),
@@ -150,6 +152,7 @@ class MockWorkshopService with MockServiceBase implements WorkshopService {
       durationMin: durationMin,
       includes: includes,
       warrantyMonths: warrantyMonths,
+      photo: photo,
     );
     _offerings.add(offering);
     return respond(offering);
@@ -165,6 +168,7 @@ class MockWorkshopService with MockServiceBase implements WorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) {
     final index = _offerings.indexWhere((o) => o.id == offeringId);
     final updated = _offerings[index].copyWith(
@@ -175,6 +179,8 @@ class MockWorkshopService with MockServiceBase implements WorkshopService {
       durationMin: durationMin,
       includes: includes,
       warrantyMonths: warrantyMonths,
+      photo: photo,
+      clearPhoto: photo == null,
     );
     _offerings[index] = updated;
     return respond(updated);

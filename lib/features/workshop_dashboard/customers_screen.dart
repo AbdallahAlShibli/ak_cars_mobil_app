@@ -55,9 +55,23 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         child: RefreshIndicator(
           onRefresh: () =>
               ref.read(workshopCustomersProvider.notifier).refresh(),
-          child: ListView(
-            padding: const EdgeInsets.all(AppSpacing.screenMargin),
-            children: [
+          // Slivers rather than one `ListView(children:)` — same change and
+          // same reason as `orders_screen.dart`: the customer list is
+          // server-driven and unbounded, and the plain form builds every row
+          // in it, on screen or not.
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenMargin,
+                  AppSpacing.screenMargin,
+                  AppSpacing.screenMargin,
+                  0,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
               TextField(
                 controller: _query,
                 decoration: InputDecoration(
@@ -95,39 +109,55 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
-              customers.when(
-                loading: () => const ListSkeleton(),
-                error: (error, _) => EmptyState(
-                  icon: LucideIcons.circleAlert,
-                  message: s.t(
-                    'تعذّر تحميل العملاء.',
-                    'Couldn\'t load customers.',
-                  ),
-                  action: FilledButton(
-                    onPressed: _applyFilter,
-                    child: Text(s.t('إعادة المحاولة', 'Retry')),
+                    ],
                   ),
                 ),
-                data: (list) => list.isEmpty
-                    ? EmptyState(
-                        icon: LucideIcons.contact,
-                        title: s.t('لا عملاء', 'No customers'),
-                        message: s.t(
-                          'يظهر العملاء هنا بعد أول حجز.',
-                          'Customers appear here after their first booking.',
-                        ),
-                      )
-                    : Column(
-                        children: [
-                          for (final customer in list)
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: AppSpacing.sm,
-                              ),
-                              child: _CustomerRow(customer: customer),
-                            ),
-                        ],
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenMargin,
+                  0,
+                  AppSpacing.screenMargin,
+                  AppSpacing.screenMargin,
+                ),
+                sliver: customers.when(
+                  loading: () =>
+                      const SliverToBoxAdapter(child: ListSkeleton()),
+                  error: (error, _) => SliverToBoxAdapter(
+                    child: EmptyState(
+                      icon: LucideIcons.circleAlert,
+                      message: s.t(
+                        'تعذّر تحميل العملاء.',
+                        'Couldn\'t load customers.',
                       ),
+                      action: FilledButton(
+                        onPressed: _applyFilter,
+                        child: Text(s.t('إعادة المحاولة', 'Retry')),
+                      ),
+                    ),
+                  ),
+                  data: (list) => list.isEmpty
+                      ? SliverToBoxAdapter(
+                          child: EmptyState(
+                            icon: LucideIcons.contact,
+                            title: s.t('لا عملاء', 'No customers'),
+                            message: s.t(
+                              'يظهر العملاء هنا بعد أول حجز.',
+                              'Customers appear here after their first '
+                                  'booking.',
+                            ),
+                          ),
+                        )
+                      : SliverList.builder(
+                          itemCount: list.length,
+                          itemBuilder: (context, index) => Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: AppSpacing.sm,
+                            ),
+                            child: _CustomerRow(customer: list[index]),
+                          ),
+                        ),
+                ),
               ),
             ],
           ),

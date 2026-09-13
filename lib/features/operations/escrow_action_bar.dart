@@ -42,8 +42,10 @@ class EscrowActionBar extends ConsumerWidget {
     final available = request.escrow.transitionsFor(actor);
     if (available.isEmpty) {
       return Text(
-        s.t('لا إجراء مطلوب منك في هذه الحالة.',
-            'Nothing for you to do at this state.'),
+        s.t(
+          'لا إجراء مطلوب منك في هذه الحالة.',
+          'Nothing for you to do at this state.',
+        ),
         style: context.text.bodySecondary,
       );
     }
@@ -80,8 +82,7 @@ class EscrowActionBar extends ConsumerWidget {
         ],
         if (destructive.isNotEmpty)
           Padding(
-            padding: EdgeInsets.only(
-                top: forward.isEmpty ? 0 : AppSpacing.xs),
+            padding: EdgeInsets.only(top: forward.isEmpty ? 0 : AppSpacing.xs),
             child: Wrap(
               spacing: AppSpacing.sm,
               children: [
@@ -123,8 +124,10 @@ class EscrowActionBar extends ConsumerWidget {
         builder: (dialogContext) => AlertDialog(
           title: Text(transition.event.label.of(s)),
           content: Text(
-            s.t('سيصبح الطلب «${transition.to.label(s)}». لا يمكن التراجع.',
-                'The booking becomes "${transition.to.label(s)}". This cannot be undone.'),
+            s.t(
+              'سيصبح الطلب «${transition.to.label(s)}». لا يمكن التراجع.',
+              'The booking becomes "${transition.to.label(s)}". This cannot be undone.',
+            ),
           ),
           actions: [
             TextButton(
@@ -146,11 +149,9 @@ class EscrowActionBar extends ConsumerWidget {
     // act on belong to somebody else. `OperatorQueueNotifier.fire` delegates
     // back to the customer path for the one booking that *is* the user's own,
     // so the release side-effects still happen exactly once.
-    await ref.read(operatorQueueProvider.notifier).fire(
-          request.id,
-          transition.event,
-          actor: actor,
-        );
+    await ref
+        .read(operatorQueueProvider.notifier)
+        .fire(request.id, transition.event, actor: actor);
   }
 }
 

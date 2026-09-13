@@ -699,6 +699,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     child: Row(
                       children: [
                         IconButton(
+                          tooltip: s.t('إنقاص الكمية', 'Decrease quantity'),
                           visualDensity: VisualDensity.compact,
                           icon: const Icon(LucideIcons.minus, size: 18),
                           onPressed:
@@ -708,6 +709,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                             style: const TextStyle(
                                 fontSize: 14, fontWeight: FontWeight.w800)),
                         IconButton(
+                          tooltip: s.t('زيادة الكمية', 'Increase quantity'),
                           visualDensity: VisualDensity.compact,
                           icon: const Icon(LucideIcons.plus, size: 18),
                           onPressed: _qty < product.stock

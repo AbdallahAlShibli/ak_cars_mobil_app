@@ -5,13 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../config/app_flags.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/sand_widgets.dart';
-import '../../data/models/account_kind.dart';
-import '../../data/models/service_provider.dart';
-import '../../di/providers.dart';
 import '../../state/app_state.dart';
 
 /// Settings (handoff #4a): language segmented pill (Arabic | English),
@@ -34,7 +31,19 @@ class SettingsScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
           children: [
-            SandHeader(s.settings),
+            SandHeader(
+              s.settings,
+              // Not the default `maybePop()`: several routes *replace* the
+              // stack rather than pushing onto it before landing here — the
+              // founder panel's and workshop dashboard's own back buttons
+              // (`context.go('/settings')`), and the operator-panel guard
+              // redirecting an unapproved workshop or a non-founder. In all
+              // of those `/settings` is the only page there is, so
+              // `maybePop()` finds nothing to pop and the button does
+              // nothing at all. Same idiom those two screens already use.
+              onBack: () =>
+                  context.canPop() ? context.pop() : context.go('/profile'),
+            ),
             const SizedBox(height: 15),
             _sectionLabel(ak, s.t('اللغة', 'Language')),
             const SizedBox(height: 10),
@@ -160,20 +169,29 @@ class SettingsScreen extends ConsumerWidget {
                     context,
                     icon: LucideIcons.info,
                     label: s.t('عن التطبيق', 'About the app'),
+                    // Was a dead row: it displayed a version and did nothing
+                    // when tapped, and the version it displayed ("v2.0")
+                    // disagreed with the one the profile screen showed.
                     trailing: Text(
-                      'v2.0',
+                      'v${AppConstants.appVersion}',
                       style: GoogleFonts.chakraPetch(
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
                         color: ak.inkSub,
                       ),
                     ),
+                    onTap: () => _showAboutDialog(context, s),
                   ),
                 ],
               ),
             ),
-            if (AppFlags.operatorPanelsEnabled)
-              ..._businessSection(context, ak, s, ref),
+            // The workshop-dashboard / founder-panel entry used to live here
+            // as a "My business" section. It moved to My account
+            // (`_BusinessPanelSection` in profile_screen.dart): opening your
+            // own operator panel is daily work, and Settings is where you
+            // change how the app behaves, not where you go to work. Keeping a
+            // second copy here would have left two doors to the same room,
+            // drifting apart the first time one of them was edited.
           ],
         ),
       ),
@@ -187,82 +205,6 @@ class SettingsScreen extends ConsumerWidget {
       fontWeight: FontWeight.w700,
       color: ak.inkSub,
     ),
-  );
-
-  /// The workshop-dashboard and founder-panel rows — real account facts, not
-  /// a switch. Empty when neither applies, so a plain customer sees no
-  /// section here at all (there used to be a device-local "how you're using
-  /// this" role switcher in this exact spot that let any account preview
-  /// either panel; it is gone, and so is the section, for anyone it would not
-  /// have shown a real link to).
-  List<Widget> _businessSection(
-    BuildContext context,
-    AkColors ak,
-    S s,
-    WidgetRef ref,
-  ) {
-    final profile = ref.watch(authProvider).profile;
-    final isFounder = ref.watch(authProvider).isFounder;
-    final ownsWorkshopAccount = profile?.kind == AccountKind.workshop;
-    if (!ownsWorkshopAccount && !isFounder) return const [];
-
-    final workshop = profile?.id == null
-        ? null
-        : ref
-            .watch(serviceMarketplaceRepositoryProvider)
-            .providerOwnedBy(profile!.id!);
-
-    return [
-      const SizedBox(height: 15),
-      _sectionLabel(ak, s.t('عملي', 'My business')),
-      const SizedBox(height: 10),
-      SandCard(
-        padding: EdgeInsets.zero,
-        child: Column(
-          children: [
-            if (ownsWorkshopAccount)
-              _workshopRow(context, ak, s, workshop, divider: isFounder),
-            if (isFounder) _founderRow(context, s),
-          ],
-        ),
-      ),
-    ];
-  }
-
-  Widget _workshopRow(
-    BuildContext context,
-    AkColors ak,
-    S s,
-    ServiceProvider? workshop, {
-    required bool divider,
-  }) {
-    final approved = workshop?.isApproved ?? false;
-    return _row(
-      context,
-      icon: LucideIcons.store,
-      label: s.t('لوحة الورشة', 'Workshop dashboard'),
-      divider: divider,
-      trailing: approved
-          ? Icon(LucideIcons.chevronLeft, size: 15, color: ak.inkSub)
-          : Text(
-              (workshop?.stage ?? ProviderOnboardingStage.documentsSubmitted)
-                  .label(s),
-              style: TextStyle(fontSize: 10.5, color: ak.inkSub),
-            ),
-      onTap: () => context.go(approved ? '/workshop/dashboard' : '/profile'),
-    );
-  }
-
-  Widget _founderRow(BuildContext context, S s) => _row(
-    context,
-    icon: LucideIcons.shieldCheck,
-    label: s.t('لوحة المؤسس', 'Founder panel'),
-    trailing: Icon(
-      LucideIcons.chevronLeft,
-      size: 15,
-      color: AkColors.of(context).inkSub,
-    ),
-    onTap: () => context.go('/admin'),
   );
 
   Widget _langSegment(
@@ -344,6 +286,85 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  /// What the app is, who it is for, and — the reason anyone opens this —
+  /// which build they are running, from the one [AppConstants.appVersion]
+  /// constant rather than a string typed into this screen.
+  void _showAboutDialog(BuildContext context, S s) {
+    final ak = AkColors.of(context);
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: ak.surfaceDim,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(LucideIcons.car, size: 20, color: ak.ink),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'AK Cars',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    'v${AppConstants.appVersion}',
+                    style: GoogleFonts.chakraPetch(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: ak.inkSub,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              s.t(
+                'سوق ومنصة خدمات السيارات في سلطنة عُمان — صيانة وقطع غيار وحجوزات ورش بضمان الدفع.',
+                'Car marketplace and services platform for Oman — maintenance, parts and workshop bookings with payment held in escrow.',
+              ),
+              style: const TextStyle(fontSize: 12.5, height: 1.65),
+            ),
+            const SizedBox(height: 14),
+            _AboutFact(
+              label: s.t('الإصدار', 'Version'),
+              value: AppConstants.appVersion,
+            ),
+            _AboutFact(
+              label: s.t('المنطقة', 'Market'),
+              value: s.t('سلطنة عُمان', 'Sultanate of Oman'),
+            ),
+            _AboutFact(
+              label: s.t('العملة', 'Currency'),
+              value: s.t('ريال عُماني (OMR)', 'Omani Rial (OMR)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(s.t('حسناً', 'OK')),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showRegionSheet(BuildContext context, WidgetRef ref, S s) {
     showModalBottomSheet<void>(
       context: context,
@@ -383,7 +404,6 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 }
-
 
 /// Miniature app preview inside the theme picker cards.
 class _ThemePreviewCard extends StatelessWidget {
@@ -505,6 +525,36 @@ class _ThemePreviewCard extends StatelessWidget {
                 child: Icon(LucideIcons.check, size: 12, color: ak.onPrimary),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One labelled line in the Settings "About" dialog.
+class _AboutFact extends StatelessWidget {
+  const _AboutFact({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 11.5, color: ak.inkSub),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
         ],
       ),
     );

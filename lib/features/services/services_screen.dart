@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,14 +10,22 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
+import 'service_photo_field.dart';
 import 'service_widgets.dart';
 
 /// Services — search across all workshops, "Car service" package cards,
 /// "Other services" icon tiles, and popular offerings near you.
+///
+/// The search field is **pinned**: it scrolls up with the title, then stops at
+/// the top of the viewport and stays there. This page is a search page before
+/// it is anything else, and the previous layout put the only way to search it
+/// above the fold and then let the user scroll it away — so refining a search
+/// after reading three results meant scrolling back up to find the box again.
 class ServicesScreen extends ConsumerStatefulWidget {
   const ServicesScreen({super.key, this.initialQuery});
 
@@ -29,9 +38,13 @@ class ServicesScreen extends ConsumerStatefulWidget {
 }
 
 class _ServicesScreenState extends ConsumerState<ServicesScreen> {
-  bool _loading = true;
   final _search = TextEditingController();
   String _query = '';
+
+  /// Set when a catalogue fetch this screen started came back and the cache is
+  /// still cold — i.e. it failed. Distinct from "not warm yet", which is the
+  /// ordinary state on the way in and wants a skeleton, not an error.
+  bool _loadFailed = false;
 
   /// The governorate the user explicitly asked to search beyond. Held as a
   /// region rather than a bool so changing the filter resets the widening —
@@ -43,9 +56,41 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     super.initState();
     _query = widget.initialQuery?.trim() ?? '';
     _search.text = _query;
-    Future.delayed(const Duration(milliseconds: 450), () {
-      if (mounted) setState(() => _loading = false);
-    });
+    // Self-healing rather than a fixed timer. The catalogue is normally warmed
+    // at bootstrap, so this does nothing on a healthy launch; when that
+    // warm-up failed (`SessionRefresh` is best-effort by design and swallows
+    // the error) this is the only thing that would ever ask again — and
+    // without it the tab showed a permanently empty "nothing matched" page for
+    // what was actually a network error.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _warmIfCold());
+  }
+
+  Future<void> _warmIfCold() async {
+    final marketplace = ref.read(serviceMarketplaceRepositoryProvider);
+    if (marketplace.isCatalogueWarm) return;
+    try {
+      await marketplace.warmUp();
+      ref.read(warmCacheNoticeProvider).announce();
+    } catch (_) {
+      // The reason is already logged by the API client; what this screen needs
+      // to know is only that asking did not help.
+    }
+    if (!mounted) return;
+    setState(
+      () => _loadFailed = !ref
+          .read(serviceMarketplaceRepositoryProvider)
+          .isCatalogueWarm,
+    );
+  }
+
+  Future<void> _refresh() async {
+    await ref.read(sessionRefreshProvider).refreshVisibleData();
+    if (!mounted) return;
+    setState(
+      () => _loadFailed = !ref
+          .read(serviceMarketplaceRepositoryProvider)
+          .isCatalogueWarm,
+    );
   }
 
   @override
@@ -71,24 +116,43 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         return SafeArea(
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.7,
+              maxHeight: MediaQuery.sizeOf(context).height * 0.7,
             ),
             child: ListView(
               shrinkWrap: true,
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.xl,
+                AppSpacing.sm,
+                AppSpacing.xl,
+                AppSpacing.xl + AppSpacing.xs,
+              ),
               children: [
+                // Drag handle — says "this can be swiped away" before a word
+                // of the sheet is read.
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+                    decoration: BoxDecoration(
+                      color: ak.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
                 Text(
                   s.t('أين تحتاج الخدمة؟', 'Where do you need service?'),
-                  style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w800),
+                  style: context.text.screenTitle,
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: AppSpacing.xs / 2),
                 Text(
-                  s.t('سنعرض ورش هذه المحافظة فقط',
-                      'We\'ll show workshops in this governorate only'),
-                  style: TextStyle(fontSize: 12, color: ak.inkSub),
+                  s.t(
+                    'سنعرض ورش هذه المحافظة فقط',
+                    'We\'ll show workshops in this governorate only',
+                  ),
+                  style: context.text.bodySecondary,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.lg),
                 for (final r in regions) ...[
                   _RegionOption(
                     label: locations.localized(r, isAr),
@@ -98,7 +162,7 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                     selected: r == current,
                     onTap: () => Navigator.pop(context, r),
                   ),
-                  const SizedBox(height: 9),
+                  const SizedBox(height: AppSpacing.itemGap + 1),
                 ],
               ],
             ),
@@ -135,9 +199,18 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     };
     final matches = marketplace.pricedOfferings.where((o) {
       if (q.isEmpty) return bookable.contains(o.categoryId);
-      final category = marketplace.categories
-          .firstWhere((c) => c.id == o.categoryId)
-          .name;
+      // `firstWhereOrNull`, not `firstWhere`: the founder can now delete a
+      // service type, and an offering whose category has gone would otherwise
+      // throw `StateError` out of a search — taking down the customer's main
+      // tab over a catalogue edit. Falling back to an empty name keeps the
+      // predicate below unchanged: `q` is non-empty here, so an empty name
+      // simply never matches, and the offering is still found by its own name
+      // or its workshop's.
+      final category =
+          marketplace.categories
+              .firstWhereOrNull((c) => c.id == o.categoryId)
+              ?.name ??
+          const L('', '');
       // Place names are searchable in the displayed language too, not just by
       // their canonical English key.
       bool place(String key) =>
@@ -147,8 +220,12 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
           hit(o.provider.name) ||
           place(o.provider.region) ||
           place(o.provider.area) ||
-          hit(L(category.ar.replaceAll('\n', ' '),
-              category.en.replaceAll('\n', ' ')));
+          hit(
+            L(
+              category.ar.replaceAll('\n', ' '),
+              category.en.replaceAll('\n', ' '),
+            ),
+          );
     });
     return splitByRegion(matches, region);
   }
@@ -156,12 +233,114 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final ak = AkColors.of(context);
+    final marketplace = ref.watch(serviceMarketplaceRepositoryProvider);
     final region = ref.watch(regionProvider);
     final car = ref.watch(primaryCarProvider);
     final searching = _query.trim().isNotEmpty;
+    final warm = marketplace.isCatalogueWarm;
+
+    return Scaffold(
+      backgroundColor: ak.bg,
+      body: SafeArea(
+        child: SandRefresh(
+          onRefresh: _refresh,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenMargin,
+                  AppSpacing.md,
+                  AppSpacing.screenMargin,
+                  AppSpacing.lg,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: SandTabHeader(
+                    s.navServices,
+                    subtitle: s.t(
+                      'ابحث، قارن السعر، واحجز — والمبلغ محجوز حتى ترضى',
+                      'Search, compare, book — the money is held until you approve',
+                    ),
+                  ),
+                ),
+              ),
+              // Everything below the title scrolls under this.
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _PinnedSearchField(
+                  background: ak.bg,
+                  field: TextField(
+                    controller: _search,
+                    onChanged: (v) => setState(() => _query = v),
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                        vertical: AppSpacing.md + 1,
+                      ),
+                      hintText: s.t(
+                        'ابحث عن خدمة أو ورشة…',
+                        'Search services or workshops…',
+                      ),
+                      prefixIcon: const Icon(LucideIcons.search, size: 18),
+                      prefixIconConstraints: const BoxConstraints(
+                        minWidth: 42,
+                        minHeight: 24,
+                      ),
+                      suffixIcon: searching
+                          ? IconButton(
+                              tooltip: s.t('مسح البحث', 'Clear search'),
+                              icon: const Icon(LucideIcons.x, size: 18),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () {
+                                _search.clear();
+                                setState(() => _query = '');
+                              },
+                            )
+                          : null,
+                      suffixIconConstraints: const BoxConstraints(
+                        minWidth: 42,
+                        minHeight: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (!warm)
+                SliverToBoxAdapter(
+                  child: _loadFailed
+                      ? _CatalogueUnavailable(onRetry: _refresh)
+                      : const _CatalogueSkeleton(),
+                )
+              else
+                ..._resultSlivers(
+                  s: s,
+                  region: region,
+                  car: car,
+                  searching: searching,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The page below the search field, once there is a catalogue to draw it
+  /// from. Split out only because [build] is otherwise carrying two unrelated
+  /// jobs — the chrome, and the results.
+  List<Widget> _resultSlivers({
+    required S s,
+    required String region,
+    required Car? car,
+    required bool searching,
+  }) {
     final results = _results(region);
-    final regionLabel =
-        ref.watch(locationCatalogProvider).localized(region, s.isAr);
+    final regionLabel = ref
+        .watch(locationCatalogProvider)
+        .localized(region, s.isAr);
     // Nothing in the selected governorate leaves no filter to honour, so the
     // wider list opens on its own rather than showing a dead end.
     final widened = _widenedFrom == region || results.local.isEmpty;
@@ -182,209 +361,318 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
       if (widened) ...results.nearby.take(searching ? limit : 4),
     ];
 
-    return Scaffold(
-      appBar: AppBar(title: Text(s.navServices)),
-      body: SafeArea(
-        child: _loading
-            ? ListView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                children: [
-                  const Skeleton(height: 48, radius: 16),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      for (var i = 0; i < 3; i++) ...[
-                        if (i > 0) const SizedBox(width: 12),
-                        const Expanded(
-                            child: Skeleton(height: 150, radius: 20)),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Skeleton(height: 96, radius: 16),
-                  const SizedBox(height: 16),
-                  for (var i = 0; i < 3; i++) ...[
-                    const Skeleton(height: 72, radius: 20),
-                    const SizedBox(height: 10),
-                  ],
-                ],
-              )
-            : ListView(
-                padding: const EdgeInsets.only(top: 4, bottom: 24),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: TextField(
-                      controller: _search,
-                      onChanged: (v) => setState(() => _query = v),
-                      decoration: InputDecoration(
-                        hintText: s.t('ابحث عن خدمة أو ورشة…',
-                            'Search services or workshops…'),
-                        prefixIcon: const Icon(LucideIcons.search, size: 18),
-                        suffixIcon: searching
-                            ? IconButton(
-                                icon: const Icon(LucideIcons.x,
-                                    size: 18),
-                                onPressed: () {
-                                  _search.clear();
-                                  setState(() => _query = '');
-                                },
-                              )
-                            : null,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
-                      children: [
-                        // The chip carries the count so a short list reads as
-                        // "this is all there is here", not as a broken page.
-                        SelectChip(
-                          label: widened
-                              ? s.t('$regionLabel وما حولها',
-                                  '$regionLabel & around')
-                              : '$regionLabel · ${s.workshops(regionWorkshops)}',
-                          icon: LucideIcons.mapPin,
-                          selected: true,
-                          onTap: _pickRegion,
-                        ),
-                        // The powertrain rides on this chip because it is what
-                        // decides which services the list below holds.
-                        SelectChip(
-                          // Model + year rather than the full label when a
-                          // powertrain is shown: a chip cannot ellipsize
-                          // gracefully inside a Wrap, and "Model Y 2024 ·
-                          // Electric" is the part that matters here.
-                          label: switch (car) {
-                            null => s.t('أضف سيارتك', 'Add your car'),
-                            final c when c.powertrain != null =>
-                              '${c.model} ${c.year} · ${c.powertrain!.badge.of(s)}',
-                            final c => c.label,
-                          },
-                          icon: car?.powertrain?.icon ??
-                              LucideIcons.car,
-                          selected: true,
-                          onTap: () => context
-                              .push(car == null ? '/add-car' : '/garage'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  if (!searching && AppFlags.requestPartInstall) ...[
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: _PartInstallCta(
-                        onTap: () => context.push('/request-part'),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                  ],
-                  if (!searching) ...[
-                    const ServiceRails(),
-                    const SizedBox(height: 22),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: SectionHeader(widened
-                          ? s.t('الأكثر طلباً في $regionLabel وما حولها',
-                              'Popular in & around $regionLabel')
-                          : s.t('الأكثر طلباً في $regionLabel',
-                              'Popular in $regionLabel')),
-                    ),
-                    const SizedBox(height: 10),
-                  ] else ...[
-                    Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 20),
-                      child: Text(
-                        widened
-                            ? s.t(
-                                '${s.resultsCount(shown.length)} في $regionLabel وما حولها',
-                                '${s.resultsCount(shown.length)} in & around $regionLabel')
-                            : s.t(
-                                '${s.resultsCount(shown.length)} في $regionLabel',
-                                '${s.resultsCount(shown.length)} in $regionLabel'),
-                        style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: AkColors.of(context).inkSub),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  // Widening was already applied above when the governorate
-                  // was empty, so this line explains why the list is wider.
-                  if (widened && results.local.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                      child: _Notice(
-                        icon: LucideIcons.compass,
-                        text: searching
-                            ? s.t(
-                                'لا نتائج في $regionLabel — إليك الأقرب إليها',
-                                'Nothing in $regionLabel — here are the closest')
-                            : s.t(
-                                'لا توجد ورش في $regionLabel بعد — إليك الأقرب إليها',
-                                'No workshops in $regionLabel yet — here are the closest'),
-                      ),
-                    ),
-                  if (shown.isEmpty)
-                    EmptyState(
-                      icon: LucideIcons.searchX,
-                      title: s.t('لا نتائج مطابقة', 'Nothing matched'),
-                      message: s.t(
-                        'جرّب كلمة أعمّ، أو وسّع البحث لمحافظة مجاورة — الورش تُضاف تباعاً.',
-                        'Try a broader word, or widen the search to a neighbouring governorate — workshops are being added all the time.',
-                      ),
-                    )
-                  else
-                    for (final (i, o) in shown.indexed) ...[
-                      Padding(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 20),
-                        child: Entrance(
-                          delayMs: 35 * i,
-                          child: _OfferingCard(
-                              offering: o, localRegion: region),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                  // The one way an out-of-region workshop enters the list —
-                  // the user asking for it.
-                  if (!widened && results.nearby.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: WidenSearchButton(
-                        workshops: results.nearby
-                            .map((o) => o.provider.id)
-                            .toSet()
-                            .length,
-                        regionLabel: regionLabel,
-                        onTap: () =>
-                            setState(() => _widenedFrom = region),
-                      ),
-                    ),
-                  ],
-                  if (_widenedFrom == region) ...[
-                    const SizedBox(height: 4),
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: () =>
-                            setState(() => _widenedFrom = null),
-                        icon: const Icon(LucideIcons.funnel, size: 16),
-                        label: Text(s.t('اعرض $regionLabel فقط',
-                            'Show only $regionLabel')),
-                      ),
-                    ),
-                  ],
-                ],
+    const gutter = EdgeInsets.symmetric(horizontal: AppSpacing.screenMargin);
+
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: gutter,
+          child: Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              // The chip carries the count so a short list reads as "this is
+              // all there is here", not as a broken page.
+              SelectChip(
+                label: widened
+                    ? s.t('$regionLabel وما حولها', '$regionLabel & around')
+                    : '$regionLabel · ${s.workshops(regionWorkshops)}',
+                icon: LucideIcons.mapPin,
+                selected: true,
+                onTap: _pickRegion,
               ),
+              // The powertrain rides on this chip because it is what decides
+              // which services the list below holds.
+              SelectChip(
+                // Model + year rather than the full label when a powertrain is
+                // shown: a chip cannot ellipsize gracefully inside a Wrap, and
+                // "Model Y 2024 · Electric" is the part that matters here.
+                label: switch (car) {
+                  null => s.t('أضف سيارتك', 'Add your car'),
+                  final c when c.powertrain != null =>
+                    '${c.model} ${c.year} · ${c.powertrain!.badge.of(s)}',
+                  final c => c.label,
+                },
+                icon: car?.powertrain?.icon ?? LucideIcons.car,
+                selected: true,
+                onTap: () => context.push(car == null ? '/add-car' : '/garage'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
+      if (!searching && AppFlags.requestPartInstall) ...[
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: gutter,
+            child: _PartInstallCta(onTap: () => context.push('/request-part')),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.lg)),
+      ],
+      if (!searching) ...[
+        const SliverToBoxAdapter(child: ServiceRails()),
+        const SliverToBoxAdapter(
+          child: SizedBox(height: AppSpacing.sectionGap - 2),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: gutter,
+            child: SectionHeader(
+              widened
+                  ? s.t(
+                      'الأكثر طلباً في $regionLabel وما حولها',
+                      'Popular in & around $regionLabel',
+                    )
+                  : s.t(
+                      'الأكثر طلباً في $regionLabel',
+                      'Popular in $regionLabel',
+                    ),
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(
+          child: SizedBox(height: AppSpacing.headingGap),
+        ),
+      ] else ...[
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: gutter,
+            child: Text(
+              widened
+                  ? s.t(
+                      '${s.resultsCount(shown.length)} في $regionLabel وما حولها',
+                      '${s.resultsCount(shown.length)} in & around $regionLabel',
+                    )
+                  : s.t(
+                      '${s.resultsCount(shown.length)} في $regionLabel',
+                      '${s.resultsCount(shown.length)} in $regionLabel',
+                    ),
+              style: context.text.bodySecondary.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(
+          child: SizedBox(height: AppSpacing.headingGap),
+        ),
+      ],
+      // Widening was already applied above when the governorate was empty, so
+      // this line explains why the list is wider.
+      if (widened && results.local.isEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenMargin,
+              0,
+              AppSpacing.screenMargin,
+              AppSpacing.md,
+            ),
+            child: _Notice(
+              icon: LucideIcons.compass,
+              text: searching
+                  ? s.t(
+                      'لا نتائج في $regionLabel — إليك الأقرب إليها',
+                      'Nothing in $regionLabel — here are the closest',
+                    )
+                  : s.t(
+                      'لا توجد ورش في $regionLabel بعد — إليك الأقرب إليها',
+                      'No workshops in $regionLabel yet — here are the closest',
+                    ),
+            ),
+          ),
+        ),
+      if (shown.isEmpty)
+        SliverToBoxAdapter(
+          child: EmptyState(
+            icon: LucideIcons.searchX,
+            title: s.t('لا نتائج مطابقة', 'Nothing matched'),
+            message: s.t(
+              'جرّب كلمة أعمّ، أو وسّع البحث لمحافظة مجاورة — الورش تُضاف تباعاً.',
+              'Try a broader word, or widen the search to a neighbouring governorate — workshops are being added all the time.',
+            ),
+          ),
+        )
+      else
+        SliverPadding(
+          padding: gutter,
+          sliver: SliverList.separated(
+            itemCount: shown.length,
+            separatorBuilder: (_, _) =>
+                const SizedBox(height: AppSpacing.itemGap + 2),
+            itemBuilder: (context, i) => Entrance(
+              delayMs: 35 * i,
+              child: _OfferingCard(offering: shown[i], localRegion: region),
+            ),
+          ),
+        ),
+      // The one way an out-of-region workshop enters the list — the user
+      // asking for it.
+      if (!widened && results.nearby.isNotEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenMargin,
+              AppSpacing.md,
+              AppSpacing.screenMargin,
+              0,
+            ),
+            child: WidenSearchButton(
+              workshops: results.nearby
+                  .map((o) => o.provider.id)
+                  .toSet()
+                  .length,
+              regionLabel: regionLabel,
+              onTap: () => setState(() => _widenedFrom = region),
+            ),
+          ),
+        ),
+      if (_widenedFrom == region)
+        SliverToBoxAdapter(
+          child: Center(
+            child: TextButton.icon(
+              onPressed: () => setState(() => _widenedFrom = null),
+              icon: const Icon(LucideIcons.funnel, size: 16),
+              label: Text(
+                s.t('اعرض $regionLabel فقط', 'Show only $regionLabel'),
+              ),
+            ),
+          ),
+        ),
+      const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
+    ];
+  }
+}
+
+/// Holds the search field at the top of the viewport once the title has
+/// scrolled past it.
+///
+/// A fixed extent in both directions — this header does not shrink, it either
+/// scrolls or it is parked.
+///
+/// [background] is painted opaque behind the field and then **faded out over
+/// the last few pixels** rather than stopping at a hard edge. With a hard edge
+/// the first line of whatever is scrolling underneath is sliced in half — the
+/// top of a card title, the ascenders of a heading — and a half-line of text
+/// reads as a rendering fault, not as depth. The fade dissolves it instead.
+class _PinnedSearchField extends SliverPersistentHeaderDelegate {
+  const _PinnedSearchField({required this.field, required this.background});
+
+  final Widget field;
+  final Color background;
+
+  /// Room for the field, plus [_fade] of dissolve underneath it.
+  static const _extent = 74.0;
+
+  /// How much of the bottom of the bar is gradient rather than solid.
+  static const _fade = 14.0;
+
+  @override
+  double get minExtent => _extent;
+
+  @override
+  double get maxExtent => _extent;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
+    const solid = 1 - _fade / _extent;
+    // [SizedBox], not a bare [DecoratedBox]: `layoutChild` passes *loose*
+    // constraints, so a child that sizes to its content paints shorter than
+    // the extent this delegate declared — which trips
+    // `SliverGeometry.debugAssertIsValid` ("layoutExtent exceeds paintExtent").
+    // The old `Container(alignment:)` filled the box for free; this has to say
+    // so, and the [Align] keeps the field itself loosely sized inside it.
+    return SizedBox(
+      height: _extent,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [background, background, background.withValues(alpha: 0)],
+            stops: const [0, solid, 1],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenMargin,
+            0,
+            AppSpacing.screenMargin,
+            _fade + AppSpacing.xs,
+          ),
+          child: Align(alignment: Alignment.topCenter, child: field),
+        ),
+      ),
+    );
+  }
+
+  // The field carries a live controller and closes over screen state, so there
+  // is nothing cheap to compare here — and nothing gained by trying.
+  @override
+  bool shouldRebuild(_PinnedSearchField old) => true;
+}
+
+/// The catalogue has not arrived yet. Shaped like the page it stands in for —
+/// a rail of package cards, then a run of offering rows — so the layout does
+/// not jump when the real thing lands.
+class _CatalogueSkeleton extends StatelessWidget {
+  const _CatalogueSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.screenMargin,
+        0,
+        AppSpacing.screenMargin,
+        AppSpacing.xl,
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              for (var i = 0; i < 3; i++) ...[
+                if (i > 0) const SizedBox(width: AppSpacing.md),
+                const Expanded(child: Skeleton(height: 150, radius: 20)),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          const Skeleton(height: 96, radius: 16),
+          const SizedBox(height: AppSpacing.lg),
+          for (var i = 0; i < 4; i++) ...[
+            const Skeleton(height: 72, radius: 20),
+            const SizedBox(height: AppSpacing.itemGap + 2),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The catalogue was asked for and did not come back. An honest error beats
+/// "nothing matched", which blames the search for a network failure.
+class _CatalogueUnavailable extends StatelessWidget {
+  const _CatalogueUnavailable({required this.onRetry});
+
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return EmptyState(
+      icon: LucideIcons.cloudOff,
+      title: s.t('تعذّر تحميل الخدمات', 'Couldn\'t load services'),
+      message: s.t(
+        'تحقّق من اتصالك وحاول مرة أخرى — لم نتمكّن من قراءة قائمة الورش والخدمات.',
+        'Check your connection and try again — we could not read the list of workshops and services.',
+      ),
+      action: FilledButton.icon(
+        onPressed: onRetry,
+        icon: const Icon(LucideIcons.refreshCw, size: 16),
+        label: Text(s.t('إعادة المحاولة', 'Retry')),
       ),
     );
   }
@@ -401,21 +689,32 @@ class _OfferingCard extends ConsumerWidget {
     final s = S.of(context);
     final ak = AkColors.of(context);
     final locations = ref.watch(locationCatalogProvider);
+    // Nullable for the same reason as the search above — a deleted type must
+    // degrade this card's glyph, not take the tab down.
     final category = ref
         .watch(serviceMarketplaceRepositoryProvider)
         .categories
-        .firstWhere((c) => c.id == offering.categoryId);
+        .firstWhereOrNull((c) => c.id == offering.categoryId);
     final local = offering.provider.region == localRegion;
 
     return AppCard(
       onTap: () => context.push('/service/${offering.id}'),
       child: Row(
         children: [
-          IconTile(category.icon,
-              background:
-                  category.emergency ? ak.dangerSoft : ak.surfaceDim,
-              foreground:
-                  category.emergency ? ak.danger : ak.ink),
+          // A workshop's own photo for this service outranks the generic
+          // category glyph once one exists — it is the more specific answer
+          // to "what am I booking".
+          offering.photo != null
+              ? OfferingPhotoThumb(photo: offering.photo, size: 42, radius: 14)
+              : IconTile(
+                  category?.icon ?? LucideIcons.wrench,
+                  background: (category?.emergency ?? false)
+                      ? ak.dangerSoft
+                      : ak.surfaceDim,
+                  foreground: (category?.emergency ?? false)
+                      ? ak.danger
+                      : ak.ink,
+                ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
@@ -424,14 +723,17 @@ class _OfferingCard extends ConsumerWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(offering.name.of(s),
-                          overflow: TextOverflow.ellipsis,
-                          // §2: the *service name* is body rank. It is the
-                          // same on every card in the list; the price beside
-                          // it is what the customer is actually comparing, so
-                          // the price outweighs it rather than matching it.
-                          style: context.text.bodyPrimary
-                              .copyWith(fontWeight: FontWeight.w600)),
+                      child: Text(
+                        offering.name.of(s),
+                        overflow: TextOverflow.ellipsis,
+                        // §2: the *service name* is body rank. It is the
+                        // same on every card in the list; the price beside
+                        // it is what the customer is actually comparing, so
+                        // the price outweighs it rather than matching it.
+                        style: context.text.bodyPrimary.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                     if (offering.provider.verified) ...[
                       const SizedBox(width: AppSpacing.xs),
@@ -445,8 +747,9 @@ class _OfferingCard extends ConsumerWidget {
                   '${local ? '' : ' · ${locations.localized(offering.provider.region, s.isAr)}'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: context.text.bodySecondary
-                      .copyWith(color: ak.inkFaint),
+                  style: context.text.bodySecondary.copyWith(
+                    color: ak.inkFaint,
+                  ),
                 ),
               ],
             ),
@@ -462,27 +765,29 @@ class _OfferingCard extends ConsumerWidget {
                     )
                   : Text(
                       s.t('عرض سعر', 'Quote'),
-                      style: context.text.bodySecondary
-                          .copyWith(fontWeight: FontWeight.w700),
+                      style: context.text.bodySecondary.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
               const SizedBox(height: AppSpacing.xs),
               // Distance is the honest version of "near you" once results can
               // come from further out.
               if (local)
                 StatusBadge.good(
-                    '${offering.provider.distanceKm.toStringAsFixed(0)} ${s.km}')
+                  '${offering.provider.distanceKm.toStringAsFixed(0)} ${s.km}',
+                )
               else
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(LucideIcons.compass, size: 11, color: ak.inkFaint),
+                    Icon(LucideIcons.compass, size: 12, color: ak.inkFaint),
                     const SizedBox(width: AppSpacing.xs - 1),
                     Text(
                       '${offering.provider.distanceKm.toStringAsFixed(0)} ${s.km}',
                       style: context.text.bodySecondary.copyWith(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: ak.inkFaint),
+                        fontWeight: FontWeight.w700,
+                        color: ak.inkFaint,
+                      ),
                     ),
                   ],
                 ),
@@ -515,26 +820,32 @@ class _PartInstallCta extends StatelessWidget {
       color: ak.surfaceDim,
       child: Row(
         children: [
-          IconTile(LucideIcons.wrench,
-              background: ak.primary.withValues(alpha: 0.12),
-              foreground: ak.primary),
-          const SizedBox(width: 12),
+          IconTile(
+            LucideIcons.wrench,
+            background: ak.primary.withValues(alpha: 0.12),
+            foreground: ak.primary,
+          ),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  s.t('تحتاج قطعة؟ اطلبها مع التركيب',
-                      'Need a part? Ask for it fitted'),
-                  style: const TextStyle(
-                      fontSize: 13.5, fontWeight: FontWeight.w800),
+                  s.t(
+                    'تحتاج قطعة؟ اطلبها مع التركيب',
+                    'Need a part? Ask for it fitted',
+                  ),
+                  style: context.text.bodyPrimary.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: AppSpacing.xs / 2),
                 Text(
-                  s.t('صف القطعة، وتردّ الورشة بسعر القطعة وأجرة التركيب منفصلين.',
-                      'Describe it and the workshop replies with the part and the fitting priced separately.'),
-                  style: TextStyle(
-                      fontSize: 11.5, height: 1.5, color: ak.inkSub),
+                  s.t(
+                    'صف القطعة، وتردّ الورشة بسعر القطعة وأجرة التركيب منفصلين.',
+                    'Describe it and the workshop replies with the part and the fitting priced separately.',
+                  ),
+                  style: context.text.bodySecondary.copyWith(height: 1.5),
                 ),
               ],
             ),
@@ -564,7 +875,10 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.md - 2,
+      ),
       decoration: BoxDecoration(
         color: ak.surfaceDim,
         borderRadius: BorderRadius.circular(14),
@@ -572,12 +886,11 @@ class _Notice extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, size: 16, color: ak.inkSub),
-          const SizedBox(width: 9),
+          const SizedBox(width: AppSpacing.sm + 1),
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
-                  fontSize: 12, height: 1.35, color: ak.inkSub),
+              style: context.text.bodySecondary.copyWith(height: 1.4),
             ),
           ),
         ],
@@ -608,7 +921,10 @@ class _RegionOption extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg - 2,
+          vertical: AppSpacing.md + 1,
+        ),
         decoration: BoxDecoration(
           color: selected ? ak.surfaceDim : ak.surface,
           borderRadius: BorderRadius.circular(16),
@@ -620,25 +936,25 @@ class _RegionOption extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-                selected
-                    ? LucideIcons.circleCheck
-                    : LucideIcons.mapPin,
-                size: 18,
-                color: selected ? ak.ink : ak.inkFaint),
-            const SizedBox(width: 10),
+              selected ? LucideIcons.circleCheck : LucideIcons.mapPin,
+              size: 18,
+              color: selected ? ak.ink : ak.inkFaint,
+            ),
+            const SizedBox(width: AppSpacing.sm + 2),
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w700),
+                style: context.text.bodyPrimary.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             Text(
               s.workshops(workshops),
-              style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: ak.inkFaint),
+              style: context.text.bodySecondary.copyWith(
+                fontWeight: FontWeight.w600,
+                color: ak.inkFaint,
+              ),
             ),
           ],
         ),

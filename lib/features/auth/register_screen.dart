@@ -13,11 +13,29 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/utils/workshop_validation.dart';
+import '../../core/widgets/attachment_view.dart';
 import '../../core/widgets/widgets.dart';
+import '../../di/providers.dart';
 import '../../state/app_state.dart';
+import '../../state/provider_dashboard_state.dart';
 import '../../data/models/models.dart';
 import '../services/proof_upload_sheet.dart';
 import 'auth_form_widgets.dart';
+
+/// Every error key the workshop half of the form owns.
+///
+/// One list, because two places have to agree on it: switching back to a
+/// customer account drops these errors (a customer must never be blocked by a
+/// field they cannot see), and cancelling an edit pass drops them too.
+const _workshopErrorKeys = {
+  'businessNameAr',
+  'crNumber',
+  'vatNumber',
+  'crDocument',
+  'area',
+  'fulfillments',
+};
 
 /// Rules 4–6: one-time registration gate before any transaction, and the
 /// editor for those same details afterwards.
@@ -78,6 +96,48 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   bool get _isWorkshop => _kind == AccountKind.workshop;
 
+  /// True while the owner has asked to change the filed workshop record.
+  ///
+  /// The record is **shown before it is edited**: an owner opening "My
+  /// details" is usually checking what is on file, not rewriting it, and a
+  /// screen full of live inputs over a verified business record invites a
+  /// stray keystroke into a CR number. So the fields read as filed until
+  /// "Edit workshop details" is tapped — and then they are ordinary,
+  /// validated, savable fields.
+  ///
+  /// Starts true for a *rejected* application: correcting it is the entire
+  /// point, and the status card has already told the owner to edit and
+  /// re-submit.
+  bool _workshopEditing = false;
+
+  /// The live workshop record for this account, or null while nothing has
+  /// been filed. Read from the marketplace roster rather than the profile:
+  /// the profile holds what was *submitted*, the roster holds what the
+  /// platform currently has.
+  ServiceProvider? get _registeredWorkshop {
+    final ownerId = _initial?.id ?? _initial?.phone;
+    if (ownerId == null) return null;
+    return ref
+        .read(serviceMarketplaceRepositoryProvider)
+        .providerOwnedBy(ownerId);
+  }
+
+  /// Whether there is a filed record to show at all — either the application
+  /// on the profile, or a roster entry the founder has already acted on.
+  bool get _hasFiledWorkshop =>
+      _initial?.workshop != null || _registeredWorkshop != null;
+
+  /// An approved workshop's live record is the `ServiceProvider`, not the
+  /// application. Edits to it go through `PUT /my-workshop` and reach
+  /// customers directly; they must **not** re-file the application, which
+  /// would drop an approved workshop back into the founder's review queue
+  /// over a corrected phone number.
+  bool get _workshopApproved =>
+      _registeredWorkshop?.stage == ProviderOnboardingStage.approved;
+
+  /// True while the filed workshop record is being read rather than edited.
+  bool get _workshopLocked => _hasFiledWorkshop && !_workshopEditing;
+
   final _businessNameAr = TextEditingController();
   final _businessNameEn = TextEditingController();
   final _crNumber = TextEditingController();
@@ -130,7 +190,64 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       // attached, bytes and all, so a correction pass does not silently ask
       // for it again.
       if (application.crDocument.hasBytes) _crDocs.add(application.crDocument);
+    } else {
+      _seedFromRegisteredWorkshop(profile);
     }
+
+    // A rejected application opens ready to correct — that is the only thing
+    // its owner came here to do.
+    if (_registeredWorkshop?.stage == ProviderOnboardingStage.suspended) {
+      _workshopEditing = true;
+    }
+  }
+
+  /// Seeds the workshop half from the **roster record** when the profile
+  /// carries no application.
+  ///
+  /// That is the ordinary state after a fresh sign-in: `GET /me` answers with
+  /// the account, not with the application it filed months ago, so
+  /// `profile.workshop` is null and the section rendered blank — a workshop
+  /// owner opening "My details" saw an empty registration form and no sign
+  /// that the platform still had their record. The roster entry holds the
+  /// same facts (it is what the founder approved), so it fills them in.
+  void _seedFromRegisteredWorkshop(UserProfile profile) {
+    if (profile.kind != AccountKind.workshop) return;
+    final workshop = _registeredWorkshop;
+    if (workshop == null) return;
+    _businessNameAr.text = workshop.name.ar;
+    _businessNameEn.text = workshop.name.en;
+    _crNumber.text = workshop.crNumber ?? '';
+    _vatNumber.text = workshop.vatNumber ?? '';
+    _area = workshop.area.isEmpty ? null : workshop.area;
+    _fulfillments.addAll(workshop.fulfillments);
+    final document = workshop.crDocument;
+    if (document != null && document.hasBytes) _crDocs.add(document);
+  }
+
+  /// Puts every workshop field back to what is on file and closes the edit
+  /// pass — Cancel has to mean "forget what I typed", including the chips and
+  /// the area picker, not just the text boxes.
+  void _cancelWorkshopEdit() {
+    final application = _initial?.workshop;
+    setState(() {
+      _crDocs.clear();
+      _fulfillments.clear();
+      if (application != null) {
+        _businessNameAr.text = application.businessNameAr;
+        _businessNameEn.text = application.businessNameEn ?? '';
+        _crNumber.text = application.crNumber;
+        _vatNumber.text = application.vatNumber ?? '';
+        _area = application.area.isEmpty ? null : application.area;
+        _fulfillments.addAll(application.fulfillments);
+        if (application.crDocument.hasBytes) {
+          _crDocs.add(application.crDocument);
+        }
+      } else if (_initial != null) {
+        _seedFromRegisteredWorkshop(_initial!);
+      }
+      _errors.removeWhere((key, _) => _workshopErrorKeys.contains(key));
+      _workshopEditing = false;
+    });
   }
 
   @override
@@ -165,8 +282,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
     // The code arrives by SMS, so a landline (2x) cannot receive it.
     if (!RegExp(r'^[79]').hasMatch(local)) {
-      return s.t('رقم هاتف نقّال عُماني يبدأ بـ 7 أو 9',
-          'An Oman mobile number starting with 7 or 9');
+      return s.t(
+        'رقم هاتف نقّال عُماني يبدأ بـ 7 أو 9',
+        'An Oman mobile number starting with 7 or 9',
+      );
     }
     return null;
   }
@@ -175,8 +294,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final email = _normEmail(_email.text);
     if (email.isEmpty) {
       return required
-          ? s.t('البريد الإلكتروني مطلوب للتوثيق بالبريد',
-              'Email is required to verify by email')
+          ? s.t(
+              'البريد الإلكتروني مطلوب للتوثيق بالبريد',
+              'Email is required to verify by email',
+            )
           : null;
     }
     if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
@@ -202,32 +323,36 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
     // §10. Only for a workshop account — a customer never sees these fields, so
     // it must never be blocked by them.
-    if (_isWorkshop) {
-      if (_businessNameAr.text.trim().isEmpty) {
-        errors['businessNameAr'] = s.t('اسم السجل التجاري مطلوب',
-            'The commercial registration name is required');
+    // Nothing in this half can block a save while it is only being *read* —
+    // an owner correcting their address must not be stopped by a workshop
+    // field they were never offered a way to change.
+    if (_isWorkshop && !_workshopLocked) {
+      void check(String key, String? message) {
+        if (message != null) errors[key] = message;
       }
-      final cr = _crNumber.text.trim();
-      if (cr.isEmpty) {
-        errors['crNumber'] =
-            s.t('رقم السجل التجاري مطلوب', 'The CR number is required');
-      } else if (!RegExp(r'^\d{6,10}$').hasMatch(cr)) {
-        // A shape check, not a registry lookup: the app cannot verify a CR
-        // number, and the founder reads the certificate anyway. This only
-        // catches a typo before it wastes a review.
-        errors['crNumber'] = s.t('رقم السجل التجاري من 6 إلى 10 أرقام',
-            'A CR number is 6–10 digits');
+
+      // The same rules the dashboard's workshop profile and the founder's
+      // screen apply — see `WorkshopRules`. A CR number accepted in one place
+      // and refused in another is how an owner learns the app cannot make up
+      // its mind.
+      check(
+        'businessNameAr',
+        WorkshopRules.businessNameAr(_businessNameAr.text, s),
+      );
+      check('crNumber', WorkshopRules.crNumber(_crNumber.text, s));
+      check('vatNumber', WorkshopRules.vatNumber(_vatNumber.text, s));
+      check('area', WorkshopRules.area(_area, s));
+      check('fulfillments', WorkshopRules.fulfillments(_fulfillments, s));
+      // Only while the certificate can actually be attached. An approved
+      // workshop's document lives on its record and is the founder's to
+      // replace, so demanding one here would be demanding something this
+      // screen does not offer.
+      if (!_workshopApproved && !_crDocs.any((d) => d.hasBytes)) {
+        errors['crDocument'] = s.t(
+          'أرفق صورة السجل التجاري',
+          'Attach a photo of the commercial registration',
+        );
       }
-      if (!_crDocs.any((d) => d.hasBytes)) {
-        errors['crDocument'] = s.t('أرفق صورة السجل التجاري',
-            'Attach a photo of the commercial registration');
-      }
-      if (_area == null) {
-        errors['area'] = s.t('اختر منطقة الورشة', "Choose the workshop's area");
-      }
-      // `vatNumber` is deliberately unvalidated: Oman's VAT registration is
-      // turnover-based, so a small garage genuinely has no number, and a
-      // required field here would simply be answered with an invented one.
     }
     setState(() {
       _errors
@@ -259,7 +384,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       wilayat: _wilayat ?? '',
       address: _address.text.trim(),
       kind: _kind ?? AccountKind.customer,
-      workshop: _isWorkshop ? _buildApplication() : null,
+      workshop: _isWorkshop
+          ? (_buildApplication() ?? _initial?.workshop)
+          : null,
     );
 
     final notifier = ref.read(authProvider.notifier);
@@ -271,8 +398,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         // here rather than silently leaving the old application in place is the
         // difference between "I fixed it and resubmitted" and "I fixed it and
         // nothing happened".
-        if (_isWorkshop && profile.workshop != null) {
-          await notifier.resubmitWorkshopApplication(profile.workshop!);
+        // Only when the workshop half was actually edited. Re-filing on every
+        // save would put an *approved* workshop back into the founder's
+        // pipeline because its owner corrected their own phone number — the
+        // application is unchanged, so there is nothing to review.
+        //
+        // And an approved workshop never re-files at all: its live record is
+        // the `ServiceProvider`, so the edit is written there instead. The
+        // two paths are not interchangeable — `resubmitWorkshopApplication`
+        // goes through `submitWorkshopApplication`, which files an
+        // application for review.
+        if (_isWorkshop && _workshopEditing && profile.workshop != null) {
+          if (_workshopApproved) {
+            await _saveApprovedWorkshopRecord();
+          } else {
+            await notifier.resubmitWorkshopApplication(profile.workshop!);
+          }
         }
       } else {
         await notifier.register(profile);
@@ -314,10 +455,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
     messenger.showSnackBar(
       SnackBar(
-        content: Text(_editing
-            ? s.t('تم حفظ بياناتك', 'Your details are saved')
-            : s.t('تم توثيق الحساب — يمكنك الآن إجراء المعاملات',
-                'Account verified — you can now transact')),
+        content: Text(
+          _editing
+              ? s.t('تم حفظ بياناتك', 'Your details are saved')
+              : s.t(
+                  'تم توثيق الحساب — يمكنك الآن إجراء المعاملات',
+                  'Account verified — you can now transact',
+                ),
+        ),
       ),
     );
   }
@@ -335,8 +480,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   /// and this screen is Arabic by default — a localized line for the case we
   /// recognise beats a server string the user may not read.
   void _reportSubmitFailure(Object error, S s) {
-    final code =
-        error is BusinessRuleException ? error.code : null;
+    final code = error is BusinessRuleException ? error.code : null;
     final exists = code == 'account_already_exists';
     // The founder deleted this workshop account (see AdminWorkshopDetailScreen's
     // permanent-delete action) — re-submitting must not silently resurrect it,
@@ -346,46 +490,113 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(
-          exists
-              ? s.t('لديك حساب بهذا الرقم أو البريد الإلكتروني بالفعل.',
-                  'You already have an account with that phone or email.')
-              : removed
-                  ? s.t('أُزيل هذا الحساب من المنصة. تواصل مع الدعم.',
-                      'This account was removed from the platform. Contact '
-                          'support.')
-                  : s.t('تعذّر إتمام العملية. تحقّق من اتصالك وحاول مرة أخرى.',
-                      'Could not complete that. Check your connection and try '
-                          'again.'),
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            exists
+                ? s.t(
+                    'لديك حساب بهذا الرقم أو البريد الإلكتروني بالفعل.',
+                    'You already have an account with that phone or email.',
+                  )
+                : removed
+                ? s.t(
+                    'أُزيل هذا الحساب من المنصة. تواصل مع الدعم.',
+                    'This account was removed from the platform. Contact '
+                        'support.',
+                  )
+                : s.t(
+                    'تعذّر إتمام العملية. تحقّق من اتصالك وحاول مرة أخرى.',
+                    'Could not complete that. Check your connection and try '
+                        'again.',
+                  ),
+          ),
+          action: exists
+              ? SnackBarAction(
+                  label: s.t('تسجيل الدخول', 'Sign in'),
+                  onPressed: () => context.push('/login'),
+                )
+              : null,
         ),
-        action: exists
-            ? SnackBarAction(
-                label: s.t('تسجيل الدخول', 'Sign in'),
-                onPressed: () => context.push('/login'),
-              )
-            : null,
-      ));
+      );
   }
 
   /// The submission, in [ServiceProvider]'s own field names so approval copies
   /// it across without a mapping step (§8).
-  WorkshopApplication _buildApplication() => WorkshopApplication(
-        businessNameAr: _businessNameAr.text.trim(),
-        businessNameEn: _businessNameEn.text.trim().isEmpty
-            ? null
-            : _businessNameEn.text.trim(),
-        crNumber: _crNumber.text.trim(),
-        vatNumber:
-            _vatNumber.text.trim().isEmpty ? null : _vatNumber.text.trim(),
-        // The first attachment is the certificate. More than one is allowed —
-        // a two-page CR is ordinary — and the rest ride along on the same
-        // record rather than being dropped.
-        crDocument: _crDocs.first,
-        area: _area ?? '',
-        fulfillments: {..._fulfillments},
-        submittedAt: DateTime.now(),
-      );
+  /// Writes the workshop half of this form to the **live** record via
+  /// `PUT /my-workshop` — the path an approved workshop takes instead of
+  /// re-filing its application.
+  ///
+  /// Only the fields this screen shows are touched. Phone, WhatsApp, hours,
+  /// capabilities and the pickup fee are passed back through from the current
+  /// record: a screen that does not show a field has no business rewriting
+  /// it, and those are edited on the dashboard's workshop profile.
+  Future<void> _saveApprovedWorkshopRecord() async {
+    final current = _registeredWorkshop;
+    if (current == null) return;
+    final nameAr = _businessNameAr.text.trim();
+    final nameEn = _businessNameEn.text.trim();
+    await ref
+        .read(myWorkshopProfileProvider.notifier)
+        .save(
+          // An empty English name would leave English-speaking customers
+          // looking at a blank card, so it falls back to the Arabic one.
+          name: L(nameAr, nameEn.isEmpty ? nameAr : nameEn),
+          area: _area ?? current.area,
+          region: _region ?? current.region,
+          phone: current.phone,
+          whatsapp: current.whatsapp,
+          hours: current.hours,
+          fulfillments: {..._fulfillments},
+          capabilities: current.capabilities,
+          pickupFee: current.pickupFee,
+          vatNumber: _vatNumber.text.trim().isEmpty
+              ? null
+              : _vatNumber.text.trim(),
+          crNumber: _crNumber.text.trim().isEmpty
+              ? null
+              : _crNumber.text.trim(),
+        );
+    try {
+      // The customer-facing roster is a separate cache; without this the
+      // status dialog and the services list keep the old name until the next
+      // cold start. Never allowed to fail the save it follows — the record is
+      // already written by the time this runs.
+      await ref.read(serviceMarketplaceRepositoryProvider).refreshProviders();
+    } catch (_) {
+      // The roster catches up on its next refresh.
+    }
+  }
+
+  /// The application as the form currently states it, or null when there is
+  /// no certificate to file it with.
+  ///
+  /// Null is a real case now: an *approved* workshop's certificate lives on
+  /// its `ServiceProvider` record and is the founder's to replace, so this
+  /// screen may legitimately hold none. Returning null lets the caller keep
+  /// the filed application untouched instead of `_crDocs.first` throwing on
+  /// an empty list.
+  WorkshopApplication? _buildApplication() {
+    // The first attachment is the certificate. More than one is allowed — a
+    // two-page CR is ordinary — and the rest ride along on the same record
+    // rather than being dropped.
+    if (_crDocs.isEmpty) return null;
+    return WorkshopApplication(
+      businessNameAr: _businessNameAr.text.trim(),
+      businessNameEn: _businessNameEn.text.trim().isEmpty
+          ? null
+          : _businessNameEn.text.trim(),
+      crNumber: _crNumber.text.trim(),
+      vatNumber: _vatNumber.text.trim().isEmpty ? null : _vatNumber.text.trim(),
+      crDocument: _crDocs.first,
+      area: _area ?? '',
+      fulfillments: {..._fulfillments},
+      // Only an actual edit pass re-dates the submission. Saving an address
+      // change should not make an untouched application look freshly filed.
+      submittedAt: _workshopEditing || _initial?.workshop == null
+          ? DateTime.now()
+          : _initial!.workshop!.submittedAt,
+    );
+  }
 
   Future<void> _pickCrDocument(ImageSource source) async {
     if (_pickingDoc) return;
@@ -397,7 +608,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _pickingDoc = false;
       if (_crDocs.isNotEmpty) _errors.remove('crDocument');
     });
-    if (picked.oversized > 0) showOversizedNotice(context, S.of(context), picked);
+    if (picked.oversized > 0) {
+      showOversizedNotice(context, S.of(context), picked);
+    }
   }
 
   Future<void> _pickArea() async {
@@ -408,12 +621,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     // country here would let an application name an area in a governorate it
     // does not serve.
     final region = _region;
-    final options = region == null
-        ? <String>[]
-        : locations.wilayatsOf(region);
+    final options = region == null ? <String>[] : locations.wilayatsOf(region);
     if (options.isEmpty) {
-      setState(() => _errors['area'] =
-          s.t('اختر المحافظة أولاً', 'Choose your governorate first'));
+      setState(
+        () => _errors['area'] = s.t(
+          'اختر المحافظة أولاً',
+          'Choose your governorate first',
+        ),
+      );
       return;
     }
     final picked = await _pickLocation(
@@ -483,7 +698,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       builder: (context) => SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.7,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -494,7 +709,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 child: Text(
                   title,
                   style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w800),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
               Flexible(
@@ -529,9 +746,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     return Scaffold(
       backgroundColor: ak.bg,
       appBar: AppBar(
-        title: Text(_editing
-            ? s.t('بياناتي', 'My details')
-            : s.t('أكمل بياناتك', 'Complete your details')),
+        title: Text(
+          _editing
+              ? s.t('بياناتي', 'My details')
+              : s.t('أكمل بياناتك', 'Complete your details'),
+        ),
       ),
       body: SafeArea(
         child: Column(
@@ -546,16 +765,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           background: ak.successSoft,
                           foreground: ak.success,
                           message: s.t(
-                              'حسابك موثّق. عدّل ما تشاء — لن نطلب رمزاً جديداً إلا إذا غيّرت رقم هاتفك أو بريدك.',
-                              'Your account is verified. Change anything you like — a new code is only needed if you change your phone or email.'),
+                            'حسابك موثّق. عدّل ما تشاء — لن نطلب رمزاً جديداً إلا إذا غيّرت رقم هاتفك أو بريدك.',
+                            'Your account is verified. Change anything you like — a new code is only needed if you change your phone or email.',
+                          ),
                         )
                       : AuthNoticeCard(
                           icon: LucideIcons.lock,
                           background: ak.amberBgSoft,
                           foreground: ak.amberText,
                           message: s.t(
-                              'مطلوب مرة واحدة — قبل طلب الخدمات أو حجز الصيانة. التصفح يبقى مجانياً.',
-                              'Required once — before requesting services or booking maintenance. Browsing stays free.'),
+                            'مطلوب مرة واحدة — قبل طلب الخدمات أو حجز الصيانة. التصفح يبقى مجانياً.',
+                            'Required once — before requesting services or booking maintenance. Browsing stays free.',
+                          ),
                         ),
                   // Someone who already has an account and landed here —
                   // a stale deep link, a back-navigation — should not have
@@ -567,9 +788,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       child: TextButton.icon(
                         onPressed: () => context.pushReplacement('/login'),
                         icon: const Icon(LucideIcons.logIn, size: 15),
-                        label: Text(s.t(
+                        label: Text(
+                          s.t(
                             'لديك حساب؟ سجّل الدخول',
-                            'Already have an account? Log in')),
+                            'Already have an account? Log in',
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -650,7 +874,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         ? null
                         : locations.localized(_wilayat!, s.isAr),
                     hint: _region == null
-                        ? s.t('اختر المحافظة أولاً', 'Choose a governorate first')
+                        ? s.t(
+                            'اختر المحافظة أولاً',
+                            'Choose a governorate first',
+                          )
                         : s.t('اختر من القائمة', 'Choose from the list'),
                     enabled: _region != null,
                     optional: true,
@@ -674,15 +901,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(LucideIcons.info,
-                          size: 14, color: ak.inkFaint),
+                      Icon(LucideIcons.info, size: 14, color: ak.inkFaint),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          s.t('رقم الهاتف مطلوب دائماً — حتى عند التوثيق بالبريد الإلكتروني.',
-                              'Phone number is always required — even when verifying by email.'),
+                          s.t(
+                            'رقم الهاتف مطلوب دائماً — حتى عند التوثيق بالبريد الإلكتروني.',
+                            'Phone number is always required — even when verifying by email.',
+                          ),
                           style: TextStyle(
-                              fontSize: 11.5, color: ak.inkFaint, height: 1.5),
+                            fontSize: 11.5,
+                            color: ak.inkFaint,
+                            height: 1.5,
+                          ),
                         ),
                       ),
                     ],
@@ -709,7 +940,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         width: 22,
                         height: 22,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2.5, color: ak.onPrimary),
+                          strokeWidth: 2.5,
+                          color: ak.onPrimary,
+                        ),
                       )
                     : Text(_submitLabel(s)),
               ),
@@ -730,96 +963,153 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     S s,
     AkColors ak,
     LocationCatalog locations,
-  ) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: AppSpacing.sm),
-          AuthSectionLabel(s.t('معلومات الورشة', 'Workshop details')),
-          AuthFieldRow(
-            icon: LucideIcons.store,
-            label: s.t('اسم السجل التجاري (عربي)', 'CR name (Arabic)'),
-            hint: s.t('كما هو في السجل', 'Exactly as on the certificate'),
-            controller: _businessNameAr,
-            error: _errors['businessNameAr'],
-            onChanged: (_) => _clear('businessNameAr'),
-          ),
-          AuthFieldRow(
-            icon: LucideIcons.languages,
-            label: s.t('اسم السجل التجاري (إنجليزي)', 'CR name (English)'),
-            hint: s.t('يظهر للمستخدمين الناطقين بالإنجليزية',
-                'Shown to English-speaking users'),
-            controller: _businessNameEn,
-            optional: true,
-            onChanged: (_) => _clear('businessNameEn'),
-          ),
-          AuthFieldRow(
-            icon: LucideIcons.fileText,
-            label: s.t('رقم السجل التجاري', 'CR number'),
-            hint: '1234567',
-            controller: _crNumber,
-            error: _errors['crNumber'],
-            keyboardType: TextInputType.number,
-            numeric: true,
-            forceLtr: true,
-            onChanged: (_) => _clear('crNumber'),
-          ),
-          AuthFieldRow(
-            icon: LucideIcons.receipt,
-            label: s.t('الرقم الضريبي', 'VAT number'),
-            hint: s.t('اختياري — إن كانت ورشتك مسجّلة ضريبياً',
-                'Optional — if VAT-registered'),
-            controller: _vatNumber,
-            optional: true,
-            forceLtr: true,
-            onChanged: (_) => _clear('vatNumber'),
-          ),
-          // ------------------------------------------- the certificate
-          const SizedBox(height: AppSpacing.sm),
-          Text(s.t('صورة السجل التجاري', 'Commercial registration document'),
-              style: context.text.cardTitle),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            s.t('يفتحها المؤسس ويطابقها بالبيانات أعلاه قبل الاعتماد.',
-                'The founder opens this and checks it against the details above before approving.'),
-            style: context.text.bodySecondary.copyWith(height: 1.5),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          // The same control the proof sheet uses — one uploader in the app.
-          MediaStrip(
-            s: s,
-            media: _crDocs,
-            busy: _pickingDoc,
-            onRemove: (id) =>
-                setState(() => _crDocs.removeWhere((m) => m.id == id)),
-            onCamera: () => _pickCrDocument(ImageSource.camera),
-            onGallery: () => _pickCrDocument(ImageSource.gallery),
-          ),
-          if (_errors['crDocument'] != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(_errors['crDocument']!,
-                style: context.text.bodySecondary.copyWith(color: ak.dangerText)),
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: AppSpacing.sm),
+      AuthSectionLabel(s.t('معلومات الورشة', 'Workshop details')),
+      if (_hasFiledWorkshop) ...[
+        _WorkshopRecordNotice(
+          editing: _workshopEditing,
+          approved: _workshopApproved,
+          onEdit: () => setState(() => _workshopEditing = true),
+          onCancel: _cancelWorkshopEdit,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+      ],
+      AuthFieldRow(
+        icon: LucideIcons.store,
+        label: s.t('اسم السجل التجاري (عربي)', 'CR name (Arabic)'),
+        readOnly: _workshopLocked,
+        hint: s.t('كما هو في السجل', 'Exactly as on the certificate'),
+        controller: _businessNameAr,
+        error: _errors['businessNameAr'],
+        onChanged: (_) => _clear('businessNameAr'),
+      ),
+      AuthFieldRow(
+        icon: LucideIcons.languages,
+        label: s.t('اسم السجل التجاري (إنجليزي)', 'CR name (English)'),
+        readOnly: _workshopLocked,
+        hint: s.t(
+          'يظهر للمستخدمين الناطقين بالإنجليزية',
+          'Shown to English-speaking users',
+        ),
+        controller: _businessNameEn,
+        optional: true,
+        onChanged: (_) => _clear('businessNameEn'),
+      ),
+      AuthFieldRow(
+        icon: LucideIcons.fileText,
+        label: s.t('رقم السجل التجاري', 'CR number'),
+        readOnly: _workshopLocked,
+        hint: '1234567',
+        controller: _crNumber,
+        error: _errors['crNumber'],
+        keyboardType: TextInputType.number,
+        numeric: true,
+        forceLtr: true,
+        onChanged: (_) => _clear('crNumber'),
+      ),
+      AuthFieldRow(
+        icon: LucideIcons.receipt,
+        label: s.t('الرقم الضريبي', 'VAT number'),
+        readOnly: _workshopLocked,
+        hint: s.t(
+          'اختياري — إن كانت ورشتك مسجّلة ضريبياً',
+          'Optional — if VAT-registered',
+        ),
+        controller: _vatNumber,
+        optional: true,
+        forceLtr: true,
+        onChanged: (_) => _clear('vatNumber'),
+      ),
+      // ------------------------------------------- the certificate
+      const SizedBox(height: AppSpacing.sm),
+      Text(
+        s.t('صورة السجل التجاري', 'Commercial registration document'),
+        style: context.text.cardTitle,
+      ),
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        s.t(
+          'يفتحها المؤسس ويطابقها بالبيانات أعلاه قبل الاعتماد.',
+          'The founder opens this and checks it against the details above before approving.',
+        ),
+        style: context.text.bodySecondary.copyWith(height: 1.5),
+      ),
+      const SizedBox(height: AppSpacing.md),
+      // Read mode shows the certificate; an *approved* workshop cannot
+      // replace it even while editing. The founder approved that document,
+      // there is no owner-side endpoint to swap it, and a silent swap would
+      // leave an approval standing over a file nobody checked.
+      if (_workshopLocked || _workshopApproved) ...[
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            for (final doc in _crDocs) AttachmentThumb(attachment: doc),
+            if (_crDocs.isEmpty)
+              Text(
+                s.t('لا توجد وثيقة مرفقة.', 'No document attached.'),
+                style: context.text.bodySecondary,
+              ),
           ],
-          const SizedBox(height: AppSpacing.lg),
-          _PickerRow(
-            icon: LucideIcons.mapPin,
-            label: s.t('منطقة الورشة', "Workshop's area"),
-            value: _area == null ? null : locations.localized(_area!, s.isAr),
-            hint: _region == null
-                ? s.t('اختر المحافظة أولاً', 'Choose your governorate first')
-                : s.t('اختر من القائمة', 'Choose from the list'),
-            error: _errors['area'],
-            enabled: _region != null,
-            onTap: _pickArea,
+        ),
+        if (_workshopEditing && _workshopApproved) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            s.t(
+              'لتبديل الوثيقة تواصل مع الدعم — يستبدلها فريق AK Cars.',
+              'To replace the certificate, contact support — the AK Cars team '
+                  'swaps it.',
+            ),
+            style: context.text.bodySecondary,
           ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(s.t('كيف تستقبل السيارات', 'How you take cars in'),
-              style: context.text.cardTitle),
-          const SizedBox(height: AppSpacing.sm),
-          // Multi-select, unlike the single choice a customer makes when
-          // booking: a workshop that does counter work *and* collection is the
-          // ordinary case.
-          Wrap(
+        ],
+      ] else
+        // The same control the proof sheet uses — one uploader in the app.
+        MediaStrip(
+          s: s,
+          media: _crDocs,
+          busy: _pickingDoc,
+          onRemove: (id) =>
+              setState(() => _crDocs.removeWhere((m) => m.id == id)),
+          onCamera: () => _pickCrDocument(ImageSource.camera),
+          onGallery: () => _pickCrDocument(ImageSource.gallery),
+        ),
+      if (_errors['crDocument'] != null) ...[
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          _errors['crDocument']!,
+          style: context.text.bodySecondary.copyWith(color: ak.dangerText),
+        ),
+      ],
+      const SizedBox(height: AppSpacing.lg),
+      _PickerRow(
+        icon: LucideIcons.mapPin,
+        label: s.t('منطقة الورشة', "Workshop's area"),
+        value: _area == null ? null : locations.localized(_area!, s.isAr),
+        hint: _region == null
+            ? s.t('اختر المحافظة أولاً', 'Choose your governorate first')
+            : s.t('اختر من القائمة', 'Choose from the list'),
+        error: _errors['area'],
+        enabled: _region != null && !_workshopLocked,
+        onTap: _pickArea,
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      Text(
+        s.t('كيف تستقبل السيارات', 'How you take cars in'),
+        style: context.text.cardTitle,
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      // Multi-select, unlike the single choice a customer makes when
+      // booking: a workshop that does counter work *and* collection is the
+      // ordinary case.
+      Opacity(
+        opacity: _workshopLocked ? 0.55 : 1,
+        child: IgnorePointer(
+          ignoring: _workshopLocked,
+          child: Wrap(
             spacing: 7,
             runSpacing: 7,
             children: [
@@ -830,23 +1120,33 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   selected: _fulfillments.contains(f),
                   onTap: () => setState(() {
                     if (!_fulfillments.remove(f)) _fulfillments.add(f);
+                    _errors.remove('fulfillments');
                   }),
                 ),
             ],
           ),
-          const SizedBox(height: AppSpacing.md),
-          AuthNoticeCard(
-            icon: LucideIcons.shieldCheck,
-            background: ak.amberBgSoft,
-            foreground: ak.amberText,
-            message: s.t(
-              'لن نطلب أي بيانات بنكية هنا. تُرتَّب طريقة التحويل مع المؤسس بعد اعتماد ورشتك.',
-              'No bank details are asked for here. Transfers are arranged with the founder after your workshop is approved.',
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-        ],
-      );
+        ),
+      ),
+      if (_errors['fulfillments'] != null) ...[
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          _errors['fulfillments']!,
+          style: context.text.bodySecondary.copyWith(color: ak.dangerText),
+        ),
+      ],
+      const SizedBox(height: AppSpacing.md),
+      AuthNoticeCard(
+        icon: LucideIcons.shieldCheck,
+        background: ak.amberBgSoft,
+        foreground: ak.amberText,
+        message: s.t(
+          'لن نطلب أي بيانات بنكية هنا. تُرتَّب طريقة التحويل مع المؤسس بعد اعتماد ورشتك.',
+          'No bank details are asked for here. Transfers are arranged with the founder after your workshop is approved.',
+        ),
+      ),
+      const SizedBox(height: AppSpacing.sm),
+    ],
+  );
 
   void _pickKind(AccountKind kind) {
     if (_kind == kind) return;
@@ -856,12 +1156,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       // Switching back to a customer account drops the workshop errors with
       // it: a customer must never be blocked by a field they cannot see.
       if (kind == AccountKind.customer) {
-        _errors.removeWhere((key, _) => const {
-              'businessNameAr',
-              'crNumber',
-              'crDocument',
-              'area',
-            }.contains(key));
+        _errors.removeWhere((key, _) => _workshopErrorKeys.contains(key));
       }
     });
   }
@@ -944,8 +1239,10 @@ class _AccountKindCard extends StatelessWidget {
               child: Container(
                 width: 20,
                 height: 20,
-                decoration:
-                    BoxDecoration(color: ak.primary, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: ak.primary,
+                  shape: BoxShape.circle,
+                ),
                 child: Icon(LucideIcons.check, size: 12, color: ak.onPrimary),
               ),
             ),
@@ -956,6 +1253,126 @@ class _AccountKindCard extends StatelessWidget {
 }
 
 /// Read-only row that opens a picker sheet (governorate).
+/// The filed workshop record's header: what this section is, what saving it
+/// will do, and the way in and out of editing it.
+///
+/// Three states, because saving means three different things:
+///
+/// * **reading** — the record as filed, with "Edit workshop details".
+/// * **editing an approved workshop** — the change reaches customers on save
+///   and does not re-open a review.
+/// * **editing anything else** — saving re-files the application, and the
+///   founder looks at it again. Said before the owner starts typing, not
+///   discovered afterwards from a status card.
+class _WorkshopRecordNotice extends StatelessWidget {
+  const _WorkshopRecordNotice({
+    required this.editing,
+    required this.approved,
+    required this.onEdit,
+    required this.onCancel,
+  });
+
+  final bool editing;
+  final bool approved;
+  final VoidCallback onEdit;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    final accent = editing ? ak.amberText : ak.inkSub;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: editing ? ak.amberBgSoft : ak.surfaceDim,
+        borderRadius: BorderRadius.circular(16),
+        border: editing ? Border.all(color: ak.amberBorder) : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                editing ? LucideIcons.pencil : LucideIcons.idCard,
+                size: 15,
+                color: accent,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      editing
+                          ? s.t('تعديل بيانات الورشة', 'Editing your workshop')
+                          : s.t('بيانات ورشتك المسجَّلة', 'Your filed record'),
+                      style: context.text.labelStrong,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      switch ((editing, approved)) {
+                        (false, _) => s.t(
+                          'هذا ما هو مسجَّل لدى المنصة عن ورشتك. يمكنك تعديله '
+                              'وتحديثه في أي وقت.',
+                          'This is what the platform has on file for your '
+                              'workshop. You can update it whenever you need '
+                              'to.',
+                        ),
+                        (true, true) => s.t(
+                          'ورشتك معتمدة — ما تحفظه هنا يظهر للعملاء مباشرة، '
+                              'ولا يعيد طلبك إلى المراجعة.',
+                          'Your workshop is approved — what you save here '
+                              'reaches customers directly, and does not send '
+                              'you back for review.',
+                        ),
+                        (true, false) => s.t(
+                          'بعد الحفظ يُعاد إرسال طلبك إلى المؤسس للمراجعة.',
+                          'Saving re-submits your application for the '
+                              'founder to review.',
+                        ),
+                      },
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: editing ? ak.amberDeep : ak.inkSub,
+                        height: 1.6,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                foregroundColor: editing ? ak.amberText : ak.ink,
+              ),
+              onPressed: editing ? onCancel : onEdit,
+              icon: Icon(
+                editing ? LucideIcons.undo2 : LucideIcons.pencil,
+                size: 14,
+              ),
+              label: Text(
+                editing
+                    ? s.t('تراجع عن التعديل', 'Discard changes')
+                    : s.t('تعديل بيانات الورشة', 'Edit workshop details'),
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PickerRow extends StatelessWidget {
   const _PickerRow({
     required this.icon,
@@ -1075,13 +1492,20 @@ class _RegionOption extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(LucideIcons.mapPin,
-                  size: 17, color: selected ? ak.primary : ak.inkFaint),
+              Icon(
+                LucideIcons.mapPin,
+                size: 17,
+                color: selected ? ak.primary : ak.inkFaint,
+              ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(label,
-                    style: const TextStyle(
-                        fontSize: 13.5, fontWeight: FontWeight.w600)),
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
               if (selected)
                 Icon(LucideIcons.check, size: 18, color: ak.primary),
@@ -1092,4 +1516,3 @@ class _RegionOption extends StatelessWidget {
     );
   }
 }
-

@@ -171,6 +171,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
         title: Text(s.t('النتائج', 'Results')),
         actions: [
           IconButton(
+            tooltip: s.t('الترتيب', 'Sort'),
             onPressed: _openSort,
             icon: const Icon(LucideIcons.arrowUpDown),
           ),
@@ -180,6 +181,7 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
               isLabelVisible: _filter.activeCount > 0,
               label: Text('${_filter.activeCount}'),
               child: IconButton(
+                tooltip: s.t('التصفية', 'Filters'),
                 onPressed: _openFilters,
                 icon: const Icon(LucideIcons.slidersHorizontal),
               ),

@@ -54,53 +54,85 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         child: RefreshIndicator(
           onRefresh: () =>
               ref.read(workshopRequestsProvider.notifier).refresh(),
-          child: ListView(
-            padding: const EdgeInsets.all(AppSpacing.screenMargin),
-            children: [
-              _StatusFilterRow(
-                selected: _status,
-                onSelected: (status) {
-                  setState(() => _status = status);
-                  ref
-                      .read(workshopRequestsProvider.notifier)
-                      .applyFilter(WorkshopRequestsFilter(status: status));
-                },
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              requests.when(
-                loading: () => const ListSkeleton(),
-                error: (error, _) => EmptyState(
-                  icon: LucideIcons.circleAlert,
-                  message: s.t(
-                    'تعذّر تحميل الطلبات.',
-                    'Couldn\'t load orders.',
-                  ),
-                  action: FilledButton(
-                    onPressed: () =>
-                        ref.read(workshopRequestsProvider.notifier).refresh(),
-                    child: Text(s.t('إعادة المحاولة', 'Retry')),
+          // Slivers rather than one `ListView(children:)`: the job list is
+          // server-driven and unbounded, and the plain form builds every card
+          // in it whether or not it is on screen. The filter row stays a box
+          // adapter above the sliver list, so it still scrolls with the cards.
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenMargin,
+                  AppSpacing.screenMargin,
+                  AppSpacing.screenMargin,
+                  0,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _StatusFilterRow(
+                        selected: _status,
+                        onSelected: (status) {
+                          setState(() => _status = status);
+                          ref
+                              .read(workshopRequestsProvider.notifier)
+                              .applyFilter(
+                                WorkshopRequestsFilter(status: status),
+                              );
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                    ],
                   ),
                 ),
-                data: (list) => list.isEmpty
-                    ? EmptyState(
-                        icon: LucideIcons.clipboardCheck,
-                        title: s.t('لا طلبات', 'No jobs here'),
-                        message: s.t(
-                          'لا يوجد ما يطابق هذا التصفية الآن.',
-                          'Nothing matches this filter right now.',
-                        ),
-                      )
-                    : Column(
-                        children: [
-                          for (final request in list)
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: AppSpacing.sm,
-                              ),
-                              child: _OrderCard(request: request),
-                            ),
-                        ],
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenMargin,
+                  0,
+                  AppSpacing.screenMargin,
+                  AppSpacing.screenMargin,
+                ),
+                sliver: requests.when(
+                  loading: () =>
+                      const SliverToBoxAdapter(child: ListSkeleton()),
+                  error: (error, _) => SliverToBoxAdapter(
+                    child: EmptyState(
+                      icon: LucideIcons.circleAlert,
+                      message: s.t(
+                        'تعذّر تحميل الطلبات.',
+                        'Couldn\'t load orders.',
                       ),
+                      action: FilledButton(
+                        onPressed: () => ref
+                            .read(workshopRequestsProvider.notifier)
+                            .refresh(),
+                        child: Text(s.t('إعادة المحاولة', 'Retry')),
+                      ),
+                    ),
+                  ),
+                  data: (list) => list.isEmpty
+                      ? SliverToBoxAdapter(
+                          child: EmptyState(
+                            icon: LucideIcons.clipboardCheck,
+                            title: s.t('لا طلبات', 'No jobs here'),
+                            message: s.t(
+                              'لا يوجد ما يطابق هذا التصفية الآن.',
+                              'Nothing matches this filter right now.',
+                            ),
+                          ),
+                        )
+                      : SliverList.builder(
+                          itemCount: list.length,
+                          itemBuilder: (context, index) => Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: AppSpacing.sm,
+                            ),
+                            child: _OrderCard(request: list[index]),
+                          ),
+                        ),
+                ),
               ),
             ],
           ),

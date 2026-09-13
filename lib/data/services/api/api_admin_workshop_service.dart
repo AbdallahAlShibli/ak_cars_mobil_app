@@ -60,6 +60,23 @@ class ApiAdminWorkshopService implements AdminWorkshopService {
   Future<void> deleteProvider(String providerId) =>
       _client.delete(ApiEndpoints.adminProvider(providerId));
 
+  @override
+  Future<ServiceProvider> updateCrDocument(
+    String providerId,
+    MediaAttachment document,
+  ) async => ServiceProvider.fromJson(
+    await _client.put(
+      ApiEndpoints.adminProviderCrDocument(providerId),
+      body: {
+        'id': document.id,
+        'base64Data': document.base64Data,
+        'mimeType': document.mimeType,
+        'fileName': document.fileName,
+        'caption': document.caption.isEmpty ? null : document.caption,
+      },
+    ),
+  );
+
   // ---------------------------------------------------------- offerings
 
   Map<String, dynamic> _offeringBody({
@@ -70,6 +87,7 @@ class ApiAdminWorkshopService implements AdminWorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) => {
     'categoryId': categoryId,
     'nameAr': name.ar,
@@ -82,14 +100,17 @@ class ApiAdminWorkshopService implements AdminWorkshopService {
       for (final i in includes) {'ar': i.ar, 'en': i.en},
     ],
     'warrantyMonths': warrantyMonths,
+    'photoId': ?photo?.id,
+    'photoBase64': ?photo?.base64Data,
+    'photoMimeType': ?photo?.mimeType,
+    'photoFileName': ?photo?.fileName,
   };
 
   @override
-  Future<List<ServiceOffering>> getProviderOfferings(
-    String providerId,
-  ) async => (await _client.getList(
-    ApiEndpoints.adminProviderOfferings(providerId),
-  )).map(ServiceOffering.fromJson).toList();
+  Future<List<ServiceOffering>> getProviderOfferings(String providerId) async =>
+      (await _client.getList(
+        ApiEndpoints.adminProviderOfferings(providerId),
+      )).map(ServiceOffering.fromJson).toList();
 
   @override
   Future<ServiceOffering> createProviderOffering(
@@ -101,6 +122,7 @@ class ApiAdminWorkshopService implements AdminWorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async => ServiceOffering.fromJson(
     await _client.post(
       ApiEndpoints.adminProviderOfferings(providerId),
@@ -112,6 +134,7 @@ class ApiAdminWorkshopService implements AdminWorkshopService {
         durationMin: durationMin,
         includes: includes,
         warrantyMonths: warrantyMonths,
+        photo: photo,
       ),
     ),
   );
@@ -127,6 +150,7 @@ class ApiAdminWorkshopService implements AdminWorkshopService {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async => ServiceOffering.fromJson(
     await _client.put(
       ApiEndpoints.adminProviderOffering(providerId, offeringId),
@@ -138,6 +162,7 @@ class ApiAdminWorkshopService implements AdminWorkshopService {
         durationMin: durationMin,
         includes: includes,
         warrantyMonths: warrantyMonths,
+        photo: photo,
       ),
     ),
   );
@@ -156,7 +181,9 @@ class ApiAdminWorkshopService implements AdminWorkshopService {
 
   @override
   Future<void> deleteProviderOffering(String providerId, String offeringId) =>
-      _client.delete(ApiEndpoints.adminProviderOffering(providerId, offeringId));
+      _client.delete(
+        ApiEndpoints.adminProviderOffering(providerId, offeringId),
+      );
 
   // ----------------------------------------------------------- add-ons
 

@@ -318,7 +318,7 @@ void main() {
         (tester) async {
       await pump(tester, await containerWith(const [_tesla]),
           const MaintenanceScreen(),
-          height: 2600);
+          height: 3200);
 
       expect(find.text('Your primary car · Electric'), findsOneWidget);
       expect(find.textContaining('EV battery health inspection'),
@@ -441,7 +441,7 @@ void main() {
         tester,
         await containerWith(const [_tesla]),
         const ServicesScreen(),
-        height: 2600,
+        height: 3200,
       );
 
       expect(find.text('Care for your EV'), findsOneWidget);
@@ -457,7 +457,7 @@ void main() {
         await containerWith(const [_tesla]),
         const ServicesScreen(),
         locale: 'ar',
-        height: 2600,
+        height: 3200,
       );
 
       expect(find.text('عناية سيارتك الكهربائية'), findsOneWidget);
@@ -472,7 +472,7 @@ void main() {
         tester,
         await containerWith(const [_camry]),
         const ServicesScreen(),
-        height: 2600,
+        height: 3200,
       );
 
       // The rail is still there — labelled for whom it is — but the shortlist
@@ -493,7 +493,7 @@ void main() {
         tester,
         await containerWith(const [_camry]),
         const ServicesScreen(initialQuery: 'battery'),
-        height: 2600,
+        height: 3200,
       );
 
       expect(
@@ -728,7 +728,7 @@ void main() {
   group('home', () {
     testWidgets('an EV owner gets EV care, not an oil nudge', (tester) async {
       await pump(tester, await containerWith(const [_tesla]), const HomeScreen(),
-          height: 2600);
+          height: 3200);
 
       // The car card names the powertrain the owner recorded.
       expect(find.text('Tesla Model Y 2024'), findsOneWidget);
@@ -755,7 +755,7 @@ void main() {
 
     testWidgets('a petrol owner is offered the oil service', (tester) async {
       await pump(tester, await containerWith(const [_camry]), const HomeScreen(),
-          height: 2600);
+          height: 3200);
 
       expect(find.text('Petrol'), findsOneWidget);
       expect(find.text('for your electric car'), findsNothing);
@@ -765,7 +765,7 @@ void main() {
 
     testWidgets('EV home copy is Arabic in Arabic', (tester) async {
       await pump(tester, await containerWith(const [_tesla]), const HomeScreen(),
-          locale: 'ar', height: 2600);
+          locale: 'ar', height: 3200);
 
       expect(find.text('كهربائي'), findsOneWidget);
       expect(find.text('لسيارتك الكهربائية'), findsWidgets);

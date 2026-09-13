@@ -46,13 +46,25 @@ final workshopSummaryProvider =
 
 /// After any dashboard mutation — the KPIs must reflect the write immediately,
 /// not on the next time someone happens to reopen the home screen.
-void _invalidateSummary(Ref ref) => ref.invalidate(workshopSummaryProvider);
+///
+/// Guarded with [Ref.exists] for the reason `SessionRefresh._ifBuilt`'s doc
+/// comment sets out at length: a bare `invalidate` on an `AsyncNotifierProvider`
+/// that was never built *builds* it, firing a real `GET /my-workshop/summary`
+/// for the sake of a debug-only assertion. That is not hypothetical here —
+/// [MyWorkshopProfileNotifier.save] is also called from the "My details"
+/// screen in `register_screen.dart`, where the dashboard has never been
+/// opened and this provider therefore does not exist.
+void _invalidateSummary(Ref ref) {
+  if (ref.exists(workshopSummaryProvider)) {
+    ref.invalidate(workshopSummaryProvider);
+  }
+}
 
 // ------------------------------------------------------------- profile
 
-class MyWorkshopProfileNotifier extends AsyncNotifier<ServiceProvider> {
+class MyWorkshopProfileNotifier extends AsyncNotifier<MyWorkshopProfile> {
   @override
-  Future<ServiceProvider> build() =>
+  Future<MyWorkshopProfile> build() =>
       ref.read(workshopRepositoryProvider).loadMyWorkshop();
 
   Future<void> refresh() async {
@@ -62,6 +74,18 @@ class MyWorkshopProfileNotifier extends AsyncNotifier<ServiceProvider> {
     );
   }
 
+  /// `PUT /my-workshop` — the owner editing their own live record.
+  ///
+  /// Two screens call it: the dashboard's workshop profile
+  /// (`workshop_profile_screen.dart`) and, for an approved workshop, the
+  /// workshop half of "My details" (`register_screen.dart`). Both write here
+  /// rather than re-filing the application, which is what keeps a corrected
+  /// phone number from dropping an approved workshop back into the founder's
+  /// review queue.
+  ///
+  /// The customer-facing roster is a separate cache — callers refresh it
+  /// (`refreshProviders`) afterwards, so the status dialog and the services
+  /// list do not keep showing the old record.
   Future<ServiceProvider> save({
     required L name,
     required String area,
@@ -90,14 +114,25 @@ class MyWorkshopProfileNotifier extends AsyncNotifier<ServiceProvider> {
           vatNumber: vatNumber,
           crNumber: crNumber,
         );
-    state = AsyncData(updated);
+    // The repository re-wraps the PUT's bare provider into a fresh envelope
+    // (completeness recomputed, schedule carried over); read that back rather
+    // than rebuilding a second, possibly disagreeing, copy here.
+    state = AsyncData(
+      ref.read(workshopRepositoryProvider).cachedProfile ??
+          MyWorkshopProfile.of(updated),
+    );
     _invalidateSummary(ref);
+    // The schedule sheet reads its hours from the same envelope, so an edit
+    // that changed opening hours has to reach it too.
+    if (ref.exists(workshopScheduleConfigProvider)) {
+      ref.invalidate(workshopScheduleConfigProvider);
+    }
     return updated;
   }
 }
 
 final myWorkshopProfileProvider =
-    AsyncNotifierProvider<MyWorkshopProfileNotifier, ServiceProvider>(
+    AsyncNotifierProvider<MyWorkshopProfileNotifier, MyWorkshopProfile>(
       MyWorkshopProfileNotifier.new,
     );
 
@@ -123,6 +158,7 @@ class WorkshopOfferingsNotifier extends AsyncNotifier<List<ServiceOffering>> {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async {
     final created = await ref
         .read(workshopRepositoryProvider)
@@ -134,6 +170,7 @@ class WorkshopOfferingsNotifier extends AsyncNotifier<List<ServiceOffering>> {
           durationMin: durationMin,
           includes: includes,
           warrantyMonths: warrantyMonths,
+          photo: photo,
         );
     _syncFromRepository();
     _invalidateSummary(ref);
@@ -149,6 +186,7 @@ class WorkshopOfferingsNotifier extends AsyncNotifier<List<ServiceOffering>> {
     int? durationMin,
     List<L> includes = const [],
     int? warrantyMonths,
+    MediaAttachment? photo,
   }) async {
     final updated = await ref
         .read(workshopRepositoryProvider)
@@ -161,6 +199,7 @@ class WorkshopOfferingsNotifier extends AsyncNotifier<List<ServiceOffering>> {
           durationMin: durationMin,
           includes: includes,
           warrantyMonths: warrantyMonths,
+          photo: photo,
         );
     _syncFromRepository();
     return updated;
@@ -592,10 +631,15 @@ final workshopScheduleProvider =
     >(WorkshopScheduleNotifier.new);
 
 class WorkshopScheduleConfigNotifier extends AsyncNotifier<WorkshopSchedule> {
+  /// Read from `GET /my-workshop`, which is the only route that serves the
+  /// saved slot template, capacity and closed days back — `PUT
+  /// /my-workshop/schedule` writes them and has no matching GET of its own.
+  /// This used to build a `WorkshopSchedule` from the profile's `hours`
+  /// alone, so every other field silently reset to its default and the
+  /// config sheet reopened blank after each save.
   @override
-  Future<WorkshopSchedule> build() async => WorkshopSchedule(
-    hours: (await ref.read(workshopRepositoryProvider).loadMyWorkshop()).hours,
-  );
+  Future<WorkshopSchedule> build() async =>
+      (await ref.read(workshopRepositoryProvider).loadMyWorkshop()).schedule;
 
   Future<WorkshopSchedule> save({
     L? hours,
@@ -612,6 +656,10 @@ class WorkshopScheduleConfigNotifier extends AsyncNotifier<WorkshopSchedule> {
           closedDays: closedDays,
         );
     state = AsyncData(updated);
+    // The day view generates its slots from exactly these settings, so it is
+    // stale the instant they change — without this the schedule screen kept
+    // showing the old grid behind the sheet that had just replaced it.
+    ref.invalidate(workshopScheduleProvider);
     return updated;
   }
 }

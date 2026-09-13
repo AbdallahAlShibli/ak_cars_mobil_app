@@ -38,10 +38,10 @@ class MockAuthService with MockServiceBase implements AuthService {
   Future<UserProfile> updateProfile(UserProfile profile) => _save(profile);
 
   @override
-  Future<UserProfile?> findAccount(String identifier) async {
+  Future<bool> requestOtp(String identifier) async {
     final account = await _readStoredAccount();
-    if (account == null) return respond(null);
-    return respond(_matches(account, identifier) ? account : null);
+    if (account == null) return respond(false);
+    return respond(_matches(account, identifier));
   }
 
   @override

@@ -29,6 +29,8 @@ class OperatorShell extends StatelessWidget {
     required this.tabs,
     this.banner,
     this.actions,
+    this.onRefresh,
+    this.leading,
   });
 
   final String title;
@@ -43,16 +45,43 @@ class OperatorShell extends StatelessWidget {
   /// `/workshop/dashboard` for accounts that actually own the workshop.
   final List<Widget>? actions;
 
+  /// `AppBar.leading` — this panel is reached via `context.go(...)` from
+  /// Settings' "My business" section, which replaces the navigation stack
+  /// rather than pushing onto it, so GoRouter never adds its own back arrow
+  /// here. Without an explicit one, a founder who followed that link had no
+  /// way back to Settings short of the OS back gesture.
+  final Widget? leading;
+
+  /// Re-fetches whatever this panel reads from the server.
+  ///
+  /// The panels read from warm caches that are filled once (bootstrap, or the
+  /// last sign-in) and never re-fetch on their own — a session left open
+  /// while, say, a new workshop application arrives keeps showing the roster
+  /// as it stood at warm-up. When set, this is offered two ways: an AppBar
+  /// refresh button (works even on a short list that can't be pulled) and
+  /// pull-to-refresh on every tab.
+  final Future<void> Function()? onRefresh;
+
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
+    final refresh = onRefresh;
 
     return DefaultTabController(
       length: tabs.length,
       child: Scaffold(
         appBar: AppBar(
           title: Text(title),
-          actions: actions,
+          leading: leading,
+          actions: [
+            if (refresh != null)
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refresh',
+                onPressed: () => refresh(),
+              ),
+            ...?actions,
+          ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(46),
             child: Column(
@@ -93,7 +122,18 @@ class OperatorShell extends StatelessWidget {
               Expanded(
                 child: TabBarView(
                   children: [
-                    for (final tab in tabs) Builder(builder: tab.builder),
+                    for (final tab in tabs)
+                      Builder(
+                        builder: (context) {
+                          final content = tab.builder(context);
+                          return refresh == null
+                              ? content
+                              : RefreshIndicator(
+                                  onRefresh: refresh,
+                                  child: content,
+                                );
+                        },
+                      ),
                   ],
                 ),
               ),

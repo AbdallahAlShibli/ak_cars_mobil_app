@@ -95,59 +95,128 @@ abstract final class AuthPhone {
   static String full(String local) => '+968 ${grouped(local)}';
 }
 
-/// One of two selectable identifiers/delivery channels (phone vs. email).
-class AuthChannelCard extends StatelessWidget {
-  const AuthChannelCard({
+/// The phone-vs-email choice, as one sliding segmented control.
+///
+/// Was a pair of side-by-side cards, each carrying an icon, a title and a
+/// subtitle of its own. Two cards is what you build when either option might
+/// need explaining; this is one control with a thumb that moves, which is
+/// what a binary choice actually is. It costs about a third of the height,
+/// and that is what lets the field it governs sit above the fold with it.
+class AuthChannelSwitch extends StatelessWidget {
+  const AuthChannelSwitch({
     super.key,
-    required this.selected,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final AuthChannel value;
+  final ValueChanged<AuthChannel> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+    return Container(
+      height: 54,
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: ak.surfaceDim,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: ak.border),
+      ),
+      child: LayoutBuilder(
+        builder: (context, c) => Stack(
+          // Expand, so the thumb fills the track's height and the segment
+          // labels centre against it instead of hugging the top.
+          fit: StackFit.expand,
+          children: [
+            AnimatedAlign(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              // Directional: under RTL the row of segments flips, and the
+              // thumb has to start on the same side the first one does.
+              alignment: value == AuthChannel.phone
+                  ? AlignmentDirectional.centerStart
+                  : AlignmentDirectional.centerEnd,
+              child: Container(
+                width: c.maxWidth / 2,
+                height: c.maxHeight,
+                decoration: BoxDecoration(
+                  color: ak.primary,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: ak.primary.withValues(alpha: 0.22),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                _ChannelSegment(
+                  icon: LucideIcons.smartphone,
+                  label: s.t('رقم الهاتف', 'Phone'),
+                  selected: value == AuthChannel.phone,
+                  onTap: () => onChanged(AuthChannel.phone),
+                ),
+                _ChannelSegment(
+                  icon: LucideIcons.mail,
+                  label: s.t('البريد الإلكتروني', 'Email'),
+                  selected: value == AuthChannel.email,
+                  onTap: () => onChanged(AuthChannel.email),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChannelSegment extends StatelessWidget {
+  const _ChannelSegment({
     required this.icon,
-    required this.title,
-    required this.subtitle,
+    required this.label,
+    required this.selected,
     required this.onTap,
   });
 
-  final bool selected;
   final IconData icon;
-  final String title;
-  final String subtitle;
+  final String label;
+  final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
+    final fg = selected ? ak.onPrimary : ak.inkSub;
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 8),
-          decoration: BoxDecoration(
-            color: ak.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected ? ak.primary : ak.border,
-              width: selected ? 2 : 1.5,
-            ),
-          ),
-          child: Column(
+      child: Semantics(
+        button: true,
+        selected: selected,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 20, color: selected ? ak.primary : ak.inkFaint),
-              const SizedBox(height: 5),
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? ak.ink : ak.inkSub,
+              Icon(icon, size: 17, color: fg),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: fg,
+                  ),
                 ),
-              ),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: ak.inkFaint),
               ),
             ],
           ),
@@ -452,94 +521,106 @@ class AuthFieldRow extends StatelessWidget {
   }
 }
 
-/// "Send the code" prompt before sending; the code field plus a resend
-/// countdown after.
-class AuthOtpBlock extends StatelessWidget {
-  const AuthOtpBlock({
+/// The one-time code, as one box per digit.
+///
+/// Was a single wide field with `letterSpacing: 10` faking the gaps. That
+/// showed no progress: how many digits are wanted, and how many have landed,
+/// could only be worked out by counting characters. Four boxes say both at a
+/// glance, and the next one to fill is lit.
+///
+/// There is still exactly one real [TextField] behind them — an invisible one
+/// stretched across the row — so paste, autofill and the OS one-time-code
+/// suggestion all keep working, and the boxes are only a rendering of its
+/// value.
+class AuthOtpBoxes extends StatelessWidget {
+  const AuthOtpBoxes({
     super.key,
-    required this.sent,
     required this.controller,
-    required this.target,
-    required this.resendIn,
-    required this.onSend,
     required this.onChanged,
+    this.length = 4,
     this.error,
-    this.sendLabel,
+    this.autofocus = true,
   });
 
-  final bool sent;
   final TextEditingController controller;
-  final String target;
-  final int resendIn;
-  final VoidCallback onSend;
   final ValueChanged<String> onChanged;
+  final int length;
   final String? error;
-
-  /// Overrides the default "Send the code" label — the login screen phrases
-  /// it as the primary call to action rather than a secondary button.
-  final String? sendLabel;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
-    final s = S.of(context);
-
-    if (!sent) {
-      return Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: OutlinedButton.icon(
-          onPressed: onSend,
-          icon: const Icon(LucideIcons.sendHorizontal, size: 16),
-          label: Text(sendLabel ?? s.t('إرسال الرمز', 'Send the code')),
-        ),
-      );
-    }
-
     final bad = error != null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          s.t('أدخل الرمز المُرسل إلى $target',
-              'Enter the code sent to $target'),
-          style: TextStyle(fontSize: 12, color: ak.inkSub),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            color: ak.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: bad ? ak.danger : ak.border,
-              width: 1.5,
-            ),
-          ),
-          child: TextField(
-            controller: controller,
-            onChanged: onChanged,
-            keyboardType: TextInputType.number,
-            maxLength: 4,
-            autofocus: true,
-            textAlign: TextAlign.center,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            style: AppTheme.numeric(
-                    size: 20, weight: FontWeight.w800, color: ak.ink)
-                .copyWith(letterSpacing: 10),
-            decoration: const InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              filled: false,
-              hintText: '• • • •',
-              counterText: '',
+        // A code reads left-to-right in every language, so the first digit
+        // stays leftmost even when the rest of the screen is mirrored.
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: SizedBox(
+            height: 62,
+            child: Stack(
+              children: [
+                AnimatedBuilder(
+                  animation: controller,
+                  builder: (context, _) {
+                    final digits = controller.text;
+                    return Row(
+                      children: [
+                        for (var i = 0; i < length; i++)
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                  right: i == length - 1 ? 0 : 10),
+                              child: _OtpBox(
+                                digit: i < digits.length ? digits[i] : '',
+                                active: i == digits.length && !bad,
+                                bad: bad,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                // Invisible, but still the real field: it owns focus, the
+                // keyboard, paste and SMS autofill. `Opacity` rather than
+                // `Visibility` — zero opacity still hit-tests, so a tap
+                // anywhere across the boxes lands on it.
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: 0,
+                    child: TextField(
+                      controller: controller,
+                      onChanged: onChanged,
+                      autofocus: autofocus,
+                      keyboardType: TextInputType.number,
+                      maxLength: length,
+                      showCursor: false,
+                      enableInteractiveSelection: false,
+                      textAlign: TextAlign.center,
+                      autofillHints: const [AutofillHints.oneTimeCode],
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      style: const TextStyle(color: Colors.transparent),
+                      decoration: const InputDecoration(
+                        counterText: '',
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
         if (bad)
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 5, 14, 0),
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
             child: Text(
               error!,
               style: TextStyle(
@@ -549,21 +630,52 @@ class AuthOtpBlock extends StatelessWidget {
               ),
             ),
           ),
-        const SizedBox(height: 6),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: TextButton(
-            onPressed: resendIn > 0 ? null : onSend,
-            child: Text(
-              resendIn > 0
-                  ? s.t('إعادة الإرسال خلال $resendIn ثانية',
-                      'Resend in ${resendIn}s')
-                  : s.t('إعادة إرسال الرمز', 'Resend the code'),
-              style: const TextStyle(fontSize: 12.5),
-            ),
-          ),
-        ),
       ],
+    );
+  }
+}
+
+class _OtpBox extends StatelessWidget {
+  const _OtpBox({required this.digit, required this.active, required this.bad});
+
+  final String digit;
+  final bool active;
+  final bool bad;
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final filled = digit.isNotEmpty;
+    final borderColor = bad
+        ? ak.danger
+        : active
+            ? ak.primary
+            : filled
+                ? ak.primary.withValues(alpha: 0.45)
+                : ak.border;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: ak.surface,
+        borderRadius: BorderRadius.circular(18),
+        border:
+            Border.all(color: borderColor, width: active || filled ? 2 : 1.5),
+        boxShadow: active
+            ? [
+                BoxShadow(
+                  color: ak.primary.withValues(alpha: 0.12),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: Text(
+        digit,
+        style:
+            AppTheme.numeric(size: 24, weight: FontWeight.w800, color: ak.ink),
+      ),
     );
   }
 }

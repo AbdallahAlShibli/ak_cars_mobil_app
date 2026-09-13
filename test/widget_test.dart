@@ -25,7 +25,13 @@ void main() {
     expect(find.text('AK Cars'), findsOneWidget);
     // Arabic is the first-launch default.
     expect(find.text('ابدأ الرحلة'), findsOneWidget);
-    expect(find.text('كل ما تحتاجه سيارتك… في مكان واحد'), findsOneWidget);
+    // The welcome screen now says what the app *does*, not that it does
+    // everything: the escrow promise, plus the three capability chips.
+    expect(
+      find.text('احجز لدى ورشة موثّقة، ومبلغك محفوظ حتى تعتمد العمل'),
+      findsOneWidget,
+    );
+    expect(find.text('دفع محفوظ'), findsOneWidget);
   });
 
   // Boots the real router with the real branches, which is the only place the

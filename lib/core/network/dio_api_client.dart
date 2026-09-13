@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 
 import '../../config/app_config.dart';
 import '../../core/constants/api_endpoints.dart';
@@ -40,6 +40,17 @@ class DioApiClient implements ApiClient {
     // trust store. Trusting it here is scoped to [AppEnvironment.development]
     // only; staging and production still validate the certificate chain
     // normally, exactly like every other https client.
+    //
+    // [kReleaseMode] is the second lock, and it is not redundant. The first
+    // one is a build flag that fails *open*: `AK_ENV` defaults to
+    // `development`, and an unrecognised value used to resolve there too, so
+    // a release build shipped with the dart-define omitted or misspelled
+    // (`AK_ENV=prod`) would have accepted any certificate any attacker
+    // presented — bearer token, refresh token and customer records readable
+    // on any hostile network, with nothing in the app to show for it.
+    // `AppEnvironment.fromKey` now falls back to production instead, but a
+    // constant the compiler can prove is the only guard that does not depend
+    // on someone getting a build command right.
     // The browser owns TLS trust on web — there is no client-side hook to
     // bypass a self-signed cert, and `_dio.httpClientAdapter` isn't an
     // `IOHttpClientAdapter` there (it's the browser adapter), so the cast
@@ -50,7 +61,7 @@ class DioApiClient implements ApiClient {
     // JSON body or a bearer token, so Dio warns about a CORS preflight on all
     // of them — with a stack trace each. See [silenceBrowserCorsWarnings].
     silenceBrowserCorsWarnings(_dio);
-    if (!kIsWeb && config.environment.isDevelopment) {
+    if (!kIsWeb && !kReleaseMode && config.environment.isDevelopment) {
       (_dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
         final client = HttpClient();
         client.badCertificateCallback = (cert, host, port) => true;
@@ -284,6 +295,21 @@ class DioApiClient implements ApiClient {
   }) async =>
       _asList(await _send(
         'POST',
+        path,
+        body: body,
+        queryParameters: queryParameters,
+        headers: headers,
+      ));
+
+  @override
+  Future<List<JsonMap>> deleteList(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+  }) async =>
+      _asList(await _send(
+        'DELETE',
         path,
         body: body,
         queryParameters: queryParameters,

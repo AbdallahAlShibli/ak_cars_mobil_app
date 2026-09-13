@@ -1023,7 +1023,7 @@ class _MileageSheetState extends State<_MileageSheet> {
         left: 20,
         right: 20,
         top: 18,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

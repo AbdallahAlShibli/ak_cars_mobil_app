@@ -9,6 +9,7 @@ import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
+import 'intro_content.dart';
 
 /// Rule 3 — start with a registered car, or skip and choose per request.
 ///
@@ -110,8 +111,10 @@ class _StartChoiceScreenState extends ConsumerState<StartChoiceScreen> {
                       onTap: () => _select(true),
                       icon: LucideIcons.car,
                       title: s.t('أضف سيارتي الآن', 'Add my car now'),
-                      subtitle: s.t('موصى به · أقل من دقيقة',
-                          'Recommended · under a minute'),
+                      subtitle: s.t(
+                        'موصى به · أقل من دقيقة',
+                        'Recommended · under a minute',
+                      ),
                       body: s.t(
                         'اختر الشركة والموديل من الكتالوج، وأضف لوحتك العمانية.',
                         'Pick your make and model from the catalog, and add your Oman plate.',
@@ -119,18 +122,24 @@ class _StartChoiceScreenState extends ConsumerState<StartChoiceScreen> {
                       benefits: [
                         (
                           LucideIcons.wrench,
-                          s.t('عروض أسعار من ورش تخدم سيارتك بالتحديد',
-                              'Quotes from workshops that service your exact car'),
+                          s.t(
+                            'عروض أسعار من ورش تخدم سيارتك بالتحديد',
+                            'Quotes from workshops that service your exact car',
+                          ),
                         ),
                         (
                           LucideIcons.zap,
-                          s.t('مساعدة طريق سريعة عند الحاجة',
-                              'Fast roadside help when you need it'),
+                          s.t(
+                            'مساعدة طريق سريعة عند الحاجة',
+                            'Fast roadside help when you need it',
+                          ),
                         ),
                         (
                           LucideIcons.bellRing,
-                          s.t('تذكيرات صيانة محسوبة من ممشى سيارتك',
-                              'Service reminders worked out from your mileage'),
+                          s.t(
+                            'تذكيرات صيانة محسوبة من ممشى سيارتك',
+                            'Service reminders worked out from your mileage',
+                          ),
                         ),
                       ],
                       steps: [
@@ -156,24 +165,38 @@ class _StartChoiceScreenState extends ConsumerState<StartChoiceScreen> {
                       benefits: [
                         (
                           LucideIcons.compass,
-                          s.t('تصفّح الورش الموثوقة واحجز الصيانة في كل عُمان',
-                              'Browse trusted workshops and book service across Oman'),
+                          s.t(
+                            'تصفّح الورش الموثوقة واحجز الصيانة في كل عُمان',
+                            'Browse trusted workshops and book service across Oman',
+                          ),
                         ),
                         (
                           LucideIcons.clock3,
-                          s.t('أضف سيارتك لاحقاً من "مرآبي" في أي وقت',
-                              'Add your car later from My Garage, anytime'),
+                          s.t(
+                            'أضف سيارتك لاحقاً من "مرآبي" في أي وقت',
+                            'Add your car later from My Garage, anytime',
+                          ),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 20),
+                  // The recap. Both routes out of this screen — "Skip" and
+                  // "Not now" — drop the user straight into the app, and the
+                  // tour is skippable from two screens before this one, so
+                  // this is the last place the app can say what it is for
+                  // before the user is expected to go and find out.
+                  const Entrance(delayMs: 240, child: _WhatsInside()),
                   const SizedBox(height: 16),
                   Entrance(
-                    delayMs: 240,
+                    delayMs: 300,
                     child: Row(
                       children: [
-                        Icon(LucideIcons.shieldCheck,
-                            size: 15, color: ak.inkFaint),
+                        Icon(
+                          LucideIcons.shieldCheck,
+                          size: 15,
+                          color: ak.inkFaint,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -203,6 +226,67 @@ class _StartChoiceScreenState extends ConsumerState<StartChoiceScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "What's inside AK Cars" — the tour's promises in four lines, for the user
+/// who never saw the tour.
+///
+/// Reads from [capabilityHighlights], so it lists exactly what the build
+/// ships: turning a phase-2 pillar's flag on adds its line here and its slide
+/// to the tour together, and neither can advertise a tab that is compiled
+/// out.
+class _WhatsInside extends StatelessWidget {
+  const _WhatsInside();
+
+  @override
+  Widget build(BuildContext context) {
+    final ak = AkColors.of(context);
+    final s = S.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: ak.surfaceDim,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: ak.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            s.t('ما الذي يقدّمه تطبيق AK Cars', 'What AK Cars does for you'),
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: ak.ink,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final line in capabilityHighlights())
+            Padding(
+              padding: const EdgeInsets.only(bottom: 9),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(line.icon, size: 15, color: ak.amberText),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      line.text.of(s),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: ak.inkSub,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -433,17 +517,22 @@ class _ChoiceCardState extends State<_ChoiceCard> {
                                         height: 24,
                                         decoration: BoxDecoration(
                                           color: ak.surfaceDim,
-                                          borderRadius:
-                                              BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
-                                        child: Icon(icon,
-                                            size: 13, color: ak.ink),
+                                        child: Icon(
+                                          icon,
+                                          size: 13,
+                                          color: ak.ink,
+                                        ),
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: 3),
+                                          padding: const EdgeInsets.only(
+                                            top: 3,
+                                          ),
                                           child: Text(
                                             line,
                                             style: TextStyle(
@@ -465,12 +554,13 @@ class _ChoiceCardState extends State<_ChoiceCard> {
                                 Wrap(
                                   spacing: 6,
                                   runSpacing: 6,
-                                  crossAxisAlignment:
-                                      WrapCrossAlignment.center,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    for (var i = 0;
-                                        i < widget.steps.length;
-                                        i++) ...[
+                                    for (
+                                      var i = 0;
+                                      i < widget.steps.length;
+                                      i++
+                                    ) ...[
                                       if (i > 0)
                                         // Mirrors in Arabic — a fixed
                                         // right-chevron would point back up
@@ -563,11 +653,7 @@ class _BottomBar extends StatelessWidget {
             Icon(icon, size: 17),
             const SizedBox(width: 8),
             Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
           ],
         ),

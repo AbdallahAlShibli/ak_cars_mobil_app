@@ -69,6 +69,13 @@ class OfflineApiClient implements ApiClient {
           Map<String, dynamic>? queryParameters,
           Map<String, String>? headers}) async =>
       _refuse('POST', path);
+
+  @override
+  Future<List<JsonMap>> deleteList(String path,
+          {Object? body,
+          Map<String, dynamic>? queryParameters,
+          Map<String, String>? headers}) async =>
+      _refuse('DELETE', path);
 }
 
 /// A [PushService] that never touches Firebase.

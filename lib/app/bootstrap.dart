@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/error/app_exception.dart';
+import '../core/utils/jwt_claims.dart';
 import '../di/providers.dart';
 import '../state/app_state.dart';
 
@@ -95,6 +96,7 @@ abstract final class AppBootstrap {
   /// warmed: an unwarmed repository is exactly where a swallowed `401` left it.
   static Future<void> warmUp(ProviderContainer container) async {
     final signedIn = await _signedIn(container);
+    final founder = signedIn && await _isFounder(container);
     await Future.wait([
       container.read(catalogRepositoryProvider).warmUp(),
       container.read(shopRepositoryProvider).warmUp(),
@@ -115,10 +117,14 @@ abstract final class AppBootstrap {
       // the same rule that already makes `/cars` and `/products` public.
       // Warming it only for a session was the mirror image of that gate on the
       // client: a guest opened the Services tab onto nothing at all.
+      // `includeFounderLedger` is keyed on the *founder* claim, not merely on
+      // having a session: the payout and audit ledgers answer every other
+      // signed-in account `403`, so passing `signedIn` here put two red lines
+      // in every ordinary customer's console on every cold start.
       _optional(
           () => container
               .read(serviceMarketplaceRepositoryProvider)
-              .warmUp(includeFounderLedger: signedIn)),
+              .warmUp(includeFounderLedger: founder)),
       if (signedIn) ...[
         _optional(() => container.read(challengeRepositoryProvider).warmUp()),
         // The per-account lists: this session's bookings and orders, and — for
@@ -151,6 +157,16 @@ abstract final class AppBootstrap {
   /// stored token is the one signal available this early.
   static Future<bool> _signedIn(ProviderContainer container) =>
       container.read(tokenStoreProvider).mayHaveSession();
+
+  /// Whether that stored token is a *founder's*.
+  ///
+  /// Same reason [_signedIn] reads the token store: `restore()` has not run
+  /// yet, so `AuthState.isFounder` is still false for everybody here. Gates
+  /// the two ledger warm-ups that answer any other account `403`.
+  static Future<bool> _isFounder(ProviderContainer container) async =>
+      jwtHasFounderRole(
+        await container.read(tokenStoreProvider).tryReadAccessToken(),
+      );
 
   /// Runs a warm-up that requires a signed-in session. A `401` here means
   /// "nobody is signed in", not "the warm-up failed" — swallowed so it never

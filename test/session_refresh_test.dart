@@ -75,7 +75,10 @@ void main() {
         reason: 'قيد المراجعة',
       );
       expect(
-        container.read(shopSellersProvider).firstWhere((p) => p.id == target.id).stage,
+        container
+            .read(shopSellersProvider)
+            .firstWhere((p) => p.id == target.id)
+            .stage,
         isNot(ProviderOnboardingStage.suspended),
         reason: 'nothing has refreshed yet, so the cache must still be stale',
       );
@@ -86,7 +89,10 @@ void main() {
       // synchronously and holds no revision of its own, so seeing the new stage
       // proves both halves of the mechanism.
       expect(
-        container.read(shopSellersProvider).firstWhere((p) => p.id == target.id).stage,
+        container
+            .read(shopSellersProvider)
+            .firstWhere((p) => p.id == target.id)
+            .stage,
         ProviderOnboardingStage.suspended,
       );
     });
@@ -128,7 +134,10 @@ void main() {
         container.read(requestsProvider).map((r) => r.id),
         contains(booking.id),
       );
-      expect(container.read(ordersProvider).map((o) => o.id), contains(order.id));
+      expect(
+        container.read(ordersProvider).map((o) => o.id),
+        contains(order.id),
+      );
     });
 
     test('a warm-up that fails leaves the user signed in', () async {
@@ -145,13 +154,15 @@ void main() {
       expect(
         container.read(authProvider).isRegistered,
         isTrue,
-        reason: 'the session is committed before the refresh runs, and a '
+        reason:
+            'the session is committed before the refresh runs, and a '
             'failed refresh must never take it back',
       );
       expect(
         cars.listingFetches,
         greaterThan(1),
-        reason: 'the public feeds are re-read at sign-in too, not just the '
+        reason:
+            'the public feeds are re-read at sign-in too, not just the '
             'auth-gated ones',
       );
       // The feed keeps what it had rather than emptying — `WarmCache` only
@@ -193,7 +204,10 @@ void main() {
         container.read(requestsProvider).map((r) => r.id),
         contains(booking.id),
       );
-      expect(container.read(ordersProvider).map((o) => o.id), contains(order.id));
+      expect(
+        container.read(ordersProvider).map((o) => o.id),
+        contains(order.id),
+      );
 
       await container.read(authProvider.notifier).signOut();
       await _settle();
@@ -209,17 +223,19 @@ void main() {
     test('the founder ledger is not left in the service marketplace cache '
         'for the next person to use this device', () async {
       final marketplace = MockServiceMarketplaceService();
+      // A founder session, because the ledger is only fetched for one now:
+      // `SessionRefresh` reads the role claim off the stored token instead of
+      // asking and letting the server's `403` be the check. The fake itself
+      // still does not enforce the role, so the call going out is what proves
+      // sign-in asks.
       final container = await createDataContainer(
         overrides: [
           serviceMarketplaceServiceProvider.overrideWithValue(marketplace),
+          founderSessionOverride(),
         ],
       );
       await _createAccountThenSignOut(container);
       await _signIn(container);
-      // `warmUp(includeFounderLedger: true)` ran at that sign-in — the fake
-      // does not check whether this account is really a founder (the real
-      // API's `403` does that), so the call itself going out is what proves
-      // sign-in asks.
       final afterSignIn = marketplace.fetchPayoutsCallCount;
       expect(afterSignIn, greaterThan(0));
 
@@ -246,7 +262,7 @@ void main() {
       // `AsyncNotifierProvider` in the "has an answer" state that used to
       // survive a sign-out untouched.
       expect(
-        (await container.read(myWorkshopProfileProvider.future)).id,
+        (await container.read(myWorkshopProfileProvider.future)).provider.id,
         providerA.id,
       );
 
@@ -266,14 +282,13 @@ void main() {
       // offerings, inventory, staff and profile before ever making a
       // request of their own.
       expect(
-        (await container.read(myWorkshopProfileProvider.future)).id,
+        (await container.read(myWorkshopProfileProvider.future)).provider.id,
         providerB.id,
       );
     });
 
     test('a plain customer who never opens the workshop dashboard causes '
-        'no /my-workshop/* requests at all, on sign-in or sign-out',
-        () async {
+        'no /my-workshop/* requests at all, on sign-in or sign-out', () async {
       final workshop = MockWorkshopService();
       final container = await createDataContainer(
         overrides: [workshopServiceProvider.overrideWithValue(workshop)],
@@ -342,7 +357,9 @@ void main() {
       await _createAccountThenSignOut(container);
       await _signIn(container);
 
-      await container.read(notificationServiceProvider).push(
+      await container
+          .read(notificationServiceProvider)
+          .push(
             title: const L('إشعار', 'A notification'),
             body: const L('نص', 'Body'),
           );
@@ -359,25 +376,30 @@ void main() {
         'holding the device', () async {
       final local = _FakeGarage();
       final remote = _FakeGarage();
-      final container = await createDataContainer(overrides: [
-        garageServiceProvider.overrideWith(
-          (ref) =>
-              SessionGarageService(local, remote, ref.watch(tokenStoreProvider)),
-        ),
-        // `MockAuthService` deliberately does not touch `TokenStore` — per
-        // `AuthService`'s own doc comment, "the token handling lands with the
-        // REST implementation", so the fake correctly leaves it out. But
-        // `SessionGarageService` routes on `TokenStore.hasSession()`, which
-        // only the *real* `ApiAuthService.signOut()` clears — so this test
-        // needs that one extra side effect layered on top of the fake to
-        // mean anything about the production wiring it is standing in for.
-        authServiceProvider.overrideWith(
-          (ref) => _AuthServiceThatClearsTokensOnSignOut(
-            MockAuthService(prefs: ref.watch(sharedPrefsProvider)),
-            ref.watch(tokenStoreProvider),
+      final container = await createDataContainer(
+        overrides: [
+          garageServiceProvider.overrideWith(
+            (ref) => SessionGarageService(
+              local,
+              remote,
+              ref.watch(tokenStoreProvider),
+            ),
           ),
-        ),
-      ]);
+          // `MockAuthService` deliberately does not touch `TokenStore` — per
+          // `AuthService`'s own doc comment, "the token handling lands with the
+          // REST implementation", so the fake correctly leaves it out. But
+          // `SessionGarageService` routes on `TokenStore.hasSession()`, which
+          // only the *real* `ApiAuthService.signOut()` clears — so this test
+          // needs that one extra side effect layered on top of the fake to
+          // mean anything about the production wiring it is standing in for.
+          authServiceProvider.overrideWith(
+            (ref) => _AuthServiceThatClearsTokensOnSignOut(
+              MockAuthService(prefs: ref.watch(sharedPrefsProvider)),
+              ref.watch(tokenStoreProvider),
+            ),
+          ),
+        ],
+      );
       await _createAccountThenSignOut(container);
       await _signIn(container);
 
@@ -386,8 +408,17 @@ void main() {
       // run once at an earlier sign-in.
       await container
           .read(garageProvider.notifier)
-          .add(const Car(id: 'signed-in-car', make: 'Toyota', model: 'Yaris', year: 2022));
-      expect(container.read(garageProvider).map((c) => c.id), ['signed-in-car']);
+          .add(
+            const Car(
+              id: 'signed-in-car',
+              make: 'Toyota',
+              model: 'Yaris',
+              year: 2022,
+            ),
+          );
+      expect(container.read(garageProvider).map((c) => c.id), [
+        'signed-in-car',
+      ]);
 
       await container.read(authProvider.notifier).signOut();
       await _settle();
@@ -403,14 +434,16 @@ void main() {
         '`POST /auth/logout` to answer 401, not a reason to leave every '
         'screen showing the departed account', () async {
       final marketplace = MockServiceMarketplaceService();
-      final container = await createDataContainer(overrides: [
-        serviceMarketplaceServiceProvider.overrideWithValue(marketplace),
-        authServiceProvider.overrideWith(
-          (ref) => _AuthServiceThatFailsToSignOut(
-            MockAuthService(prefs: ref.watch(sharedPrefsProvider)),
+      final container = await createDataContainer(
+        overrides: [
+          serviceMarketplaceServiceProvider.overrideWithValue(marketplace),
+          authServiceProvider.overrideWith(
+            (ref) => _AuthServiceThatFailsToSignOut(
+              MockAuthService(prefs: ref.watch(sharedPrefsProvider)),
+            ),
           ),
-        ),
-      ]);
+        ],
+      );
       await _createAccountThenSignOut(container);
       await _signIn(container);
 
@@ -523,8 +556,7 @@ class _AuthServiceThatFailsToSignOut implements AuthService {
       _inner.updateProfile(profile);
 
   @override
-  Future<UserProfile?> findAccount(String identifier) =>
-      _inner.findAccount(identifier);
+  Future<bool> requestOtp(String identifier) => _inner.requestOtp(identifier);
 
   @override
   Future<UserProfile> login(String identifier, String code) =>
@@ -556,7 +588,11 @@ class _AuthServiceThatClearsTokensOnSignOut implements AuthService {
 
   Future<UserProfile> _withToken(Future<UserProfile> Function() call) async {
     final profile = await call();
-    await _tokens.save(access: 'test-access', refresh: 'test-refresh', expiresIn: 3600);
+    await _tokens.save(
+      access: 'test-access',
+      refresh: 'test-refresh',
+      expiresIn: 3600,
+    );
     return profile;
   }
 
@@ -572,8 +608,7 @@ class _AuthServiceThatClearsTokensOnSignOut implements AuthService {
       _inner.updateProfile(profile);
 
   @override
-  Future<UserProfile?> findAccount(String identifier) =>
-      _inner.findAccount(identifier);
+  Future<bool> requestOtp(String identifier) => _inner.requestOtp(identifier);
 
   @override
   Future<UserProfile> login(String identifier, String code) =>

@@ -230,11 +230,16 @@ class StarPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
+    final s = S.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (var i = 1; i <= 5; i++)
           IconButton(
+            // Five identical star glyphs are indistinguishable to a screen
+            // reader without this — it would read "button" five times over
+            // with no way to tell which rating each one sets.
+            tooltip: s.t('$i من 5', '$i out of 5'),
             onPressed: () {
               HapticFeedback.selectionClick();
               onChanged(i);
