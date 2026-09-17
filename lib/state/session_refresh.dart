@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/error/app_exception.dart';
+import '../core/network/response_cache.dart';
 import '../core/utils/jwt_claims.dart';
 import '../di/providers.dart';
 import 'admin_content_state.dart';
@@ -190,7 +191,9 @@ class SessionRefresh {
   /// [clearAfterSignOut] asks it to be dropped, since there is no session left
   /// to hold it for.
   Future<void> _refillWarmCaches({required bool includeFounderLedger}) async {
-    await Future.wait([
+    // Recorded, so the next cold start can paint from these answers — see
+    // `ResponseCache`.
+    await ResponseCacheScope.record(() => Future.wait([
       _bestEffort(
         'vehicle & location catalogues',
         () => _ref.read(catalogRepositoryProvider).warmUp(),
@@ -218,7 +221,7 @@ class SessionRefresh {
         'challenge board',
         () => _ref.read(challengeRepositoryProvider).warmUp(),
       ),
-    ]);
+    ]));
   }
 
   /// Tells the widget tree that the caches underneath it have moved.
@@ -342,7 +345,7 @@ class SessionRefresh {
     // founder-only entry here, and reading the claim is a store read rather
     // than a round trip.
     final founder = await _isFounder();
-    await Future.wait([
+    await ResponseCacheScope.record(() => Future.wait([
       _bestEffort(
         'bookings',
         () => _ref.read(requestsProvider.notifier).load(),
@@ -369,7 +372,7 @@ class SessionRefresh {
           'operator queue',
           () => _ref.read(operatorQueueProvider.notifier).refresh(),
         ),
-    ]);
+    ]));
   }
 
   /// Runs one step of the refresh and never lets it take the rest down.

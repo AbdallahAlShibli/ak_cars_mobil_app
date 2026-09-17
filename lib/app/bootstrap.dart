@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/widgets.dart';
@@ -5,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/error/app_exception.dart';
+import '../core/network/response_cache.dart';
 import '../core/utils/jwt_claims.dart';
 import '../di/providers.dart';
 import '../state/app_state.dart';
+import '../state/startup_state.dart';
 
 /// Start-up sequence, shared by `main()` and the widget tests.
 ///
@@ -34,12 +37,37 @@ abstract final class AppBootstrap {
   /// happened and offers a retry.
   static const bootTimeout = Duration(seconds: 20);
 
+  /// How long start-up waits for the first load before painting anyway.
+  ///
+  /// The load itself is not cut short — it carries on in the background, the
+  /// app-wide loading bar shows it, and screens show their placeholders until
+  /// it lands (see [startupLoadingProvider]). This only decides when the
+  /// launch screen goes. Long enough that a start-up the disk cache can answer
+  /// (tens of milliseconds) paints complete; short enough that a first launch,
+  /// which has nothing stored and waits on the tunnel, is not left on the
+  /// launch screen for the several seconds its ~38 requests take.
+  static const firstFrameBudget = Duration(milliseconds: 500);
+
+  /// The first load of each container, as [startupSettled] hands it out.
+  static final _settled = Expando<Future<void>>('startupSettled');
+
+  /// Completes when [container]'s first load has settled.
+  ///
+  /// Completes normally when it succeeded, or failed after the disk cache had
+  /// already given screens something real to show. Completes with the error
+  /// when it failed with nothing stored — `AppLauncher` turns that into the
+  /// boot-failure screen. A container bootstrap did not build has nothing to
+  /// wait for.
+  static Future<void> startupSettled(ProviderContainer container) =>
+      _settled[container] ?? Future<void>.value();
+
   /// Builds a container with platform dependencies injected and every
   /// repository warmed. Callers own the returned container and must dispose
   /// it.
   static Future<ProviderContainer> createContainer({
     List<Override> overrides = const [],
     Duration timeout = bootTimeout,
+    Duration firstFrameBudget = AppBootstrap.firstFrameBudget,
   }) async {
     WidgetsFlutterBinding.ensureInitialized();
     final prefs = await SharedPreferences.getInstance().timeout(timeout);
@@ -50,22 +78,142 @@ abstract final class AppBootstrap {
         ...overrides,
       ],
     );
+    final settled = _loadFirst(container, timeout);
+    _settled[container] = settled;
     try {
-      await warmUp(container).timeout(timeout);
-      // Re-attach the stored session before the first frame: the router picks
-      // its start route from auth state, so this has to land before anything
-      // reads it. Deliberately outside `warmUp` — that one is reference data,
-      // and the pure-data test container has no SharedPreferences to restore
-      // from.
-      await container.read(authProvider.notifier).restore().timeout(timeout);
+      await _settledOrElapsed(settled, firstFrameBudget);
     } catch (_) {
-      // A container that failed half way through still holds live notifiers
-      // and their timers. Retrying the boot builds a second one, so the first
-      // has to go.
+      // Failed inside the budget with nothing stored to show. A container
+      // that failed half way through still holds live notifiers and their
+      // timers, and retrying the boot builds a second one, so this one goes.
       container.dispose();
       rethrow;
     }
     return container;
+  }
+
+  /// The first load: every repository's warm-up and the session's profile,
+  /// side by side, reading what the previous run stored before asking the
+  /// network — see [ResponseCache]. Bookable slots stay out: they are live
+  /// occupancy, fetched by [completeWarmUp] once the first frame is up.
+  ///
+  /// The profile is re-attached here because the router picks its start route
+  /// from auth state. Deliberately outside `warmUp` — that one is reference
+  /// data, and the pure-data test container has no SharedPreferences to
+  /// restore from.
+  ///
+  /// A failure after the disk cache has answered is logged and swallowed: the
+  /// screens already hold the last run's real data, and [completeWarmUp]
+  /// refreshes it. Only a failure with nothing stored is an error.
+  static Future<void> _loadFirst(
+    ProviderContainer container,
+    Duration timeout,
+  ) async {
+    container.read(startupLoadingProvider.notifier).start();
+    final scope = ResponseCacheScope.preferringCache();
+    try {
+      await scope
+          .run(
+            () => Future.wait([
+              warmUp(container, includeAvailability: false),
+              container.read(authProvider.notifier).restore(),
+            ], eagerError: true),
+          )
+          .timeout(timeout);
+    } catch (error, stack) {
+      if (!scope.servedFromCache) rethrow;
+      developer.log(
+        'The first load failed part way; screens keep what the last run '
+        'stored until the refresh after the first frame',
+        name: 'AppBootstrap',
+        error: error,
+        stackTrace: stack,
+      );
+    } finally {
+      _tryUpdate(container, () {
+        container.read(bootServedFromCacheProvider.notifier).state =
+            scope.servedFromCache;
+        container.read(startupLoadingProvider.notifier).finish();
+      });
+    }
+  }
+
+  /// Runs [update] unless [container] has already been disposed — a test
+  /// tearing down, or a failed boot — which Riverpod reports by throwing.
+  static void _tryUpdate(ProviderContainer container, void Function() update) {
+    try {
+      update();
+    } on StateError {
+      // Disposed: there is nobody left to tell.
+    }
+  }
+
+  /// Completes when [settled] does or [budget] has passed, whichever is
+  /// first. An error from [settled] inside the budget is rethrown; one after
+  /// it is left to whoever else waits on [settled].
+  static Future<void> _settledOrElapsed(
+    Future<void> settled,
+    Duration budget,
+  ) {
+    final done = Completer<void>();
+    final timer = Timer(budget, () {
+      if (!done.isCompleted) done.complete();
+    });
+    settled.then(
+      (_) {
+        timer.cancel();
+        if (!done.isCompleted) done.complete();
+      },
+      onError: (Object error, StackTrace stack) {
+        timer.cancel();
+        if (!done.isCompleted) done.completeError(error, stack);
+      },
+    );
+    return done.future;
+  }
+
+  /// The half of start-up that runs just after the first frame, never before
+  /// it — `AppLauncher` schedules it.
+  ///
+  /// * **Painted from disk:** every warm cache, the session lists and every
+  ///   workshop's slots are fetched live and the screens repaint — the same
+  ///   refresh pull-to-refresh runs, which also stores the answers for the
+  ///   next start-up.
+  /// * **Painted from the network** (a first launch, or a cache the OS
+  ///   emptied): everything but the slots is already live, so only those are
+  ///   fetched.
+  ///
+  /// Best-effort: a screen that fails to refresh keeps what it painted with,
+  /// and the booking screen asks for its own workshop's slots as it opens.
+  static Future<void> completeWarmUp(ProviderContainer container) async {
+    try {
+      await startupSettled(container);
+    } catch (_) {
+      // Nothing to complete: `AppLauncher` shows the failure screen.
+      return;
+    }
+    try {
+      if (container.read(bootServedFromCacheProvider)) {
+        await Future.wait([
+          container.read(sessionRefreshProvider).refreshVisibleData(),
+          // The profile came from disk too; this is where an expired session
+          // is found out and signed out.
+          container.read(authProvider.notifier).restore(revalidate: true),
+        ]);
+      } else {
+        await container
+            .read(serviceMarketplaceRepositoryProvider)
+            .warmAvailability();
+        container.read(warmCacheNoticeProvider).announce();
+      }
+    } catch (error, stack) {
+      developer.log(
+        'Could not finish the start-up warm-up; screens keep what they have',
+        name: 'AppBootstrap',
+        error: error,
+        stackTrace: stack,
+      );
+    }
   }
 
   /// Fetches the reference data every screen assumes is already present.
@@ -94,7 +242,13 @@ abstract final class AppBootstrap {
   /// same case [ApiAuthService.fetchCurrentUser] treats as expected rather than
   /// an error. Skipping the calls changes what is *requested*, not what ends up
   /// warmed: an unwarmed repository is exactly where a swallowed `401` left it.
-  static Future<void> warmUp(ProviderContainer container) async {
+  ///
+  /// [includeAvailability] false leaves every workshop's bookable slots for
+  /// [completeWarmUp] — see [ServiceMarketplaceRepository.warmUp].
+  static Future<void> warmUp(
+    ProviderContainer container, {
+    bool includeAvailability = true,
+  }) async {
     final signedIn = await _signedIn(container);
     final founder = signedIn && await _isFounder(container);
     await Future.wait([
@@ -124,7 +278,10 @@ abstract final class AppBootstrap {
       _optional(
           () => container
               .read(serviceMarketplaceRepositoryProvider)
-              .warmUp(includeFounderLedger: founder)),
+              .warmUp(
+                includeFounderLedger: founder,
+                includeAvailability: includeAvailability,
+              )),
       if (signedIn) ...[
         _optional(() => container.read(challengeRepositoryProvider).warmUp()),
         // The per-account lists: this session's bookings and orders, and — for
@@ -191,3 +348,8 @@ abstract final class AppBootstrap {
   }
 
 }
+
+/// Whether start-up painted from the disk cache, so [AppBootstrap
+/// .completeWarmUp] knows a live refresh has to follow. Written once, by the
+/// bootstrap.
+final bootServedFromCacheProvider = StateProvider<bool>((ref) => false);

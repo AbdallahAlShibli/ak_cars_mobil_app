@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show kReleaseMode;
+
 import 'app_environment.dart';
 
 /// Immutable, environment-scoped runtime configuration.
@@ -19,6 +21,9 @@ class AppConfig {
     required this.apiBaseUrl,
     this.connectTimeout = const Duration(seconds: 15),
     this.receiveTimeout = const Duration(seconds: 20),
+    this.readTimeout = const Duration(seconds: 8),
+    this.readRetries = 2,
+    this.connectionIdleTimeout = const Duration(seconds: 60),
     this.defaultPageSize = 20,
     this.approvalWindow = const Duration(hours: 72),
     this.approvalReminderLead = const Duration(hours: 24),
@@ -33,6 +38,25 @@ class AppConfig {
 
   final Duration connectTimeout;
   final Duration receiveTimeout;
+
+  /// How long a `GET` may wait for its response before it is abandoned and
+  /// retried — shorter than [receiveTimeout], which still bounds writes.
+  ///
+  /// Through the Cloudflare tunnel an ordinary read answers in about a second,
+  /// but one occasionally stalls for 17–48 s and the *next* attempt answers in
+  /// a second again (measured 2026-09-15). Waiting the full [receiveTimeout]
+  /// on the stalled one held start-up — or a screen — for 20 s and then
+  /// failed; cutting it off at this and asking again gets the answer.
+  final Duration readTimeout;
+
+  /// How many times a `GET` that timed out or could not connect is asked
+  /// again. Reads only: a write that timed out may still have happened.
+  final int readRetries;
+
+  /// How long an idle connection to the API is kept open for reuse. Dart's
+  /// default is 15 s, after which the next screen's request pays for a fresh
+  /// TCP and TLS handshake to Cloudflare again.
+  final Duration connectionIdleTimeout;
 
   final int defaultPageSize;
 
@@ -82,6 +106,50 @@ class AppConfig {
   static const bool useRemoteVehicleImages =
       bool.fromEnvironment('AK_REMOTE_CAR_IMAGES', defaultValue: true);
 
+  /// Phone sign-in without the real reCAPTCHA (web) or Play Integrity / APNs
+  /// check (mobile): Firebase shows a mock instead, and **only the test phone
+  /// numbers set in the Firebase console work** — real numbers are refused.
+  ///
+  /// For development and demos:
+  /// `--dart-define=AK_PHONE_AUTH_TEST_MODE=true`. Ignored in production (see
+  /// [phoneAuthTestModeAllowed]), so a stray define in a release command
+  /// cannot switch app verification off for real users.
+  bool get phoneAuthTestMode => phoneAuthTestModeAllowed(
+    environment,
+    requested: _phoneAuthTestModeRequested,
+  );
+
+  static const _phoneAuthTestModeRequested =
+      bool.fromEnvironment('AK_PHONE_AUTH_TEST_MODE', defaultValue: false);
+
+  /// Whether a requested phone-auth test mode may take effect in [environment].
+  static bool phoneAuthTestModeAllowed(
+    AppEnvironment environment, {
+    required bool requested,
+  }) => requested && environment != AppEnvironment.production;
+
+  /// Whether phone login and registration may fall back to the API's own
+  /// code when Firebase reports that SMS sign-in is not set up for this app
+  /// (`PhoneVerificationFailure.notConfigured`: billing off, SMS region
+  /// blocked, build not registered).
+  ///
+  /// Development debug builds only. The API's own code is texted by whatever
+  /// `Sms:Provider` it runs — `Log` in development, which writes the code to
+  /// the API log — so this keeps a developer able to sign in while the
+  /// Firebase console is being set up. Production and staging keep Firebase
+  /// as the only proof of a phone, and a release build never falls back
+  /// whatever `AK_ENV` says (see [apiOtpFallbackAllowedFor]).
+  bool get apiOtpFallbackAllowed =>
+      apiOtpFallbackAllowedFor(environment, releaseBuild: kReleaseMode);
+
+  /// Two locks, like `DioApiClient`'s dev-certificate trust: the environment,
+  /// and the build mode — an `AK_ENV` define that fails open cannot turn this
+  /// on in a release build.
+  static bool apiOtpFallbackAllowedFor(
+    AppEnvironment environment, {
+    required bool releaseBuild,
+  }) => environment.isDevelopment && !releaseBuild;
+
   /// Configuration for the environment this binary was built for.
   ///
   /// [_apiBaseUrlOverride], when set, replaces the environment's
@@ -99,13 +167,15 @@ class AppConfig {
   static const _apiBaseUrlOverride =
       String.fromEnvironment('AK_API_BASE_URL', defaultValue: '');
 
-  // One fixed API host for every environment, set by the user 2026-08-09 —
-  // do not change until told to. https, not AKCarsMobileAPI's plain-http
-  // launch profile: its `UseHttpsRedirection()` runs unconditionally, so the
-  // http port only ever 307s. Port 7291 is the `https` profile in
-  // Properties/launchSettings.json. DioApiClient trusts its self-signed dev
-  // certificate for [AppEnvironment.development] only — see its constructor.
-  static const _sharedApiBaseUrl = 'https://localhost:7291/api/v1';
+  // One fixed API host for every environment, set by the user 2026-09-14 —
+  // do not change until told to. It is a Cloudflare tunnel (AKCarsMobile,
+  // bddde064-…) in front of AKCarsMobileAPI's `https` launch profile on
+  // https://localhost:7291, so a real phone reaches the API with no
+  // `adb reverse` and a publicly trusted certificate. When the tunnel is down
+  // every request fails with a NetworkException naming this host; to talk to
+  // the API directly instead:
+  // `--dart-define=AK_API_BASE_URL=https://localhost:7291/api/v1`.
+  static const _sharedApiBaseUrl = 'https://akcarsapi.0coders.com/api/v1';
 
   static AppConfig forEnvironment(AppEnvironment environment) => AppConfig(
         environment: environment,
@@ -117,6 +187,9 @@ class AppConfig {
     String? apiBaseUrl,
     Duration? connectTimeout,
     Duration? receiveTimeout,
+    Duration? readTimeout,
+    int? readRetries,
+    Duration? connectionIdleTimeout,
     int? defaultPageSize,
     Duration? approvalWindow,
     Duration? approvalReminderLead,
@@ -128,6 +201,10 @@ class AppConfig {
         apiBaseUrl: apiBaseUrl ?? this.apiBaseUrl,
         connectTimeout: connectTimeout ?? this.connectTimeout,
         receiveTimeout: receiveTimeout ?? this.receiveTimeout,
+        readTimeout: readTimeout ?? this.readTimeout,
+        readRetries: readRetries ?? this.readRetries,
+        connectionIdleTimeout:
+            connectionIdleTimeout ?? this.connectionIdleTimeout,
         defaultPageSize: defaultPageSize ?? this.defaultPageSize,
         approvalWindow: approvalWindow ?? this.approvalWindow,
         approvalReminderLead: approvalReminderLead ?? this.approvalReminderLead,

@@ -758,7 +758,7 @@ class _CompleteDetailsNudge extends StatelessWidget {
                     color: ak.amberText),
               ),
             ),
-            Icon(LucideIcons.chevronRight, size: 17, color: ak.amberText),
+            Icon(DirectionalIcons.forwardChevron(context), size: 17, color: ak.amberText),
           ],
         ),
       ),

@@ -25,6 +25,13 @@ import 'role_state.dart';
 class RequestsNotifier extends Notifier<List<ServiceRequest>> {
   final List<Timer> _timers = [];
 
+  /// Bookings with an escrow event on the wire right now — see [fire].
+  final Set<String> _inFlight = {};
+
+  /// The API's (and the mock's) code for a move the booking's *current*
+  /// server-side state does not allow.
+  static const _transitionNotAllowed = 'escrow_transition_not_allowed';
+
   /// Whether this notifier has been torn down. [load] is awaited across a
   /// network call and assigns `state` afterwards, so without this a container
   /// disposed mid-load — a sign-out, a hot restart — makes it write to a dead
@@ -171,16 +178,36 @@ class RequestsNotifier extends Notifier<List<ServiceRequest>> {
       return null;
     }
 
-    final updated = await ref
-        .read(serviceMarketplaceRepositoryProvider)
-        .applyEscrowEvent(
-          id,
-          event,
-          actor: actor,
-          proof: proof,
-          disputeNote: disputeNote,
-          slot: slot,
-        );
+    // One event per booking at a time. A second tap — or a second screen —
+    // arriving while the first is still on the wire passes the checks above
+    // against the same not-yet-updated copy, and asks the server for a move it
+    // has just made impossible.
+    if (!_inFlight.add(id)) return null;
+    final ServiceRequest updated;
+    try {
+      updated = await ref
+          .read(serviceMarketplaceRepositoryProvider)
+          .applyEscrowEvent(
+            id,
+            event,
+            actor: actor,
+            proof: proof,
+            disputeNote: disputeNote,
+            slot: slot,
+          );
+    } on BusinessRuleException catch (error) {
+      if (error.code != _transitionNotAllowed) rethrow;
+      // The server's copy had already moved on (another device, another
+      // screen, a tap this list had not caught up with): this screen was
+      // stale. Same answer as the local check above — null — and the list
+      // catches up so the button that fired it goes away. Throwing here is
+      // what surfaced "'System' may not fire 'cancelBooking' from
+      // 'Cancelled'" as an unhandled exception.
+      await load();
+      return null;
+    } finally {
+      _inFlight.remove(id);
+    }
     _replace(updated);
 
     ref

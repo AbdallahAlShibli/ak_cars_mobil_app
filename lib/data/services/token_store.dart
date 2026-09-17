@@ -9,12 +9,20 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class TokenStore {
   TokenStore({FlutterSecureStorage? storage})
       : _storage = storage ??
-            const FlutterSecureStorage(aOptions: _android, iOptions: _ios);
+            const FlutterSecureStorage(
+              aOptions: androidOptions,
+              iOptions: iosOptions,
+            );
 
   /// Jetpack Security's `EncryptedSharedPreferences`, which is *not* the
   /// plugin's Android default — the default is its own older keystore-wrapped
   /// scheme written over a plain prefs file.
-  static const _android = AndroidOptions(encryptedSharedPreferences: true);
+  ///
+  /// Public so `PushKeyStore` keeps the device's push key under the same
+  /// protection as the session tokens.
+  static const androidOptions = AndroidOptions(
+    encryptedSharedPreferences: true,
+  );
 
   /// `first_unlock_this_device`, not the plugin's default `unlocked`.
   ///
@@ -22,7 +30,7 @@ class TokenStore {
   /// refresh token out of iCloud and iTunes backups, so a restore onto a
   /// second phone cannot resume this session — which is the exact threat the
   /// doc comment above names, "or a backup of it".
-  static const _ios = IOSOptions(
+  static const iosOptions = IOSOptions(
     accessibility: KeychainAccessibility.first_unlock_this_device,
   );
 

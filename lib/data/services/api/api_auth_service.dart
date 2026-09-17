@@ -39,12 +39,25 @@ class ApiAuthService implements AuthService {
   }
 
   @override
-  Future<UserProfile> register(UserProfile profile) async {
+  Future<UserProfile> register(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) async {
     final json = await _client.post(
       ApiEndpoints.register,
-      body: profile.toJson(),
+      body: {
+        ...profile.toJson(),
+        'phoneVerificationToken': ?phoneVerificationToken,
+      },
     );
     return _startSession(json);
+  }
+
+  @override
+  Future<void> validateRegistration(UserProfile profile) async {
+    // `204` when it would be accepted. Every refusal arrives as the same
+    // exception `register` would throw, so the screen reports both one way.
+    await _client.post(ApiEndpoints.registerCheck, body: profile.toJson());
   }
 
   @override
@@ -69,6 +82,28 @@ class ApiAuthService implements AuthService {
   }
 
   @override
+  Future<bool> accountExists(String identifier) async {
+    try {
+      await _client.post(
+        ApiEndpoints.loginCheck,
+        body: {'identifier': identifier},
+      );
+      return true;
+    } on NotFoundException {
+      return false;
+    }
+  }
+
+  @override
+  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) async {
+    final json = await _client.post(
+      ApiEndpoints.loginPhone,
+      body: {'idToken': firebaseIdToken},
+    );
+    return _startSession(json);
+  }
+
+  @override
   Future<UserProfile> login(String identifier, String code) async {
     final json = await _client.post(ApiEndpoints.loginVerify, body: {
       'identifier': identifier,
@@ -83,19 +118,26 @@ class ApiAuthService implements AuthService {
       refresh: json.requireString('refreshToken'),
       expiresIn: json.intOr('expiresIn', 3600),
     );
-    await _push.registerCurrentDevice();
+    // Opens the live notification channel for this account. Not awaited on
+    // purpose: a slow or unreachable hub must never hold up signing in.
+    _push.start().ignore();
     return UserProfile.fromJson(json.requireObject('user'));
   }
 
   @override
   Future<void> signOut() async {
     try {
+      // Push goes first, while the session still authenticates: it stops the
+      // background service and deletes this install's push key on the
+      // server, which after logout could need a refresh token already
+      // revoked. It never throws. The next account on a shared phone never
+      // receives this one's notifications.
+      await _push.stop();
       await _client.post(ApiEndpoints.logout);
     } finally {
       // Clears the local session even when the network call above failed —
       // a logout that leaves a token behind because the server was
       // unreachable is the worst kind of bug on a shared phone.
-      await _push.unregisterCurrentDevice();
       await _tokens.clear();
     }
   }

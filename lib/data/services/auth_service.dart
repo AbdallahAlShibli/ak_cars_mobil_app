@@ -16,7 +16,19 @@ abstract interface class AuthService {
   Future<UserProfile?> fetchCurrentUser();
 
   /// Completes registration and returns the stored profile.
-  Future<UserProfile> register(UserProfile profile);
+  ///
+  /// [phoneVerificationToken] is the Firebase ID token from proving
+  /// [UserProfile.phone] by SMS. The server requires it in production and
+  /// refuses one issued for a different number.
+  Future<UserProfile> register(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  });
+
+  /// Runs every server-side registration rule for [profile] without creating
+  /// anything: completes when it would be accepted, and throws the exception
+  /// [register] would otherwise throw.
+  Future<void> validateRegistration(UserProfile profile);
 
   Future<UserProfile> updateProfile(UserProfile profile);
 
@@ -34,6 +46,15 @@ abstract interface class AuthService {
   /// longer sends the profile, so there is nothing left to return but the
   /// answer to that check.
   Future<bool> requestOtp(String identifier);
+
+  /// Whether an account uses [identifier]. Sends nothing.
+  Future<bool> accountExists(String identifier);
+
+  /// Starts the session for the account whose phone Firebase verified.
+  ///
+  /// The server checks [firebaseIdToken] and looks the account up by the
+  /// number inside it; throws [NotFoundException] when no account has it.
+  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken);
 
   /// Verifies [code] against the OTP sent to [identifier] and, if it
   /// matches, starts the session.

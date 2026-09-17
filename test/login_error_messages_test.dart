@@ -8,6 +8,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fakes/fake_phone_verification_service.dart';
 import 'helpers/test_harness.dart';
 
 /// The login screen has to say *which* thing went wrong.
@@ -17,24 +18,24 @@ import 'helpers/test_harness.dart';
 /// who had burned all five attempts and a person who was simply offline all
 /// read the same sentence. Only one of those is helped by trying again.
 ///
-/// The server deliberately collapses wrong/expired/too-many into one code
-/// (`otp_invalid_or_expired`) so the message cannot be used to learn whether a
-/// code was ever right — so the copy names what the user can *do*, not which
-/// of the three happened.
+/// Two senders, two sets of rules. The API's own code (email) deliberately
+/// collapses wrong/expired/too-many into `otp_invalid_or_expired`, so that copy
+/// names what the user can *do*. Firebase's SMS code (phone) does tell a
+/// mistyped code from an expired one, and that copy says which.
 void main() {
-  /// Opens the login screen, gets as far as the code field, then makes the
-  /// next `login()` fail with [failure].
-  Future<void> pumpToCodeField(
+  Future<void> pumpLogin(
     WidgetTester tester, {
-    required AppException failure,
+    required AuthService auth,
+    FakePhoneVerificationService? phones,
   }) async {
     tester.view.physicalSize = const Size(402 * 3, 874 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
 
     final container = await createTestContainer(overrides: [
-      authServiceProvider
-          .overrideWithValue(_ScriptedAuthService(failure)),
+      authServiceProvider.overrideWithValue(auth),
+      if (phones != null)
+        phoneVerificationServiceProvider.overrideWithValue(phones),
     ]);
 
     await tester.pumpWidget(
@@ -53,86 +54,172 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-
-    await tester.enterText(find.byType(TextField).first, '92220002');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Send the code'));
-    await tester.pumpAndSettle();
-
-    await tester.enterText(find.byType(TextField).last, '1234');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Verify and log in'));
-    await tester.pumpAndSettle();
   }
 
-  testWidgets('a wrong or expired code says so, and says to ask for a new one',
-      (tester) async {
-    await pumpToCodeField(
-      tester,
-      failure: const UnauthorizedException('Wrong or expired code.',
-          code: 'otp_invalid_or_expired'),
-    );
+  group('the API code, sent by email', () {
+    Future<void> failVerifyWith(
+      WidgetTester tester,
+      AppException failure,
+    ) async {
+      await pumpLogin(tester, auth: _ScriptedAuthService(failure));
 
-    expect(
-      find.text('That code is wrong or has expired — request a new one'),
-      findsOneWidget,
-    );
-    expect(find.text('Could not log in — try again'), findsNothing);
+      await tester.tap(find.text('Email'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'owner@akcars.om');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Send the code'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).last, '1234');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Verify and log in'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a wrong or expired code says so, and says to ask for a new one',
+        (tester) async {
+      await failVerifyWith(
+        tester,
+        const UnauthorizedException('Wrong or expired code.',
+            code: 'otp_invalid_or_expired'),
+      );
+
+      expect(
+        find.text('That code is wrong or has expired — request a new one'),
+        findsOneWidget,
+      );
+      expect(find.text('Could not log in — try again'), findsNothing);
+    });
+
+    testWidgets('being rate-limited says to wait, not to try again',
+        (tester) async {
+      await failVerifyWith(tester, const RateLimitedException('Rate limited'));
+
+      expect(
+        find.text('Too many attempts — wait a minute and try again'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an unreachable server blames the connection, not the code',
+        (tester) async {
+      await failVerifyWith(
+        tester,
+        const NetworkException('Could not reach the host'),
+      );
+
+      expect(
+        find.text('Could not reach the server — check your connection'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('anything unclassified still falls back to the generic message',
+        (tester) async {
+      await failVerifyWith(
+        tester,
+        const UnknownException('something else entirely'),
+      );
+
+      expect(find.text('Could not log in — try again'), findsOneWidget);
+    });
   });
 
-  testWidgets('being rate-limited says to wait, not to try again',
-      (tester) async {
-    await pumpToCodeField(
-      tester,
-      failure: const RateLimitedException('Rate limited'),
-    );
+  group('the Firebase code, sent by SMS', () {
+    Future<void> sendAndEnter(WidgetTester tester, String code) async {
+      await tester.enterText(find.byType(TextField).first, '92220002');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Send the code'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, code);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Verify and log in'));
+      await tester.pumpAndSettle();
+    }
 
-    expect(
-      find.text('Too many attempts — wait a minute and try again'),
-      findsOneWidget,
-    );
-  });
+    testWidgets('a mistyped code says to check it, and never reaches the API',
+        (tester) async {
+      final auth = _ScriptedAuthService(const UnknownException('unused'));
+      await pumpLogin(tester, auth: auth);
 
-  testWidgets('an unreachable server blames the connection, not the code',
-      (tester) async {
-    await pumpToCodeField(
-      tester,
-      failure: const NetworkException('Could not reach the host'),
-    );
+      await sendAndEnter(tester, '000000');
 
-    expect(
-      find.text('Could not reach the server — check your connection'),
-      findsOneWidget,
-    );
-  });
+      expect(
+        find.text('That code is not right — check it and try again'),
+        findsOneWidget,
+      );
+      expect(auth.phoneLoginAttempts, 0);
+    });
 
-  testWidgets('anything unclassified still falls back to the generic message',
-      (tester) async {
-    await pumpToCodeField(
-      tester,
-      failure: const UnknownException('something else entirely'),
-    );
+    testWidgets('a verification the API no longer accepts asks for a new code',
+        (tester) async {
+      await pumpLogin(
+        tester,
+        auth: _ScriptedAuthService(const UnauthorizedException(
+          'The phone verification is not valid or has expired.',
+          code: 'phone_token_invalid',
+        )),
+      );
 
-    expect(find.text('Could not log in — try again'), findsOneWidget);
+      await sendAndEnter(tester, FakePhoneVerificationService.validCode);
+
+      expect(
+        find.text('The verification has expired — ask for a new code'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('SMS verification that cannot run says so under the number',
+        (tester) async {
+      final phones = FakePhoneVerificationService()
+        ..sendFailure = const PhoneVerificationException(
+          'operation-not-allowed',
+          reason: PhoneVerificationFailure.unavailable,
+        );
+      await pumpLogin(
+        tester,
+        auth: _ScriptedAuthService(const UnknownException('unused')),
+        phones: phones,
+      );
+
+      await tester.enterText(find.byType(TextField).first, '92220002');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Send the code'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+            'SMS verification is not available right now — try again later'),
+        findsOneWidget,
+      );
+      expect(find.text('Verify and log in'), findsNothing);
+    });
   });
 }
 
-/// Sends the code, then fails [login] with a chosen exception.
-///
-/// It no longer holds an account to hand back: `requestOtp` replaced
-/// `findAccount` and answers with a bool, because the server stopped
-/// returning the profile to an unauthenticated caller.
+/// Finds the account, then fails whichever login is attempted with [_failure].
 class _ScriptedAuthService extends MockAuthServiceBase {
   _ScriptedAuthService(this._failure);
 
   final AppException _failure;
 
+  int phoneLoginAttempts = 0;
+
   @override
   Future<bool> requestOtp(String identifier) async => true;
 
   @override
+  Future<bool> accountExists(String identifier) async => true;
+
+  @override
   Future<UserProfile> login(String identifier, String code) async =>
       throw _failure;
+
+  @override
+  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) async {
+    phoneLoginAttempts++;
+    throw _failure;
+  }
 }
 
 /// The parts of [AuthService] this test does not exercise.
@@ -144,12 +231,24 @@ class MockAuthServiceBase implements AuthService {
   Future<bool> requestOtp(String identifier) async => false;
 
   @override
+  Future<bool> accountExists(String identifier) async => false;
+
+  @override
   Future<UserProfile> login(String identifier, String code) async =>
       throw UnimplementedError();
 
   @override
-  Future<UserProfile> register(UserProfile profile) async =>
+  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) async =>
       throw UnimplementedError();
+
+  @override
+  Future<UserProfile> register(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<void> validateRegistration(UserProfile profile) async {}
 
   @override
   Future<void> signOut() async {}

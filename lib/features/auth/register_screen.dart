@@ -22,6 +22,7 @@ import '../../state/provider_dashboard_state.dart';
 import '../../data/models/models.dart';
 import '../services/proof_upload_sheet.dart';
 import 'auth_form_widgets.dart';
+import 'phone_code_sheet.dart';
 
 /// Every error key the workshop half of the form owns.
 ///
@@ -45,13 +46,15 @@ const _workshopErrorKeys = {
 /// details" on the profile hub reopened an empty registration form and
 /// re-demanded an OTP just to correct an address.
 ///
-/// There is no verification step here. `POST /auth/register` and
-/// `PUT /user/profile` both save whatever they are sent, with no OTP on
-/// either — the in-app "prove it" gate that used to live on this screen only
-/// ever had the removed mock backend behind it, and it compared the typed code
-/// against a hardcoded constant. Keeping it would have blocked every real
-/// registration behind a made-up password. Login *does* verify a real,
-/// server-issued code; see `login_screen.dart`.
+/// A new account proves its phone number before it exists. Once the form
+/// validates, the server checks the registration without saving it
+/// (`POST /auth/register/check`), Firebase texts a code to the number, and only
+/// the ID token from entering that code lets `POST /auth/register` create the
+/// account — see `_provePhone`. The server checks that token itself; the app's
+/// word that a number was verified counts for nothing.
+///
+/// Editing an existing account does not re-verify: `PUT /user/profile` is
+/// already behind the session the phone proved.
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
@@ -416,7 +419,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           }
         }
       } else {
-        await notifier.register(profile);
+        final proof = await _provePhone(profile);
+        if (proof == null) {
+          // The code sheet was closed. Nothing was created, and every field
+          // keeps what was typed into it.
+          if (mounted) setState(() => _saving = false);
+          return;
+        }
+        await notifier.register(profile, phoneVerificationToken: proof.token);
       }
     } catch (error) {
       // `AuthNotifier` rolls its optimistic state back and rethrows, so this is
@@ -467,6 +477,48 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
+  /// Proves [profile]'s phone number by SMS before the account is created.
+  ///
+  /// The server's own rules run first, saving nothing: a taken phone or email
+  /// is reported now, before Firebase spends an SMS and the user types a code
+  /// for a registration that was going to be refused anyway.
+  ///
+  /// Returns the Firebase ID token to register with, or `(token: null)` where
+  /// SMS verification cannot run at all (desktop) and the server decides.
+  /// Null when the user closed the code sheet. Throws what the check or the
+  /// SMS send threw, for [_reportSubmitFailure].
+  Future<({String? token})?> _provePhone(UserProfile profile) async {
+    await ref.read(authProvider.notifier).validateRegistration(profile);
+
+    final phones = ref.read(phoneVerificationServiceProvider);
+    if (!phones.isSupported) return (token: null);
+
+    try {
+      final session = await phones.sendCode(
+        AuthPhone.e164(AuthPhone.local(_phone.text)),
+      );
+      if (!mounted) return null;
+      // Nothing is saving while the user types the code, so the button stops
+      // saying it is; it resumes once there is a token to register with.
+      setState(() => _saving = false);
+      final token = await showPhoneCodeSheet(context, session: session);
+      if (token == null) return null;
+      if (mounted) setState(() => _saving = true);
+      return (token: token);
+    } on PhoneVerificationException catch (error) {
+      // Firebase is not set up to text this number yet (billing off, region
+      // blocked, build not registered). A development debug build registers
+      // without the proof, as desktop does — the development API does not
+      // require it (Firebase:RequireVerifiedPhoneOnRegister is false there).
+      // Anywhere else the refusal stands and is reported.
+      if (error.reason != PhoneVerificationFailure.notConfigured ||
+          !ref.read(appConfigProvider).apiOtpFallbackAllowed) {
+        rethrow;
+      }
+      return (token: null);
+    }
+  }
+
   /// Turns a rejected submission into something the user can act on.
   ///
   /// The one case worth branching on is an account that already exists. "Try
@@ -480,6 +532,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   /// and this screen is Arabic by default — a localized line for the case we
   /// recognise beats a server string the user may not read.
   void _reportSubmitFailure(Object error, S s) {
+    if (error is PhoneVerificationException) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(phoneVerificationMessage(s, error))),
+        );
+      return;
+    }
     final code = error is BusinessRuleException ? error.code : null;
     final exists = code == 'account_already_exists';
     // The founder deleted this workshop account (see AdminWorkshopDetailScreen's
@@ -787,7 +847,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       alignment: AlignmentDirectional.centerStart,
                       child: TextButton.icon(
                         onPressed: () => context.pushReplacement('/login'),
-                        icon: const Icon(LucideIcons.logIn, size: 15),
+                        icon: const MirroredIcon(LucideIcons.logIn, size: 15),
                         label: Text(
                           s.t(
                             'لديك حساب؟ سجّل الدخول',

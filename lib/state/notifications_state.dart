@@ -75,23 +75,47 @@ class NotificationsNotifier extends Notifier<List<AppNotification>> {
     // once per orphaned listener, and the orphan's `adopt` writes `state` on
     // a disposed notifier. Same shape, same reason, as [RequestsNotifier]'s
     // timer cleanup.
-    final subscription = ref
-        .read(pushServiceProvider)
+    final push = ref.read(pushServiceProvider);
+    final frames = push
         .dataMessages()
         .listen((data) => adopt(AppNotification.fromJson(data)));
-    ref.onDispose(subscription.cancel);
+    // The server does not replay what a device missed while its connection
+    // was down, so every (re)connect is followed by a fetch of the inbox.
+    final connections = push.connections().listen(
+      (_) => unawaited(_reloadQuietly()),
+    );
+    ref.onDispose(frames.cancel);
+    ref.onDispose(connections.cancel);
   }
 
-  /// Adds a notification the repository has just raised to the inbox.
+  /// Puts a notification at the top of the inbox — a decoded push frame — or,
+  /// given `null`, reloads the inbox from the server.
   ///
-  /// Notifications are always *authored* by the repository — the copy for
-  /// every lifecycle event lives there, not in a widget — so this notifier
-  /// only ever adopts the result.
+  /// `null` is what every `NotificationRepository.notify*` answers: the
+  /// server raised the real row as a side effect of the booking, order or ad
+  /// that just happened, so fetching is how it reaches the screen. Those
+  /// methods used to answer a blank placeholder instead, which this inserted
+  /// as an untappable "1 Jan · 4:00" card.
   void adopt(AppNotification? notification) {
     // Reachable after teardown: a push frame already in flight, or one of
     // the repository's `await`ed callers resuming past a sign-out.
-    if (_disposed || notification == null) return;
+    if (_disposed) return;
+    if (notification == null) {
+      unawaited(_reloadQuietly());
+      return;
+    }
     state = [notification, ...state];
+  }
+
+  /// [load] for callers that did not ask for a network round trip and cannot
+  /// act on its failure: the booking or order they just made has already
+  /// succeeded, and the next open of the inbox fetches again.
+  Future<void> _reloadQuietly() async {
+    try {
+      await load();
+    } on AppException {
+      // Offline or the server refused — the inbox keeps what it has.
+    }
   }
 
   Future<void> markAllRead() => _apply((repo) => repo.markAllRead());

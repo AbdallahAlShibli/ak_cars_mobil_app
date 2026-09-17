@@ -533,7 +533,7 @@ class _ListingDetailScreenState extends ConsumerState<ListingDetailScreen> {
                                 ],
                               ),
                             ),
-                            const Icon(LucideIcons.chevronRight,
+                            Icon(DirectionalIcons.forwardChevron(context),
                                 color: Color(0xFFD8D1C4)),
                           ],
                         ),

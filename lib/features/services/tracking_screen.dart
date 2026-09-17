@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/error/app_exception.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
@@ -18,7 +19,63 @@ import '../../core/widgets/widgets.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
+import 'job_report_widgets.dart';
 import 'platform_trust_widgets.dart';
+
+/// Cancels [request] — after asking, because a cancelled booking cannot be
+/// restored — and says so when it did not go through.
+///
+/// The button used to fire straight from `onPressed` with nothing awaiting
+/// it, so any refusal escaped as an unhandled exception. `RequestsNotifier.fire`
+/// now ignores a second tap while the first is on the wire and absorbs a
+/// server that had already cancelled; anything left (offline, a server error)
+/// is reported here.
+Future<void> _cancelBooking(
+  BuildContext context,
+  WidgetRef ref,
+  ServiceRequest request,
+) async {
+  final s = S.of(context);
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(s.t('إلغاء الحجز؟', 'Cancel this booking?')),
+      content: Text(
+        s.t(
+          'لم يُحتجز أي مبلغ بعد. لا يمكن استعادة الحجز بعد إلغائه.',
+          'No money has been held yet. A cancelled booking cannot be restored.',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: Text(s.t('تراجع', 'Back')),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: Text(s.t('إلغاء الحجز', 'Cancel booking')),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await ref
+        .read(requestsProvider.notifier)
+        .fire(request.id, EscrowEvent.cancelBooking, actor: EscrowActor.customer);
+  } on AppException {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          s.t('تعذّر إلغاء الحجز — حاول مرة أخرى',
+              "Couldn't cancel the booking — try again"),
+        ),
+      ),
+    );
+  }
+}
 
 /// The customer's view of the escrow machine.
 ///
@@ -182,6 +239,9 @@ class TrackingScreen extends ConsumerWidget {
                     window: config.approvalWindow,
                   ),
                   const SizedBox(height: AppSpacing.sectionGap),
+                  // Extra work to decide on, then what the workshop recorded
+                  // (check-in, inspection, invoice). Empty for most bookings.
+                  JobReportSection(request: request),
                   SectionHeader(s.t('تفاصيل الطلب', 'Booking detail')),
                   const SizedBox(height: AppSpacing.headingGap),
                   AppCard(
@@ -209,10 +269,7 @@ class TrackingScreen extends ConsumerWidget {
                   if (escrow == EscrowState.createdPendingPayment) ...[
                     const SizedBox(height: AppSpacing.lg),
                     OutlinedButton(
-                      onPressed: () => ref
-                          .read(requestsProvider.notifier)
-                          .fire(request.id, EscrowEvent.cancelBooking,
-                              actor: EscrowActor.customer),
+                      onPressed: () => _cancelBooking(context, ref, request),
                       child: Text(s.t('إلغاء الحجز', 'Cancel booking')),
                     ),
                   ],

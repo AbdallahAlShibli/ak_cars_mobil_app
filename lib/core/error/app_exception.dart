@@ -167,3 +167,45 @@ class UnknownException extends AppException {
     super.stackTrace,
   });
 }
+
+/// Why proving a phone number by SMS failed.
+///
+/// Only [invalidCode] and [codeExpired] are about what the user typed; the
+/// rest are about the number, the network, or whether phone sign-in can run
+/// here at all.
+enum PhoneVerificationFailure {
+  invalidCode,
+  codeExpired,
+  invalidPhoneNumber,
+  tooManyRequests,
+  network,
+
+  /// The Firebase project is not set up to send this SMS: billing is off
+  /// (Spark plan), the SMS region policy blocks the country, phone sign-in is
+  /// disabled, or this build is not registered with it (Android SHA
+  /// fingerprint, web domain). Retrying never helps — only a change in the
+  /// Firebase console does.
+  notConfigured,
+
+  /// Phone sign-in cannot run here right now: Firebase could not start, or
+  /// the platform has no phone sign-in.
+  unavailable,
+  cancelled,
+  unknown,
+}
+
+/// Firebase could not send, or would not accept, a phone verification code.
+///
+/// Its own type rather than a code on [BusinessRuleException]: none of these
+/// came from the AK Cars API, and the screens word them differently from a
+/// server refusal.
+class PhoneVerificationException extends AppException {
+  const PhoneVerificationException(
+    super.message, {
+    required this.reason,
+    super.cause,
+    super.stackTrace,
+  });
+
+  final PhoneVerificationFailure reason;
+}

@@ -10,6 +10,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
+import '../../state/startup_state.dart';
 import '../../data/models/models.dart';
 
 /// Shop orders — live lifecycle: placed → prepared → delivered →
@@ -25,7 +26,13 @@ class OrdersScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text(s.t('طلبات المتجر', 'Shop orders'))),
       body: SafeArea(
-        child: orders.isEmpty
+        // Still on the app's first load: "no orders yet" would be a guess.
+        child: orders.isEmpty && ref.watch(startupLoadingProvider)
+            ? const Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 24),
+                child: ListSkeleton(rows: 4, height: 118),
+              )
+            : orders.isEmpty
             ? Center(
                 child: SingleChildScrollView(
                   child: EmptyState(

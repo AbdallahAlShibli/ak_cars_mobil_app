@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -9,7 +10,10 @@ import '../../core/constants/api_endpoints.dart';
 import '../../data/services/token_store.dart';
 import '../error/app_exception.dart';
 import '../json/json_utils.dart';
+import '../utils/jwt_claims.dart';
 import 'api_client.dart';
+import 'network_activity.dart';
+import 'response_cache.dart';
 import 'browser_cors_warning.dart'
     if (dart.library.js_interop) 'browser_cors_warning_web.dart';
 
@@ -24,8 +28,14 @@ import 'browser_cors_warning.dart'
 ///     `docs/api_contract.md`'s error table;
 ///  6. return [JsonMap] / `List<JsonMap>` and never leak a [DioException].
 class DioApiClient implements ApiClient {
-  DioApiClient({required AppConfig config, required this._tokens})
-      : _baseUrl = config.apiBaseUrl,
+  DioApiClient({
+    required AppConfig config,
+    required this._tokens,
+    this._cache = const NoResponseCache(),
+    this._activity,
+  })  : _baseUrl = config.apiBaseUrl,
+        _readTimeout = config.readTimeout,
+        _readRetries = config.readRetries,
         _dio = Dio(
           BaseOptions(
             baseUrl: config.apiBaseUrl,
@@ -61,10 +71,17 @@ class DioApiClient implements ApiClient {
     // JSON body or a bearer token, so Dio warns about a CORS preflight on all
     // of them — with a stack trace each. See [silenceBrowserCorsWarnings].
     silenceBrowserCorsWarnings(_dio);
-    if (!kIsWeb && !kReleaseMode && config.environment.isDevelopment) {
+    if (!kIsWeb) {
+      final trustDevCertificate =
+          !kReleaseMode && config.environment.isDevelopment;
       (_dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-        final client = HttpClient();
-        client.badCertificateCallback = (cert, host, port) => true;
+        // Kept open past Dart's 15 s default, so the next screen reuses the
+        // connection instead of paying for a new TLS handshake through the
+        // tunnel — see [AppConfig.connectionIdleTimeout].
+        final client = HttpClient()..idleTimeout = config.connectionIdleTimeout;
+        if (trustDevCertificate) {
+          client.badCertificateCallback = (cert, host, port) => true;
+        }
         return client;
       };
     }
@@ -91,6 +108,16 @@ class DioApiClient implements ApiClient {
   final String _baseUrl;
   final TokenStore _tokens;
   final Dio _dio;
+  final Duration _readTimeout;
+  final int _readRetries;
+  final ResponseCache _cache;
+
+  /// What the app-wide loading bar reads; null where nothing shows one.
+  final NetworkActivity? _activity;
+
+  /// The pause before asking a stalled read again, multiplied by the attempt
+  /// number — long enough not to hammer a link that has just stalled.
+  static const _readRetryBackoff = Duration(milliseconds: 400);
 
   /// Exposed for tests confirming the composition root wires this adapter to
   /// the configured environment's URL.
@@ -107,27 +134,70 @@ class DioApiClient implements ApiClient {
       path == ApiEndpoints.register ||
       path == ApiEndpoints.refreshToken;
 
+  /// Every request, counted in [NetworkActivity] from its first attempt until
+  /// its last retry settles.
   Future<Response<dynamic>> _send(
     String method,
     String path, {
     Object? body,
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
-    bool isRetry = false,
   }) async {
+    _activity?.begin();
+    try {
+      return await _attempt(
+        method,
+        path,
+        body: body,
+        queryParameters: queryParameters,
+        headers: headers,
+      );
+    } finally {
+      _activity?.end();
+    }
+  }
+
+  Future<Response<dynamic>> _attempt(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+    bool isRetry = false,
+    int readAttempt = 0,
+  }) async {
+    final isRead = method == 'GET';
     try {
       return await _dio.request<dynamic>(
         path,
         data: body,
         queryParameters: queryParameters,
-        options: Options(method: method, headers: headers),
+        options: Options(
+          method: method,
+          headers: headers,
+          receiveTimeout: isRead ? _readTimeout : null,
+        ),
       );
     } on DioException catch (e) {
+      // A read that stalled or never connected is asked again: through the
+      // tunnel the next attempt usually answers at once. Never a write — one
+      // that timed out may still have reached the server.
+      if (isRead && readAttempt < _readRetries && _isTransient(e)) {
+        await Future<void>.delayed(_readRetryBackoff * (readAttempt + 1));
+        return _attempt(
+          method,
+          path,
+          queryParameters: queryParameters,
+          headers: headers,
+          isRetry: isRetry,
+          readAttempt: readAttempt + 1,
+        );
+      }
       if (e.response?.statusCode == 401 &&
           !isRetry &&
           !_isAuthRoute(path) &&
           await _refreshAndSave()) {
-        return _send(
+        return _attempt(
           method,
           path,
           body: body,
@@ -139,6 +209,13 @@ class DioApiClient implements ApiClient {
       throw _translate(e);
     }
   }
+
+  /// A failure with no response behind it that another attempt could fix.
+  static bool _isTransient(DioException e) =>
+      e.response == null &&
+      (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError);
 
   Future<bool> _refreshAndSave() {
     return _refreshing ??= _doRefresh().whenComplete(() {
@@ -180,24 +257,89 @@ class DioApiClient implements ApiClient {
     }
   }
 
-  JsonMap _asObject(Response<dynamic> response) {
-    final data = response.data;
+  JsonMap _asObject(Response<dynamic> response) =>
+      _objectFrom(response.data, response.requestOptions.path);
+
+  JsonMap _objectFrom(Object? data, String path) {
     if (data is Map) return JsonMap.from(data);
+    // `204 No Content`, or any empty 2xx body: nothing to decode is the
+    // answer, not a malformed one. `POST /auth/logout` and the `/check` auth
+    // routes answer this way, and their callers ignore the map.
+    if (data == null || (data is String && data.isEmpty)) return const <String, dynamic>{};
     throw SerializationException(
-      'Expected a JSON object from ${response.requestOptions.path}, got '
+      'Expected a JSON object from $path, got '
       '${data.runtimeType}',
     );
   }
 
-  List<JsonMap> _asList(Response<dynamic> response) {
-    final data = response.data;
+  List<JsonMap> _asList(Response<dynamic> response) =>
+      _listFrom(response.data, response.requestOptions.path);
+
+  List<JsonMap> _listFrom(Object? data, String path) {
     if (data is List) {
       return data.whereType<Map>().map(JsonMap.from).toList(growable: false);
     }
     throw SerializationException(
-      'Expected a JSON array from ${response.requestOptions.path}, got '
+      'Expected a JSON array from $path, got '
       '${data.runtimeType}',
     );
+  }
+
+  /// A `GET`, through the [ResponseCache] when the caller runs inside a
+  /// [ResponseCacheScope] — see that class. Everywhere else, a plain request.
+  Future<Object?> _read(
+    String path,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+  ) async {
+    Future<Object?> fetch() async => (await _send(
+          'GET',
+          path,
+          queryParameters: queryParameters,
+          headers: headers,
+        ))
+            .data;
+
+    final scope = ResponseCacheScope.current;
+    if (scope == null || _mustBeLive(path)) return fetch();
+    final key = await _cacheKey(path, queryParameters);
+    if (scope.readsStoredAnswers) {
+      final cached = await _cache.read(key);
+      if (cached != null) {
+        scope.markServedFromCache();
+        return cached;
+      }
+    }
+    final data = await fetch();
+    if (data is Map || data is List) unawaited(_cache.write(key, data));
+    return data;
+  }
+
+  /// Reads that are never answered from disk, even at start-up: a provider's
+  /// bookable slots are live occupancy, and a stored grid could offer a slot
+  /// somebody has booked since.
+  ///
+  /// The profile used to be here too. Since start-up stopped waiting on the
+  /// network it is served from disk like the lists, so a signed-in cold start
+  /// does not open on a guest's screens for the second the round trip takes;
+  /// `AppBootstrap.completeWarmUp` asks the server again right after the first
+  /// frame and signs an expired session out
+  /// (`AuthNotifier.restore(revalidate: true)`).
+  static bool _mustBeLive(String path) => path.endsWith('/slots');
+
+  /// Scoped to the account the stored token was issued for, and to the host,
+  /// so one account's garage is never served to another account signed in on
+  /// the same phone, nor a staging answer to a production build.
+  Future<String> _cacheKey(
+    String path,
+    Map<String, dynamic>? queryParameters,
+  ) async {
+    final account = jwtSubject(await _tokens.tryReadAccessToken()) ?? 'guest';
+    final query = [
+      for (final entry in (queryParameters ?? const {}).entries)
+        if (entry.value != null) '${entry.key}=${entry.value}',
+    ]..sort();
+    return '$account|$_baseUrl$path?${query.join('&')}';
   }
 
   @override
@@ -206,12 +348,7 @@ class DioApiClient implements ApiClient {
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
   }) async =>
-      _asObject(await _send(
-        'GET',
-        path,
-        queryParameters: queryParameters,
-        headers: headers,
-      ));
+      _objectFrom(await _read(path, queryParameters, headers), path);
 
   @override
   Future<JsonMap> post(
@@ -279,12 +416,7 @@ class DioApiClient implements ApiClient {
     Map<String, dynamic>? queryParameters,
     Map<String, String>? headers,
   }) async =>
-      _asList(await _send(
-        'GET',
-        path,
-        queryParameters: queryParameters,
-        headers: headers,
-      ));
+      _listFrom(await _read(path, queryParameters, headers), path);
 
   @override
   Future<List<JsonMap>> postList(
@@ -295,6 +427,21 @@ class DioApiClient implements ApiClient {
   }) async =>
       _asList(await _send(
         'POST',
+        path,
+        body: body,
+        queryParameters: queryParameters,
+        headers: headers,
+      ));
+
+  @override
+  Future<List<JsonMap>> putList(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+  }) async =>
+      _asList(await _send(
+        'PUT',
         path,
         body: body,
         queryParameters: queryParameters,

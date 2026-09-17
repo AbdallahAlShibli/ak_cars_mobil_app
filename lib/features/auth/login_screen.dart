@@ -11,8 +11,11 @@ import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
+import '../../data/services/phone_verification_service.dart';
+import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import 'auth_form_widgets.dart';
+import 'phone_code_sheet.dart';
 
 /// Sign back in to an account that already registered.
 ///
@@ -58,6 +61,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// offending row — same map shape the register screen uses.
   final _errors = <String, String>{};
 
+  /// The Firebase code currently out for the phone channel.
+  PhoneVerificationSession? _phoneSession;
+
+  /// Set once Firebase has said SMS sign-in is not set up for this app
+  /// (billing off, region blocked, build not registered) in a build allowed
+  /// to fall back — see `AppConfig.apiOtpFallbackAllowed`. Phone login then
+  /// uses the API's own code for the rest of this screen, as desktop does.
+  bool _firebaseSmsNotSetUp = false;
+
+  /// Phone login proves the number through Firebase wherever that can run
+  /// (Android, iOS, web). Email, and phone on desktop, use the API's own code.
+  bool get _phoneViaFirebase =>
+      _channel == AuthChannel.phone &&
+      !_firebaseSmsNotSetUp &&
+      ref.read(phoneVerificationServiceProvider).isSupported;
+
+  /// Firebase's SMS codes are six digits; the API's own are four.
+  int get _codeLength => _phoneViaFirebase ? 6 : 4;
+
   @override
   void dispose() {
     _resendTimer?.cancel();
@@ -85,6 +107,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // A code already sent proves the *other* address; switching voids it
       // rather than leaving a stale "sent to" line on screen.
       _otpSent = false;
+      _phoneSession = null;
       _otp.clear();
       _errors.remove('otp');
       _errors.remove('phone');
@@ -153,24 +176,65 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     final identifier = _identifier;
+    final viaFirebase = _phoneViaFirebase;
+    // A resend from the code step reports under the code: the identifier
+    // field is not on screen there.
+    final errorKey = _otpSent
+        ? 'otp'
+        : (_channel == AuthChannel.phone ? 'phone' : 'email');
     setState(() => _sending = true);
     try {
-      final found =
-          await ref.read(authProvider.notifier).requestOtp(identifier);
+      final notifier = ref.read(authProvider.notifier);
+      // Firebase texts the code itself, so the account is looked up first
+      // without sending anything: an unregistered number is offered
+      // registration instead of being charged an SMS it cannot use.
+      final found = viaFirebase
+          ? await notifier.accountExists(identifier)
+          : await notifier.requestOtp(identifier);
       if (!mounted) return;
       if (!found) {
         HapticFeedback.heavyImpact();
-        setState(() => _errors[_channel == AuthChannel.phone
-                ? 'phone'
-                : 'email'] =
-            _channel == AuthChannel.phone
-                ? s.t('لا يوجد حساب بهذا الرقم', 'No account with that number')
-                : s.t('لا يوجد حساب بهذا البريد', 'No account with that email'));
+        setState(() => _errors[errorKey] = _channel == AuthChannel.phone
+            ? s.t('لا يوجد حساب بهذا الرقم', 'No account with that number')
+            : s.t('لا يوجد حساب بهذا البريد', 'No account with that email'));
         return;
       }
+
+      if (viaFirebase) {
+        PhoneVerificationSession? session;
+        try {
+          session = await ref
+              .read(phoneVerificationServiceProvider)
+              .sendCode(AuthPhone.e164(AuthPhone.local(_phone.text)));
+        } on PhoneVerificationException catch (error) {
+          if (error.reason != PhoneVerificationFailure.notConfigured ||
+              !ref.read(appConfigProvider).apiOtpFallbackAllowed) {
+            rethrow;
+          }
+          // Firebase is not set up to text this number yet (billing off,
+          // region blocked, build not registered). A development debug build
+          // signs in with the API's own code instead, for the rest of this
+          // screen — the account was already found above, so this only sends.
+          await notifier.requestOtp(identifier);
+          if (!mounted) return;
+          _firebaseSmsNotSetUp = true;
+        }
+        if (!mounted) return;
+        // Android verified the number itself; there is no code to type.
+        final alreadyVerified = session?.idToken;
+        if (alreadyVerified != null) {
+          await notifier.loginWithVerifiedPhone(alreadyVerified);
+          if (!mounted) return;
+          _welcomeBack(s);
+          return;
+        }
+        _phoneSession = session;
+      }
+
       HapticFeedback.mediumImpact();
       setState(() {
         _otpSent = true;
+        _otp.clear();
         _errors.remove('otp');
       });
       _startResendCountdown();
@@ -178,20 +242,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         SnackBar(
           content: Text(_channel == AuthChannel.email
               ? s.t('أُرسل الرمز إلى $identifier', 'Code sent to $identifier')
-              : s.t('أُرسل الرمز عبر SMS إلى $identifier',
-                  'Code sent by SMS to $identifier')),
+              : _firebaseSmsNotSetUp
+                  // One line on purpose: a two-line bar covers the verify
+                  // button. The reason is on the code step itself.
+                  ? s.t('أُرسل رمز الخادم إلى $identifier',
+                      'API code sent to $identifier')
+                  : s.t('أُرسل الرمز عبر SMS إلى $identifier',
+                      'Code sent by SMS to $identifier')),
         ),
       );
+    } on PhoneVerificationException catch (error) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      setState(() => _errors[errorKey] = phoneVerificationMessage(s, error));
     } on AppException catch (error) {
       if (!mounted) return;
-      setState(() =>
-          _errors[_channel == AuthChannel.phone ? 'phone' : 'email'] =
-              _sendMessage(s, error));
+      setState(() => _errors[errorKey] = _sendMessage(s, error));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
-
   /// What to put under the phone/email field when the code could not be sent.
   ///
   /// `POST /auth/login` is capped at five per minute per IP — it is anonymous
@@ -222,31 +292,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _verify() async {
     final s = S.of(context);
-    // The code is real and server-issued, so the server is the only thing
-    // that can validate it. All this checks is that the user typed something
-    // — anything more would reject a genuine code before `login()` ever got
-    // a chance to try it.
-    if (_otp.text.trim().isEmpty) {
+    final code = _otp.text.trim();
+    // Only the shape is checked here. Whether the code is right is for
+    // whoever sent it: Firebase for a phone, the API for an email. Anything
+    // stricter would reject a genuine code before it was ever tried.
+    if (_phoneViaFirebase ? code.length != _codeLength : code.isEmpty) {
       HapticFeedback.heavyImpact();
-      setState(() => _errors['otp'] =
-          s.t('أدخل الرمز المكوّن من 4 أرقام', 'Enter the 4-digit code'));
+      setState(() => _errors['otp'] = s.t(
+          'أدخل الرمز المكوّن من $_codeLength أرقام',
+          'Enter the $_codeLength-digit code'));
       return;
     }
 
     setState(() => _verifying = true);
     try {
-      await ref.read(authProvider.notifier).login(_identifier, _otp.text.trim());
+      final notifier = ref.read(authProvider.notifier);
+      final session = _phoneSession;
+      if (_phoneViaFirebase && session != null) {
+        // Firebase checks the code; the API then checks Firebase's token and
+        // finds the account. Neither step takes the app's word for anything.
+        final idToken = await ref
+            .read(phoneVerificationServiceProvider)
+            .confirmCode(session, code);
+        await notifier.loginWithVerifiedPhone(idToken);
+      } else {
+        await notifier.login(_identifier, code);
+      }
+      if (!mounted) return;
+      _welcomeBack(s);
+    } on PhoneVerificationException catch (error) {
       if (!mounted) return;
       HapticFeedback.heavyImpact();
-      final messenger = ScaffoldMessenger.of(context);
-      if (context.canPop()) {
-        context.pop(true);
-      } else {
-        context.go('/profile');
-      }
-      messenger.showSnackBar(
-        SnackBar(content: Text(s.t('مرحباً بعودتك', 'Welcome back'))),
-      );
+      setState(() => _errors['otp'] = phoneVerificationMessage(s, error));
     } on AppException catch (error) {
       if (!mounted) return;
       HapticFeedback.heavyImpact();
@@ -256,6 +333,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  /// Leaves the screen once a session has started, however it was proved.
+  void _welcomeBack(S s) {
+    HapticFeedback.heavyImpact();
+    final messenger = ScaffoldMessenger.of(context);
+    if (context.canPop()) {
+      context.pop(true);
+    } else {
+      context.go('/profile');
+    }
+    messenger.showSnackBar(
+      SnackBar(content: Text(s.t('مرحباً بعودتك', 'Welcome back'))),
+    );
+  }
   /// What to put under the code field when verification fails.
   ///
   /// Every one of these used to read "could not log in — try again", which is
@@ -273,6 +363,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         UnauthorizedException(code: 'otp_invalid_or_expired') => s.t(
             'الرمز غير صحيح أو انتهت صلاحيته — اطلب رمزاً جديداً',
             'That code is wrong or has expired — request a new one',
+          ),
+        // Firebase accepted the code but the API would not accept its token
+        // (expired before it arrived): only a fresh code fixes that.
+        UnauthorizedException(code: 'phone_token_invalid') => s.t(
+            'انتهت صلاحية التحقق — اطلب رمزاً جديداً',
+            'The verification has expired — ask for a new code',
+          ),
+        // The account went away between the check and the code.
+        NotFoundException() => s.t(
+            'لا يوجد حساب بهذا الرقم',
+            'No account with that number',
           ),
         RateLimitedException() => s.t(
             'محاولات كثيرة — انتظر دقيقة ثم أعد المحاولة',
@@ -297,6 +398,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _resendTimer?.cancel();
     setState(() {
       _otpSent = false;
+      _phoneSession = null;
       _resendIn = 0;
       _otp.clear();
       _errors.remove('otp');
@@ -319,8 +421,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             onBack: () => context.pop(),
             title: s.t('تسجيل الدخول', 'Log in'),
             subtitle: _otpSent
-                ? s.t('أدخل الرمز المكوّن من 4 أرقام الذي أرسلناه إليك.',
-                    'Enter the 4-digit code we just sent you.')
+                ? s.t('أدخل الرمز المكوّن من $_codeLength أرقام الذي أرسلناه إليك.',
+                    'Enter the $_codeLength-digit code we just sent you.')
                 : s.t('اختر كيف سجّلت حسابك، وسنرسل لك رمزاً لمرة واحدة.',
                     "Choose how you registered, and we'll send you a one-time code."),
           ),
@@ -476,11 +578,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Entrance(
             child: _SentToCard(target: _identifier, onEdit: _editIdentifier),
           ),
+          // Only after a development build fell back from Firebase: say where
+          // this code comes from, because it is not the SMS the screen before
+          // promised, and in development it is in the API log, not a phone.
+          if (_firebaseSmsNotSetUp) ...[
+            const SizedBox(height: 10),
+            Entrance(
+              delayMs: 30,
+              child: AuthNoticeCard(
+                icon: LucideIcons.info,
+                background: ak.amberBgSoft,
+                foreground: ak.amberText,
+                message: s.t(
+                  'رسائل SMS عبر Firebase غير مُفعّلة بعد، لذلك تستخدم نسخة التطوير رمز الخادم المكوّن من 4 أرقام — تجده في سجل الخادم.',
+                  "Firebase SMS isn't set up yet, so this development build uses the API's own 4-digit code — it is in the API log.",
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           Entrance(
             delayMs: 60,
             child: AuthOtpBoxes(
               controller: _otp,
+              length: _codeLength,
               error: _errors['otp'],
               onChanged: (_) => _clearFieldError('otp'),
             ),
@@ -534,7 +655,7 @@ class _SentToCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(LucideIcons.sendHorizontal, size: 18, color: ak.inkFaint),
+          MirroredIcon(LucideIcons.sendHorizontal, size: 18, color: ak.inkFaint),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

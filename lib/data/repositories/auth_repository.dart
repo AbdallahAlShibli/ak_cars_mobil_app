@@ -9,16 +9,29 @@ import '../services/auth_service.dart';
 abstract interface class AuthRepository {
   Future<UserProfile?> currentUser();
 
-  Future<UserProfile> register(UserProfile profile);
+  /// [phoneVerificationToken]: see [AuthService.register].
+  Future<UserProfile> register(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  });
+
+  /// Every server-side registration rule, saving nothing.
+  Future<void> validateRegistration(UserProfile profile);
 
   Future<UserProfile> updateProfile(UserProfile profile);
 
   /// Sends a one-time code to [identifier]; false when no account matched.
   Future<bool> requestOtp(String identifier);
 
+  /// Whether an account uses [identifier]. Sends nothing.
+  Future<bool> accountExists(String identifier);
+
   /// Verifies [code] and starts the session for the account [identifier]
   /// resolves to.
   Future<UserProfile> login(String identifier, String code);
+
+  /// Starts the session for the account whose phone Firebase verified.
+  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken);
 
   Future<void> signOut();
 }
@@ -32,8 +45,17 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<UserProfile?> currentUser() => _service.fetchCurrentUser();
 
   @override
-  Future<UserProfile> register(UserProfile profile) =>
-      _service.register(profile);
+  Future<UserProfile> register(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) => _service.register(
+    profile,
+    phoneVerificationToken: phoneVerificationToken,
+  );
+
+  @override
+  Future<void> validateRegistration(UserProfile profile) =>
+      _service.validateRegistration(profile);
 
   @override
   Future<UserProfile> updateProfile(UserProfile profile) =>
@@ -44,8 +66,16 @@ class AuthRepositoryImpl implements AuthRepository {
       _service.requestOtp(identifier);
 
   @override
+  Future<bool> accountExists(String identifier) =>
+      _service.accountExists(identifier);
+
+  @override
   Future<UserProfile> login(String identifier, String code) =>
       _service.login(identifier, code);
+
+  @override
+  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) =>
+      _service.loginWithVerifiedPhone(firebaseIdToken);
 
   @override
   Future<void> signOut() => _service.signOut();

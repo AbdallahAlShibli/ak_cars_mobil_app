@@ -12,17 +12,20 @@
 /// [fakeServiceOverrides] rather than chosen by a flag the app can read.
 library;
 
+import 'package:ak_cars_mobil_app/core/network/response_cache.dart';
 import 'package:ak_cars_mobil_app/data/services/garage_service.dart';
 import 'package:ak_cars_mobil_app/data/services/maintenance_service.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'fake_phone_verification_service.dart';
 import 'mock_auth_service.dart';
 import 'mock_cars_service.dart';
 import 'mock_catalog_service.dart';
 import 'mock_challenge_service.dart';
 import 'mock_chat_service.dart';
+import 'mock_job_workspace_service.dart';
 import 'mock_notification_service.dart';
 import 'mock_order_service.dart';
 import 'mock_review_service.dart';
@@ -37,6 +40,7 @@ export 'mock_cars_service.dart';
 export 'mock_catalog_service.dart';
 export 'mock_challenge_service.dart';
 export 'mock_chat_service.dart';
+export 'mock_job_workspace_service.dart';
 export 'mock_notification_service.dart';
 export 'mock_order_service.dart';
 export 'mock_review_service.dart';
@@ -102,7 +106,13 @@ List<Override> fakeServiceOverrides(SharedPreferences prefs) => [
   // otherwise get a live `DioApiClient` pointed at localhost:7291 and open
   // real sockets from `flutter_tester` — see [OfflineApiClient].
   apiClientProvider.overrideWithValue(const OfflineApiClient()),
+  // Real file I/O never completes inside a widget test's fake async zone, and
+  // sign-out clears this cache.
+  responseCacheProvider.overrideWithValue(const NoResponseCache()),
   pushServiceProvider.overrideWithValue(const SilentPushService()),
+  phoneVerificationServiceProvider.overrideWithValue(
+    FakePhoneVerificationService(),
+  ),
   catalogServiceProvider.overrideWithValue(MockCatalogService()),
   authServiceProvider.overrideWithValue(MockAuthService(prefs: prefs)),
   serviceMarketplaceServiceProvider.overrideWithValue(
@@ -120,4 +130,5 @@ List<Override> fakeServiceOverrides(SharedPreferences prefs) => [
     LocalMaintenanceStore(prefs: prefs),
   ),
   workshopServiceProvider.overrideWithValue(MockWorkshopService()),
+  jobWorkspaceServiceProvider.overrideWithValue(MockJobWorkspaceService()),
 ];

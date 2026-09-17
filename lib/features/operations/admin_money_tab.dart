@@ -13,6 +13,7 @@ import '../../data/models/models.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import 'admin_form_widgets.dart';
+import 'admin_job_workspace_sections.dart';
 import 'admin_panel_widgets.dart';
 
 /// The escrow ledger and what each workshop is owed (§5 tab 3).
@@ -109,6 +110,9 @@ class AdminMoneyTab extends ConsumerWidget {
                 'everything here records transfers made outside it.',
           ),
         ),
+        const SizedBox(height: AppSpacing.sectionGap),
+
+        const AdminExtraWorkFundingSection(),
         const SizedBox(height: AppSpacing.sectionGap),
 
         AdminGroupHeader(
@@ -256,7 +260,7 @@ class _OwedCard extends ConsumerWidget {
                   ),
                 ),
                 AdminCardAction(
-                  icon: LucideIcons.chevronLeft,
+                  icon: DirectionalIcons.forwardChevron(context),
                   tooltip: s.t('إدارة الورشة', 'Manage workshop'),
                   onTap: () => context.push('/admin/workshops/${provider.id}'),
                 ),

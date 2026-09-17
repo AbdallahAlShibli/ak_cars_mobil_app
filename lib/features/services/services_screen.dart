@@ -1,5 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+
+import '../../state/startup_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -66,6 +68,15 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
   }
 
   Future<void> _warmIfCold() async {
+    if (!mounted) return;
+    // The app's first load is still fetching this catalogue, and asking again
+    // now would send every request twice. Heal only once that load settles.
+    if (ref.read(startupLoadingProvider)) {
+      ref.listenManual<bool>(startupLoadingProvider, (_, loading) {
+        if (!loading) _warmIfCold();
+      });
+      return;
+    }
     final marketplace = ref.read(serviceMarketplaceRepositoryProvider);
     if (marketplace.isCatalogueWarm) return;
     try {

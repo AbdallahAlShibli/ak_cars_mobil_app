@@ -20,6 +20,7 @@ import '../../state/admin_workshop_detail_state.dart';
 import '../../state/app_state.dart';
 import '../services/proof_upload_sheet.dart';
 
+import 'admin_job_workspace_sections.dart';
 import 'admin_panel_widgets.dart';
 import 'admin_today_tab.dart' show applicationUrgency, applicationWaitedLabel;
 
@@ -155,6 +156,8 @@ class AdminWorkshopsTab extends ConsumerWidget {
             _RosterCard(provider: provider),
           ],
         ],
+        const SizedBox(height: AppSpacing.sectionGap),
+        const AdminWorkshopPerformanceSection(),
       ],
     );
   }

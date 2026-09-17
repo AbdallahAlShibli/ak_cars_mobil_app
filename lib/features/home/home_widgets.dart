@@ -255,7 +255,7 @@ class _DiscountCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(LucideIcons.arrowRight, size: 13, color: ak.promoTitle),
+                Icon(DirectionalIcons.forwardArrow(context), size: 13, color: ak.promoTitle),
               ],
             ),
           ],
@@ -892,7 +892,7 @@ class HomeAddCarCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            Icon(LucideIcons.arrowRight, size: 16, color: ak.ink),
+            Icon(DirectionalIcons.forwardArrow(context), size: 16, color: ak.ink),
           ],
         ),
       ),
@@ -1051,7 +1051,7 @@ class _RecommendationCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(child: _price(context, s, ak)),
-                Icon(LucideIcons.arrowRight, size: 13, color: ak.ink),
+                Icon(DirectionalIcons.forwardArrow(context), size: 13, color: ak.ink),
               ],
             ),
           ],
@@ -1228,7 +1228,7 @@ class _MostBookedRow extends ConsumerWidget {
                 style: AppTheme.numeric(size: 14, color: ak.ink),
               )
             else
-              Icon(LucideIcons.chevronRight, size: 15, color: ak.inkFaint),
+              Icon(DirectionalIcons.forwardChevron(context), size: 15, color: ak.inkFaint),
           ],
         ),
       ),

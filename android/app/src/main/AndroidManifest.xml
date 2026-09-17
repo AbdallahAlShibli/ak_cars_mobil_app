@@ -9,6 +9,17 @@
          goes through the system photo picker, which hands back a single file
          the user chose and needs no gallery-wide permission. -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Android 13+: needed before the app may show a notification for an inbox
+         row pushed over its live connection to the API (/hubs/notifications).
+         Requested at sign-in; refusing it only hides the system banner. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- The background push service (lib/core/push/background_push.dart): a
+         foreground service that keeps the notification connection open after
+         the app is closed. Android 14+ requires a declared type and its
+         permission; remoteMessaging has no daily time limit and may start
+         after a reboot. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING"/>
     <application
         android:label="AK Cars"
         android:name="${applicationName}"
@@ -35,6 +46,11 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- flutter_background_service declares this service; the app adds the
+             foreground service type the permission above names. -->
+        <service
+            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:foregroundServiceType="remoteMessaging"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

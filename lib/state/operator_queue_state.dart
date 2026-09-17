@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/error/app_exception.dart';
 import '../data/models/escrow.dart';
 import '../data/models/proof_of_work.dart';
 import '../data/models/quote.dart';
@@ -24,6 +25,9 @@ class OperatorQueueNotifier extends Notifier<List<ServiceRequest>> {
   /// The marketplace's bookings as last loaded. Replaced wholesale by
   /// [refresh] and patched in place by [fire].
   List<ServiceRequest> _marketplace = const [];
+
+  /// Bookings with an escrow event on the wire right now — see [fire].
+  final Set<String> _inFlight = {};
 
   @override
   List<ServiceRequest> build() {
@@ -96,16 +100,29 @@ class OperatorQueueNotifier extends Notifier<List<ServiceRequest>> {
       return null;
     }
 
-    final updated = await ref
-        .read(serviceMarketplaceRepositoryProvider)
-        .applyEscrowEvent(
-          id,
-          event,
-          actor: actor,
-          proof: proof,
-          disputeNote: disputeNote,
-          slot: slot,
-        );
+    // One event per booking at a time, and a server that had already moved on
+    // means this panel was stale — both answered the way the local checks
+    // above answer (null), exactly as `RequestsNotifier.fire` does.
+    if (!_inFlight.add(id)) return null;
+    final ServiceRequest updated;
+    try {
+      updated = await ref
+          .read(serviceMarketplaceRepositoryProvider)
+          .applyEscrowEvent(
+            id,
+            event,
+            actor: actor,
+            proof: proof,
+            disputeNote: disputeNote,
+            slot: slot,
+          );
+    } on BusinessRuleException catch (error) {
+      if (error.code != 'escrow_transition_not_allowed') rethrow;
+      await refresh();
+      return null;
+    } finally {
+      _inFlight.remove(id);
+    }
     _replace(updated);
 
     // The machine's automatic hand-offs. Same three as the customer path, and

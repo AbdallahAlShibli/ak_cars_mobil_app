@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import 'directional_icons.dart';
+
 import '../i18n/strings.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -172,7 +174,7 @@ class EscrowTimeline extends StatelessWidget {
           children: [
             SizedBox(
               width: _compact ? 10 : 13,
-              child: Icon(LucideIcons.cornerDownRight,
+              child: MirroredIcon(LucideIcons.cornerDownRight,
                   size: _compact ? 12 : 15, color: branchColor),
             ),
             const SizedBox(width: AppSpacing.sm),

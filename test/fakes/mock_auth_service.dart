@@ -31,8 +31,31 @@ class MockAuthService with MockServiceBase implements AuthService {
     return respond(await _readStoredAccount());
   }
 
+  /// The phone verification token the last [register] carried.
+  String? lastPhoneVerificationToken;
+
   @override
-  Future<UserProfile> register(UserProfile profile) => _save(profile);
+  Future<UserProfile> register(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) {
+    lastPhoneVerificationToken = phoneVerificationToken;
+    return _save(profile);
+  }
+
+  /// Refuses a phone that already has the stored account, the way
+  /// `POST /auth/register/check` answers `409 account_already_exists`.
+  @override
+  Future<void> validateRegistration(UserProfile profile) async {
+    final account = await _readStoredAccount();
+    if (account != null && _matches(account, profile.phone)) {
+      throw const BusinessRuleException(
+        'An account with that phone or email already exists.',
+        code: 'account_already_exists',
+      );
+    }
+    return respond(null);
+  }
 
   @override
   Future<UserProfile> updateProfile(UserProfile profile) => _save(profile);
@@ -52,6 +75,24 @@ class MockAuthService with MockServiceBase implements AuthService {
     }
     // No OTP of its own to check against — `code` is threaded through only so
     // the API implementation has somewhere real to put it.
+    await prefs.setBool(AppConstants.prefsSessionActive, true);
+    return respond(account);
+  }
+
+  @override
+  Future<bool> accountExists(String identifier) => requestOtp(identifier);
+
+  /// Accepts `FakePhoneVerificationService` tokens, which carry the phone
+  /// they verified.
+  @override
+  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) async {
+    const prefix = 'firebase-token:';
+    final account = await _readStoredAccount();
+    if (account == null ||
+        !firebaseIdToken.startsWith(prefix) ||
+        !_matches(account, firebaseIdToken.substring(prefix.length))) {
+      throw const NotFoundException('No account matches that verified phone');
+    }
     await prefs.setBool(AppConstants.prefsSessionActive, true);
     return respond(account);
   }

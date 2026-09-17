@@ -93,6 +93,9 @@ abstract final class AuthPhone {
 
   /// Full E.164-ish phone as stored and displayed.
   static String full(String local) => '+968 ${grouped(local)}';
+
+  /// Strict E.164 with no spaces (`+96892001234`), what SMS verification takes.
+  static String e164(String local) => '+968$local';
 }
 
 /// The phone-vs-email choice, as one sliding segmented control.

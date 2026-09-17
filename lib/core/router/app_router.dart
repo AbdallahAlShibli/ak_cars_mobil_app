@@ -44,6 +44,8 @@ import '../../features/onboarding/start_choice_screen.dart';
 import '../../features/services/approval_screen.dart';
 import '../../features/services/booking_screen.dart';
 import '../../features/services/chat_screen.dart';
+import '../../features/services/invoice_screen.dart';
+import '../../features/workshop_dashboard/job_workspace/job_workspace_screen.dart';
 import '../../features/services/part_request_screen.dart';
 import '../../features/services/quote_screen.dart';
 import '../../features/services/review_screen.dart';
@@ -165,6 +167,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             ApprovalScreen(requestId: state.pathParameters['id']!),
       ),
+      // A booking's invoice. Shared by the customer, the workshop and the
+      // founder — the API decides who may read it.
+      GoRoute(
+        path: '/invoice/:id',
+        builder: (context, state) =>
+            InvoiceScreen(requestId: state.pathParameters['id']!),
+      ),
 
       // ------------------------------------------- part + install (spec §6)
       // A custom-quote booking rides the same escrow machine as any other, so
@@ -241,6 +250,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(
           path: '/workshop/dashboard/orders',
           builder: (context, state) => const workshop_dashboard.OrdersScreen(),
+        ),
+        GoRoute(
+          path: '/workshop/dashboard/jobs/:id',
+          builder: (context, state) =>
+              JobWorkspaceScreen(requestId: state.pathParameters['id']!),
         ),
         GoRoute(
           path: '/workshop/dashboard/staff',

@@ -78,7 +78,7 @@ void main() {
   test('every environment points at the one configured API host', () {
     for (final environment in AppEnvironment.values) {
       expect(AppConfig.forEnvironment(environment).apiBaseUrl,
-          'https://localhost:7291/api/v1');
+          'https://akcarsapi.0coders.com/api/v1');
     }
   });
 

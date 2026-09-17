@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../state/startup_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -303,13 +305,33 @@ class _NothingHere extends StatelessWidget {
 
 /// No bookings at all — a different thing from a filter matching nothing, and
 /// the only state on this screen that gets the full call to action.
-class _EmptyBookings extends StatelessWidget {
+class _EmptyBookings extends ConsumerWidget {
   const _EmptyBookings({required this.s});
 
   final S s;
 
+  /// Roughly one booking card, so the page does not jump when they land.
+  static const _loadingRowHeight = 128.0;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Still on the app's first load: "no bookings yet" would be a guess.
+    if (ref.watch(startupLoadingProvider)) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.screenMargin,
+          AppSpacing.md,
+          AppSpacing.screenMargin,
+          AppSpacing.xl,
+        ),
+        children: [
+          SandTabHeader(s.navBookings),
+          const SizedBox(height: AppSpacing.lg),
+          const ListSkeleton(height: _loadingRowHeight),
+        ],
+      );
+    }
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(

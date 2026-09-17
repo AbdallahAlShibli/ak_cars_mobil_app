@@ -13,6 +13,7 @@ import '../../core/widgets/sand_widgets.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../state/app_state.dart';
+import '../../state/startup_state.dart';
 import 'home_widgets.dart';
 
 /// The app's front page.
@@ -46,6 +47,38 @@ import 'home_widgets.dart';
 /// user's governorate, the recommendation rail is empty until there is a car
 /// to recommend for, and a workshop nobody has rated does not appear on the
 /// ratings board. Nothing is generated to make the page look full.
+/// Stands in for the offers and trusted-workshop sections while the app's
+/// first load is still under way — two headed rails of card-shaped blocks,
+/// about as tall as the real ones, so the page does not jump when they land.
+class _SectionsLoading extends StatelessWidget {
+  const _SectionsLoading();
+
+  static const _rails = 2;
+  static const _headerWidth = 140.0;
+  static const _cardHeight = 132.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < _rails; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.sectionGap),
+          const Skeleton(height: 18, width: _headerWidth),
+          const SizedBox(height: AppSpacing.headingGap),
+          const Row(
+            children: [
+              Expanded(child: Skeleton(height: _cardHeight, radius: 20)),
+              SizedBox(width: AppSpacing.itemGap),
+              Expanded(child: Skeleton(height: _cardHeight, radius: 20)),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -71,6 +104,12 @@ class HomeScreen extends ConsumerWidget {
     final sections = <Widget>[
       // ---- the three the spec fixes, in the order it fixes them
       _CarStatusSection(cars: cars),
+      // The app's first load is still running: offers and workshops have not
+      // arrived yet, and hiding their sections would read as "there are none".
+      if (ref.watch(startupLoadingProvider) &&
+          ref.watch(homeOffersProvider).isEmpty &&
+          !hasWorkshopsToShow)
+        const _SectionsLoading(),
       if (ref.watch(homeOffersProvider).isNotEmpty) const HomeOffersRail(),
       if (hasWorkshopsToShow) const HomeTrustedWorkshopsSection(),
       // ---- supporting material, most personal first
@@ -105,21 +144,33 @@ class HomeScreen extends ConsumerWidget {
               // ------------------------------------------------ greeting row
               Row(
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: ak.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        firstName?.characters.first.toUpperCase() ??
-                            s.t('أ', 'A'),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: ak.onPrimary,
+                  // The avatar opens the profile tab — `go`, not `push`, so it
+                  // switches to the same branch the bottom bar's "My account"
+                  // does instead of stacking a second profile page on Home.
+                  Semantics(
+                    button: true,
+                    label: s.t('حسابي', 'My account'),
+                    child: GestureDetector(
+                      key: const ValueKey('home-profile-avatar'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => context.go('/profile'),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: ak.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            firstName?.characters.first.toUpperCase() ??
+                                s.t('أ', 'A'),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: ak.onPrimary,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -177,7 +228,7 @@ class HomeScreen extends ConsumerWidget {
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
-                          LucideIcons.arrowRight,
+                          DirectionalIcons.forwardArrow(context),
                           size: 14,
                           color: ak.onPrimary,
                         ),

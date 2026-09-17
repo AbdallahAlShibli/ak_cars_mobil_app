@@ -2,6 +2,7 @@ import '../../core/json/json_utils.dart';
 import 'add_on.dart';
 import 'car.dart';
 import 'escrow.dart';
+import 'job_workspace.dart';
 import 'proof_of_work.dart';
 import 'quote.dart';
 import 'service_offering.dart';
@@ -90,6 +91,10 @@ class ServiceRequest {
     this.partRequest,
     this.quote,
     this.assignedStaffId,
+    this.checkIn,
+    this.inspection = const [],
+    this.extraWork = const [],
+    this.invoiceNumber,
   });
 
   /// Opens a "part + installation" request (spec §6).
@@ -183,6 +188,27 @@ class ServiceRequest {
   /// Which of the workshop's own staff is doing this job. Independent of
   /// [escrow] — assigning a technician is not an escrow transition.
   final String? assignedStaffId;
+
+  // Job workspace (2026-09-15). All optional on the wire: an API from before
+  // the feature sends none of them, and the booking reads exactly as it did.
+
+  /// What the car was like when the workshop took it.
+  final VehicleCheckIn? checkIn;
+
+  /// The workshop's inspection, in its own order.
+  final List<InspectionItem> inspection;
+
+  /// Every extra-work request raised on this booking, newest first.
+  final List<ExtraWorkRequest> extraWork;
+
+  /// Set once an invoice has been issued.
+  final String? invoiceNumber;
+
+  /// Extra work waiting on the customer's decision.
+  List<ExtraWorkRequest> get pendingExtraWork => [
+    for (final e in extraWork)
+      if (e.isPending) e,
+  ];
 
   /// True while the booking is waiting for a price rather than for work.
   bool get inQuotePhase => escrow.isQuotePhase;
@@ -339,6 +365,12 @@ class ServiceRequest {
         ? null
         : Quote.fromJson(json.requireObject('quote')),
     assignedStaffId: json.stringOrNull('assignedStaffId'),
+    checkIn: json.objectOrNull('checkIn') == null
+        ? null
+        : VehicleCheckIn.fromJson(json.requireObject('checkIn')),
+    inspection: json.objectList('inspection').map(InspectionItem.fromJson).toList(),
+    extraWork: json.objectList('extraWork').map(ExtraWorkRequest.fromJson).toList(),
+    invoiceNumber: json.stringOrNull('invoiceNumber'),
   );
 
   JsonMap toJson() => {
@@ -361,6 +393,10 @@ class ServiceRequest {
     'partRequest': partRequest?.toJson(),
     'quote': quote?.toJson(),
     'assignedStaffId': assignedStaffId,
+    'checkIn': checkIn?.toJson(),
+    'inspection': [for (final i in inspection) i.toJson()],
+    'extraWork': [for (final e in extraWork) e.toJson()],
+    'invoiceNumber': invoiceNumber,
   };
 
   ServiceRequest copyWith({
@@ -383,7 +419,15 @@ class ServiceRequest {
     PartRequest? partRequest,
     Quote? quote,
     String? assignedStaffId,
+    VehicleCheckIn? checkIn,
+    List<InspectionItem>? inspection,
+    List<ExtraWorkRequest>? extraWork,
+    String? invoiceNumber,
   }) => ServiceRequest(
+    checkIn: checkIn ?? this.checkIn,
+    inspection: inspection ?? this.inspection,
+    extraWork: extraWork ?? this.extraWork,
+    invoiceNumber: invoiceNumber ?? this.invoiceNumber,
     id: id ?? this.id,
     offering: offering ?? this.offering,
     car: car ?? this.car,
@@ -425,7 +469,32 @@ class ServiceRequest {
       other.partRequest == partRequest &&
       other.quote == quote &&
       other.assignedStaffId == assignedStaffId &&
+      other.invoiceNumber == invoiceNumber &&
+      other.checkIn?.recordedAt == checkIn?.recordedAt &&
+      _sameWorkspace(other) &&
       _sameAddOns(other.addOns);
+
+  /// The job workspace, compared by what changes when it is edited: an item
+  /// count, an inspection timestamp, an extra-work status. Enough for a
+  /// rebuild to notice; the records themselves carry no `==`.
+  bool _sameWorkspace(ServiceRequest other) {
+    if (other.inspection.length != inspection.length ||
+        other.extraWork.length != extraWork.length) {
+      return false;
+    }
+    for (var i = 0; i < inspection.length; i++) {
+      if (other.inspection[i].inspectedAt != inspection[i].inspectedAt) {
+        return false;
+      }
+    }
+    for (var i = 0; i < extraWork.length; i++) {
+      if (other.extraWork[i].id != extraWork[i].id ||
+          other.extraWork[i].status != extraWork[i].status) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   bool _sameAddOns(List<AddOn> other) {
     if (other.length != addOns.length) return false;

@@ -193,7 +193,7 @@ class _PartRequestScreenState extends ConsumerState<PartRequestScreen> {
                           fontSize: 13, fontWeight: FontWeight.w700),
                     ),
                   ),
-                  Icon(LucideIcons.chevronRight, color: ak.inkFaint),
+                  Icon(DirectionalIcons.forwardChevron(context), color: ak.inkFaint),
                 ],
               ),
             ),

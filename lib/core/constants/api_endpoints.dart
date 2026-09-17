@@ -13,7 +13,20 @@ abstract final class ApiEndpoints {
 
   /// Verifies the code sent by [login] and starts the session.
   static const loginVerify = '/auth/login/verify';
+
+  /// `204` when an account uses the identifier, `404` when none does. Sends
+  /// nothing: asked before Firebase texts a login code.
+  static const loginCheck = '/auth/login/check';
+
+  /// Exchanges the Firebase ID token from SMS phone verification for a
+  /// session.
+  static const loginPhone = '/auth/login/phone';
+
   static const register = '/auth/register';
+
+  /// Every `/auth/register` rule, saving nothing: `204`, or the error
+  /// registering would give. Asked before Firebase texts a registration code.
+  static const registerCheck = '/auth/register/check';
   static const refreshToken = '/auth/refresh';
   static const logout = '/auth/logout';
 
@@ -207,6 +220,50 @@ abstract final class ApiEndpoints {
   static const myWorkshopSchedule = '$myWorkshop/schedule';
   static const myWorkshopEarnings = '$myWorkshop/earnings';
   static const myWorkshopMetrics = '$myWorkshop/metrics';
+
+  // ------------------------------------------------------ job workspace
+  // 2026-09-15. What the workshop records while the car is with it. Every
+  // route is new — nothing above moved.
+  static String _jobRequest(String requestId) => '$myWorkshopRequests/$requestId';
+
+  static String jobCheckIn(String requestId) => '${_jobRequest(requestId)}/check-in';
+
+  static String jobInspection(String requestId) =>
+      '${_jobRequest(requestId)}/inspection';
+
+  static String jobExtraWork(String requestId) =>
+      '${_jobRequest(requestId)}/extra-work';
+
+  static String jobExtraWorkWithdraw(String requestId, String extraId) =>
+      '${jobExtraWork(requestId)}/$extraId/withdraw';
+
+  static String jobCard(String requestId) => '${_jobRequest(requestId)}/job-card';
+
+  static String jobCardLines(String requestId) => '${jobCard(requestId)}/lines';
+
+  static String jobCardLine(String requestId, String lineId) =>
+      '${jobCardLines(requestId)}/$lineId';
+
+  static String jobInvoiceIssue(String requestId) =>
+      '${_jobRequest(requestId)}/invoice';
+
+  /// The customer's answer to one extra-work request.
+  static String extraWorkRespond(String requestId, String extraId) =>
+      '${serviceRequest(requestId)}/extra-work/$extraId/respond';
+
+  /// A booking's invoice — the customer, its workshop and the founder.
+  static String requestInvoice(String requestId) =>
+      '${serviceRequest(requestId)}/invoice';
+
+  static const adminWorkshopPerformance =
+      '/service-marketplace/admin/workshop-performance';
+  static const adminExtraWork = '/service-marketplace/admin/extra-work';
+
+  static String adminExtraWorkConfirmFunds(String extraId) =>
+      '$adminExtraWork/$extraId/confirm-funds';
+
+  static String adminJobCard(String requestId) =>
+      '/service-marketplace/admin/requests/$requestId/job-card';
 
   // ------------------------------------------------------- admin workshop
   // The founder's CRUD over *any* workshop's profile and catalogue — the

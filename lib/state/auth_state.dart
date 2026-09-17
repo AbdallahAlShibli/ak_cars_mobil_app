@@ -114,12 +114,23 @@ class AuthNotifier extends Notifier<AuthState> {
   /// came up anonymous every launch: the profile only ever lived in memory,
   /// so a user who had registered was asked to register again at the next
   /// checkout.
-  Future<void> restore() async {
+  ///
+  /// [revalidate]: start-up now paints this profile from the disk cache, so
+  /// `AppBootstrap.completeWarmUp` calls this again live after the first frame.
+  /// If the server says the session behind it is gone, the profile is dropped
+  /// and the app carries on as a guest — the same place a cold start with an
+  /// expired session always landed, only a moment later.
+  Future<void> restore({bool revalidate = false}) async {
     final stored = await ref.read(authRepositoryProvider).currentUser();
     if (stored != null) {
       state = state.copyWith(
         profile: stored,
         isFounder: await _readIsFounder(),
+      );
+    } else if (revalidate && state.profile != null) {
+      state = AuthState(
+        onboardingSeen: state.onboardingSeen,
+        startChoiceMade: state.startChoiceMade,
       );
     }
   }
@@ -148,7 +159,10 @@ class AuthNotifier extends Notifier<AuthState> {
   /// screen pops back to the gated action as soon as this returns control,
   /// and that action re-reads [authProvider] synchronously. Rolling back on
   /// failure keeps the optimism honest.
-  Future<void> register(UserProfile profile) async {
+  Future<void> register(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) async {
     final previous = state;
     state = state.copyWith(
       profile: profile,
@@ -159,7 +173,9 @@ class AuthNotifier extends Notifier<AuthState> {
     // they reached the form from a deep link rather than from onboarding.
     _markFirstRunDone();
     try {
-      final stored = await ref.read(authRepositoryProvider).register(profile);
+      final stored = await ref
+          .read(authRepositoryProvider)
+          .register(profile, phoneVerificationToken: phoneVerificationToken);
       state = state.copyWith(
         profile: stored,
         isFounder: await _readIsFounder(),
@@ -201,22 +217,46 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// Locates an existing account for the login screen. Null when nothing
-  /// matches — the screen offers registration instead.
+  /// Sends the API's own one-time code to [identifier]; false when no account
+  /// matches, and the screen offers registration instead. Used by the email
+  /// channel, and for phones where Firebase phone sign-in cannot run.
   Future<bool> requestOtp(String identifier) =>
       ref.read(authRepositoryProvider).requestOtp(identifier);
 
-  /// Starts the session once the login screen has verified its OTP.
+  /// Whether an account uses [identifier]. Sends nothing: asked before
+  /// Firebase texts a login code, so an unregistered number is offered
+  /// registration instead of being charged an SMS it cannot use.
+  Future<bool> accountExists(String identifier) =>
+      ref.read(authRepositoryProvider).accountExists(identifier);
+
+  /// Every server-side registration rule, saving nothing. Throws what
+  /// [register] would throw; asked before Firebase texts a registration code.
+  Future<void> validateRegistration(UserProfile profile) =>
+      ref.read(authRepositoryProvider).validateRegistration(profile);
+
+  /// Starts the session once the login screen has verified the API's own OTP.
   ///
   /// Mirrors [register]'s optimism/rollback shape: the caller pops back to
   /// wherever login was reached from as soon as this returns, so the state
   /// is set before the round-trip settles, not after.
-  Future<void> login(String identifier, String code) async {
+  Future<void> login(String identifier, String code) => _signIn(
+    () => ref.read(authRepositoryProvider).login(identifier, code),
+  );
+
+  /// Starts the session for the account whose phone Firebase just verified
+  /// by SMS. The API checks [firebaseIdToken] and finds the account itself.
+  Future<void> loginWithVerifiedPhone(String firebaseIdToken) => _signIn(
+    () => ref
+        .read(authRepositoryProvider)
+        .loginWithVerifiedPhone(firebaseIdToken),
+  );
+
+  /// The part of every sign-in that does not care how the user proved who
+  /// they are.
+  Future<void> _signIn(Future<UserProfile> Function() authenticate) async {
     final previous = state;
     try {
-      final stored = await ref
-          .read(authRepositoryProvider)
-          .login(identifier, code);
+      final stored = await authenticate();
       state = state.copyWith(
         profile: stored,
         onboardingSeen: true,
@@ -232,7 +272,6 @@ class AuthNotifier extends Notifier<AuthState> {
       rethrow;
     }
   }
-
   /// Hands the server whatever this device built while nobody was signed in,
   /// then re-reads the entire app for the account that now owns it.
   ///
@@ -367,6 +406,10 @@ class AuthNotifier extends Notifier<AuthState> {
       );
     }
     if (_disposed) return;
+    // The departed account's stored answers are keyed to it, so they could
+    // never be served to the next one — but they are still that account's
+    // bookings and garage sitting on disk. See `ResponseCache`.
+    unawaited(ref.read(responseCacheProvider).clear());
     unawaited(
       ref
           .read(sessionRefreshProvider)

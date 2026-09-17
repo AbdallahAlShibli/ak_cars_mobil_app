@@ -93,6 +93,28 @@ class _StatisticsScreenState extends ConsumerState<StatisticsScreen> {
                 data: (data) =>
                     _PerformanceSection(s: s, ak: ak, metrics: data),
               ),
+              const SizedBox(height: AppSpacing.sectionGap),
+              SectionHeader(s.t('إدارة الورشة', 'Running the workshop')),
+              const SizedBox(height: AppSpacing.headingGap),
+              metrics.when(
+                loading: () => const MetricSkeleton(count: 2),
+                error: (error, _) => _ChartError(s: s),
+                data: (data) => switch (data.business) {
+                  final WorkshopBusinessKpis business => _BusinessSection(
+                    s: s,
+                    ak: ak,
+                    business: business,
+                  ),
+                  null => EmptyState(
+                    compact: true,
+                    icon: LucideIcons.chartNoAxesColumn,
+                    message: s.t(
+                      'تظهر هذه الأرقام بعد تحديث الخادم.',
+                      'These figures appear once the server is updated.',
+                    ),
+                  ),
+                },
+              ),
             ],
           ),
         ),
@@ -331,4 +353,101 @@ class _PerformanceSection extends StatelessWidget {
 
   static String _percent(double? rate) =>
       rate == null ? '—' : '${(rate * 100).round()}%';
+}
+
+/// The shop-management figures (2026-09-15): average repair order, repeat
+/// customers, extra work, margin, check-in discipline and time in the shop.
+class _BusinessSection extends StatelessWidget {
+  const _BusinessSection({
+    required this.s,
+    required this.ak,
+    required this.business,
+  });
+
+  final S s;
+  final AkColors ak;
+  final WorkshopBusinessKpis business;
+
+  @override
+  Widget build(BuildContext context) {
+    final b = business;
+    final aro = b.averageRepairOrder;
+    final days = b.avgDaysInShop;
+    final coverage = b.checkInCoverage;
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: OperatorFigure(
+                value: aro == null ? const Text('—') : RialAmount(aro),
+                label: s.t('متوسط قيمة الطلب', 'Avg repair order'),
+                hint: s.t('${b.carCount} سيارة', '${b.carCount} cars'),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: OperatorFigure(
+                value: Text(_PerformanceSection._percent(b.repeatCustomerRate)),
+                label: s.t('عملاء عائدون', 'Repeat customers'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.itemGap),
+        Row(
+          children: [
+            Expanded(
+              child: OperatorFigure(
+                value: Text(
+                  _PerformanceSection._percent(b.extraWorkApprovalRate),
+                ),
+                label: s.t('قبول الأعمال الإضافية', 'Extra work approved'),
+                hint: s.t(
+                  'أُضيف ${b.extraWorkRevenue.toStringAsFixed(2)} ر.ع',
+                  'OMR ${b.extraWorkRevenue.toStringAsFixed(2)} added',
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: OperatorFigure(
+                value: RialAmount(b.grossProfit),
+                label: s.t('إجمالي الربح', 'Gross profit'),
+                hint: s.t('الإيراد ناقص تكلفة القطع', 'Revenue minus parts cost'),
+                tone: b.grossProfit < 0 ? ak.danger : null,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.itemGap),
+        Row(
+          children: [
+            Expanded(
+              child: OperatorFigure(
+                value: Text(_PerformanceSection._percent(coverage)),
+                label: s.t('تغطية الاستلام', 'Check-in coverage'),
+                tone: coverage != null && coverage < 0.8 ? ak.amberText : null,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: OperatorFigure(
+                value: Text(
+                  days == null
+                      ? '—'
+                      : s.t(
+                          '${days.toStringAsFixed(1)} يوم',
+                          '${days.toStringAsFixed(1)} days',
+                        ),
+                ),
+                label: s.t('متوسط البقاء في الورشة', 'Avg days in shop'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }

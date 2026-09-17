@@ -67,6 +67,15 @@ abstract interface class ApiClient {
     Map<String, String>? headers,
   });
 
+  /// `PUT` routes that replace a whole collection and answer with it — the
+  /// job workspace's `PUT .../inspection`.
+  Future<List<JsonMap>> putList(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+  });
+
   /// `DELETE` routes that answer with the remaining collection rather than
   /// `204` — the notification inbox's dismiss routes, which return what is
   /// left so the screen rebuilds from the server's answer instead of guessing

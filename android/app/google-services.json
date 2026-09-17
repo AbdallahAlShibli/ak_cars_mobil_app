@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "775272834629",
+    "project_id": "akcars-878ad",
+    "storage_bucket": "akcars-878ad.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:775272834629:android:f1a93ff6f6b174b8abe52c",
+        "android_client_info": {
+          "package_name": "om.akcars.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAq-K3A9mOznhil6AX4PYWJzIsYZ_UnWrU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

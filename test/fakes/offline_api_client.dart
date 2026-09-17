@@ -71,6 +71,13 @@ class OfflineApiClient implements ApiClient {
       _refuse('POST', path);
 
   @override
+  Future<List<JsonMap>> putList(String path,
+          {Object? body,
+          Map<String, dynamic>? queryParameters,
+          Map<String, String>? headers}) async =>
+      _refuse('PUT', path);
+
+  @override
   Future<List<JsonMap>> deleteList(String path,
           {Object? body,
           Map<String, dynamic>? queryParameters,
@@ -78,23 +85,31 @@ class OfflineApiClient implements ApiClient {
       _refuse('DELETE', path);
 }
 
-/// A [PushService] that never touches Firebase.
+/// A [PushService] that never opens a connection.
 ///
-/// `NotificationsNotifier.build` subscribes to `dataMessages()` on every
-/// launch, so every widget test builds one. The real service calls
-/// `Firebase.initializeApp()`, which has no native config under
-/// `flutter_tester` — it logs and swallows, but only after the platform
-/// channel round trip, and `onTokenRefresh` would then hold an open
-/// subscription for the rest of the test.
+/// `NotificationsNotifier.build` subscribes to `dataMessages()` and
+/// `connections()` on every launch and `AkCarsApp` calls `start()`, so every
+/// widget test builds one. The real service would dial
+/// `/hubs/notifications` and initialise the local-notifications plugin, which
+/// has no platform side under `flutter_tester`.
 class SilentPushService implements PushService {
   const SilentPushService();
+
+  @override
+  Future<void> start() async {}
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Future<void> dispose() async {}
 
   @override
   Stream<Map<String, dynamic>> dataMessages() => const Stream.empty();
 
   @override
-  Future<void> registerCurrentDevice() async {}
+  Stream<void> connections() => const Stream.empty();
 
   @override
-  Future<void> unregisterCurrentDevice() async {}
+  Stream<String?> openedRoutes() => const Stream.empty();
 }

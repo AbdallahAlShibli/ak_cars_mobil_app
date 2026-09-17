@@ -33,6 +33,15 @@ abstract final class AppConstants {
   static const prefsNotifications = 'akcars_notifications';
   static const prefsAuthToken = 'akcars_auth_token';
 
+  /// Background push bookkeeping (`core/push/`). The app records when, and for
+  /// which account, it last registered this install's push key; the
+  /// background service's isolate records what it has shown and when its
+  /// connection was last alive.
+  static const prefsPushRegisteredAt = 'akcars_push_registered_at';
+  static const prefsPushRegisteredFor = 'akcars_push_registered_for';
+  static const prefsPushShownIds = 'akcars_push_shown_ids';
+  static const prefsPushAliveAt = 'akcars_push_alive_at';
+
   /// First-run flags. These are what make the intro a *first launch* thing
   /// rather than something the user re-watches on every cold start, so they
   /// have to outlive the process — uninstalling the app is the only thing

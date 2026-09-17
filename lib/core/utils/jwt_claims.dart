@@ -32,6 +32,18 @@ bool jwtHasFounderRole(String? token) {
   return false;
 }
 
+/// The account id a stored access token was issued for — the `sub` claim
+/// `TokenService.GenerateAccessToken` writes — or null for no token or an
+/// unreadable one.
+///
+/// Bookkeeping, not a trust boundary, like [jwtHasFounderRole]: the push
+/// service uses it to notice that the device's push key was last registered
+/// for a different account.
+String? jwtSubject(String? token) {
+  final subject = _decodeJwtClaims(token)?['sub'];
+  return subject is String && subject.isNotEmpty ? subject : null;
+}
+
 Map<String, dynamic>? _decodeJwtClaims(String? token) {
   if (token == null) return null;
   final parts = token.split('.');

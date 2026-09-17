@@ -21,6 +21,7 @@
 /// widget ever instantiates one.
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -28,6 +29,8 @@ import '../config/app_config.dart';
 import '../core/network/api_client.dart';
 import '../core/network/chat_hub.dart';
 import '../core/network/dio_api_client.dart';
+import '../core/network/network_activity.dart';
+import '../core/network/response_cache.dart';
 import '../core/push/push_service.dart';
 import '../data/services/api/api_admin_workshop_service.dart';
 import '../data/services/api/api_auth_service.dart';
@@ -36,6 +39,7 @@ import '../data/services/api/api_catalog_service.dart';
 import '../data/services/api/api_challenge_service.dart';
 import '../data/services/api/api_chat_service.dart';
 import '../data/services/api/api_garage_service.dart';
+import '../data/services/api/api_job_workspace_service.dart';
 import '../data/services/api/api_maintenance_service.dart';
 import '../data/services/api/api_notification_service.dart';
 import '../data/services/api/api_order_service.dart';
@@ -59,11 +63,14 @@ import '../data/repositories/service_marketplace_repository.dart';
 import '../data/repositories/shop_repository.dart';
 import '../data/repositories/workshop_repository.dart';
 import '../data/services/auth_service.dart';
+import '../data/services/firebase/firebase_phone_verification_service.dart';
+import '../data/services/phone_verification_service.dart';
 import '../data/services/cars_service.dart';
 import '../data/services/catalog_service.dart';
 import '../data/services/challenge_service.dart';
 import '../data/services/chat_service.dart';
 import '../data/services/garage_service.dart';
+import '../data/services/job_workspace_service.dart';
 import '../data/services/maintenance_service.dart';
 import '../data/services/notification_service.dart';
 import '../data/services/order_service.dart';
@@ -89,10 +96,28 @@ final appConfigProvider = Provider<AppConfig>((ref) => AppConfig.current());
 /// keychain/keystore, never `SharedPreferences`.
 final tokenStoreProvider = Provider<TokenStore>((ref) => TokenStore());
 
-/// FCM device registration and the data-only message bridge. A no-op until
-/// the native Firebase config is added — see [PushService]'s doc comment.
-final pushServiceProvider = Provider<PushService>(
-  (ref) => PushService(ref.watch(apiClientProvider)),
+/// The app's live notification channel to the API's own push service
+/// (`/hubs/notifications`) and the system notifications it shows — no
+/// third-party push provider. See [PushService]'s doc comment.
+final pushServiceProvider = Provider<PushService>((ref) {
+  final push = PushService(
+    config: ref.watch(appConfigProvider),
+    tokens: ref.watch(tokenStoreProvider),
+    client: ref.watch(apiClientProvider),
+    preferences: ref.watch(sharedPrefsProvider),
+  );
+  ref.onDispose(push.dispose);
+  return push;
+});
+
+/// Proves a phone number by SMS for login and registration. Firebase
+/// Authentication sends and checks the code; see [PhoneVerificationService].
+final phoneVerificationServiceProvider = Provider<PhoneVerificationService>(
+  (ref) => FirebasePhoneVerificationService(
+    disableAppVerificationForTesting: ref
+        .watch(appConfigProvider)
+        .phoneAuthTestMode,
+  ),
 );
 
 /// The SignalR connection backing live chat delivery — a single connection
@@ -119,7 +144,25 @@ final apiClientProvider = Provider<ApiClient>(
   (ref) => DioApiClient(
     config: ref.watch(appConfigProvider),
     tokens: ref.watch(tokenStoreProvider),
+    cache: ref.watch(responseCacheProvider),
+    activity: ref.watch(networkActivityProvider),
   ),
+);
+
+/// Requests in flight, for the app-wide loading bar — see [NetworkActivity].
+final networkActivityProvider = Provider<NetworkActivity>((ref) {
+  final activity = NetworkActivity();
+  ref.onDispose(activity.dispose);
+  return activity;
+});
+
+/// The disk copy of warm-up responses a cold start paints from — see
+/// [ResponseCache]. Nothing on web, which has no private file system to keep
+/// it in; the test harness overrides it with [NoResponseCache].
+final responseCacheProvider = Provider<ResponseCache>(
+  (ref) => kIsWeb
+      ? const NoResponseCache()
+      : FileResponseCache.inTemporaryDirectory(),
 );
 
 // ------------------------------------------------------- warm-cache notices
@@ -262,6 +305,10 @@ final reviewServiceProvider = Provider<ReviewService>(
 
 final workshopServiceProvider = Provider<WorkshopService>(
   (ref) => ApiWorkshopService(ref.watch(apiClientProvider)),
+);
+
+final jobWorkspaceServiceProvider = Provider<JobWorkspaceService>(
+  (ref) => ApiJobWorkspaceService(ref.watch(apiClientProvider)),
 );
 
 final adminWorkshopServiceProvider = Provider<AdminWorkshopService>(

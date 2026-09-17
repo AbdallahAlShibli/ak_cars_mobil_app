@@ -7,6 +7,39 @@
       "runtimeArgs": ["run", "-d", "chrome", "--web-port", "5959"],
       "port": 5959,
       "url": "http://localhost:5959"
+    },
+    {
+      "name": "akcars_api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "C:\\Projects\\Cars Project\\AKCarsMobilApp\\AKCarsMobileAPI\\src\\AKCars.Api\\AKCars.Api.csproj",
+        "--launch-profile",
+        "https"
+      ],
+      "port": 7291,
+      "url": "https://localhost:7291"
+    },
+    {
+      "name": "akcars_api_verify",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "C:\\Projects\\Cars Project\\AKCarsMobilApp\\AKCarsMobileAPI\\src\\AKCars.Api\\AKCars.Api.csproj",
+        "-c",
+        "Release",
+        "--no-launch-profile",
+        "--",
+        "--environment",
+        "Development",
+        "--urls",
+        "http://127.0.0.1:5189",
+        "--ConnectionStrings:DefaultConnection=Server=.\\SQLEXPRESS;Database=AKCarsMobileDb_Verify;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
+      ],
+      "port": 5189,
+      "url": "http://127.0.0.1:5189"
     }
   ]
 }

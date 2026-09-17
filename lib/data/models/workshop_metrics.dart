@@ -1,4 +1,5 @@
 import '../../core/json/json_utils.dart';
+import 'job_workspace.dart';
 import 'review.dart';
 
 /// How one workshop is actually performing (spec §4).
@@ -24,6 +25,7 @@ class WorkshopMetrics {
     required this.reviewCount,
     required this.recentReviews,
     this.avgRating,
+    this.business,
   });
 
   /// A workshop with no history at all. Distinct from "all zeros computed from
@@ -67,6 +69,10 @@ class WorkshopMetrics {
   /// the number.
   final List<Review> recentReviews;
 
+  /// The shop-management KPIs (average repair order, car count, margins …)
+  /// added 2026-09-15. Null from an API that predates them.
+  final WorkshopBusinessKpis? business;
+
   /// accepted ÷ received. Null when it has been sent nothing: 0% would be a
   /// claim about a workshop that has not had the chance to refuse anything.
   double? get acceptanceRate => received == 0 ? null : accepted / received;
@@ -94,6 +100,9 @@ class WorkshopMetrics {
         reviewCount: json.intOr('reviewCount', 0),
         recentReviews:
             json.objectList('recentReviews').map(Review.fromJson).toList(),
+        business: json.objectOrNull('business') == null
+            ? null
+            : WorkshopBusinessKpis.fromJson(json.requireObject('business')),
       );
 
   JsonMap toJson() => {
@@ -105,6 +114,7 @@ class WorkshopMetrics {
         'avgRating': avgRating,
         'reviewCount': reviewCount,
         'recentReviews': [for (final r in recentReviews) r.toJson()],
+        'business': business?.toJson(),
       };
 
   WorkshopMetrics copyWith({
@@ -116,8 +126,10 @@ class WorkshopMetrics {
     double? avgRating,
     int? reviewCount,
     List<Review>? recentReviews,
+    WorkshopBusinessKpis? business,
   }) =>
       WorkshopMetrics(
+        business: business ?? this.business,
         received: received ?? this.received,
         accepted: accepted ?? this.accepted,
         completed: completed ?? this.completed,

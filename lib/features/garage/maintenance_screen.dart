@@ -339,7 +339,7 @@ class _CarBook extends ConsumerWidget {
                     ),
                   ),
                 ),
-                Icon(LucideIcons.chevronLeft, size: 16, color: ak.inkSub),
+                Icon(DirectionalIcons.forwardChevron(context), size: 16, color: ak.inkSub),
               ],
             ),
           ),

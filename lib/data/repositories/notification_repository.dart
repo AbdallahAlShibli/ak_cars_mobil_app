@@ -18,10 +18,14 @@ import '../services/notification_service.dart';
 /// the backend starts pushing them, the [notifyRequestStatus] /
 /// [notifyOrderStatus] bodies are deleted and only [fetchNotifications]
 /// remains.
+///
+/// Every `notify*` and [push] answers `null`: the server raises the real row
+/// as a side effect of the event, and a `null` handed to
+/// `NotificationsNotifier.adopt` reloads the inbox to pick it up.
 abstract interface class NotificationRepository {
   Future<List<AppNotification>> fetchNotifications();
 
-  Future<AppNotification> push({
+  Future<AppNotification?> push({
     required L title,
     required L body,
     IconData icon,
@@ -53,7 +57,7 @@ abstract interface class NotificationRepository {
 
   /// Warns the customer that the approval window is about to close and the
   /// escrow will release itself (spec §3, note 1).
-  Future<AppNotification> notifyApprovalWindowClosing(
+  Future<AppNotification?> notifyApprovalWindowClosing(
     ServiceRequest request,
     DateTime deadline,
   );
@@ -62,28 +66,28 @@ abstract interface class NotificationRepository {
   Future<AppNotification?> notifyOrderStatus(Order order, OrderStatus status);
 
   /// Raises the "order placed, funds held" notification after checkout.
-  Future<AppNotification> notifyOrderPlaced(Order order);
+  Future<AppNotification?> notifyOrderPlaced(Order order);
 
   /// Raises the "escrow released" notification after the buyer confirms.
-  Future<AppNotification> notifyEscrowReleased(Order order);
+  Future<AppNotification?> notifyEscrowReleased(Order order);
 
   /// Raises the "request sent" notification after booking.
-  Future<AppNotification> notifyRequestPlaced(ServiceRequest request);
+  Future<AppNotification?> notifyRequestPlaced(ServiceRequest request);
 
   /// Raises the "we've asked the workshop to price this" notification after a
   /// part-and-fit request is opened (spec §6).
-  Future<AppNotification> notifyPartRequestSent(ServiceRequest request);
+  Future<AppNotification?> notifyPartRequestSent(ServiceRequest request);
 
   /// Raises the "your quote is in" notification. Carries the itemised total,
   /// because the split between part and labour is the point of the quote.
-  Future<AppNotification> notifyQuoteReceived(ServiceRequest request);
+  Future<AppNotification?> notifyQuoteReceived(ServiceRequest request);
 
   /// Invites both sides to rate a completed booking (spec §8). Nothing is
   /// held back waiting for a reply — this is an invitation, not a gate.
-  Future<AppNotification> notifyReviewUnlocked(ServiceRequest request);
+  Future<AppNotification?> notifyReviewUnlocked(ServiceRequest request);
 
   /// Raises the "your ad is live" notification after an ad is published.
-  Future<AppNotification> notifyAdPublished(GalleryListing ad);
+  Future<AppNotification?> notifyAdPublished(GalleryListing ad);
 }
 
 class NotificationRepositoryImpl implements NotificationRepository {
@@ -92,23 +96,12 @@ class NotificationRepositoryImpl implements NotificationRepository {
   final NotificationService _service;
   final AppConfig config;
 
-  /// A placeholder never inserted anywhere — [notify*] callers already treat
-  /// the return as fire-and-forget, so this exists only to satisfy the
-  /// non-nullable signatures without touching the server-owned inbox.
-  static final _noop = AppNotification(
-    id: 'noop',
-    title: const L('', ''),
-    body: const L('', ''),
-    icon: LucideIcons.bell,
-    time: DateTime.fromMillisecondsSinceEpoch(0),
-  );
-
   @override
   Future<List<AppNotification>> fetchNotifications() =>
       _service.fetchNotifications();
 
   @override
-  Future<AppNotification> push({
+  Future<AppNotification?> push({
     required L title,
     required L body,
     IconData icon = LucideIcons.bell,
@@ -117,7 +110,14 @@ class NotificationRepositoryImpl implements NotificationRepository {
     // The inbox is server-owned: the server raises every notification as a
     // side effect of the event that caused it, and a copy written here would
     // be a second, possibly-diverging source of wording for the same event.
-    return Future.value(_noop);
+    //
+    // `null`, not a placeholder row. This used to return a blank
+    // `AppNotification` (id `noop`, empty title and body, epoch-zero time) on
+    // the assumption nobody inserted it — but every caller hands the result
+    // to `NotificationsNotifier.adopt`, so each booking, order and ad put a
+    // blank "1 Jan · 4:00" card in the inbox whose tap then posted
+    // `/notifications/noop/read` and failed. `adopt(null)` reloads instead.
+    return Future.value(null);
   }
 
   @override
@@ -136,7 +136,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
   // separately (spec §3). Saying "held in escrow" here would be the app
   // claiming a transfer that has not happened.
   @override
-  Future<AppNotification> notifyRequestPlaced(ServiceRequest request) => push(
+  Future<AppNotification?> notifyRequestPlaced(ServiceRequest request) => push(
         title: L('تم إرسال الطلب #${shortRef(request.id)}',
             'Request #${shortRef(request.id)} sent'),
         body: L(
@@ -149,7 +149,8 @@ class NotificationRepositoryImpl implements NotificationRepository {
   // No amount is named: there isn't one yet, and putting an estimate here
   // would pre-empt the quote the workshop has not written.
   @override
-  Future<AppNotification> notifyPartRequestSent(ServiceRequest request) => push(
+  Future<AppNotification?> notifyPartRequestSent(ServiceRequest request) =>
+      push(
         title: L('أُرسل طلب القطعة #${request.id}',
             'Part request #${request.id} sent'),
         body: L(
@@ -160,7 +161,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
       );
 
   @override
-  Future<AppNotification> notifyQuoteReceived(ServiceRequest request) {
+  Future<AppNotification?> notifyQuoteReceived(ServiceRequest request) {
     final quote = request.quote;
     final provider = request.offering.provider.name;
     // Guarded rather than assumed: a notification that says "OMR 0.00" because
@@ -188,7 +189,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
   }
 
   @override
-  Future<AppNotification> notifyReviewUnlocked(ServiceRequest request) => push(
+  Future<AppNotification?> notifyReviewUnlocked(ServiceRequest request) => push(
         title: const L('كيف كانت التجربة؟', 'How was it?'),
         body: L(
             'قيّم ${request.offering.provider.name.ar} عن الطلب #${shortRef(request.id)}. تقييمك يظهر لأنه عن حجز مكتمل فعلاً.',
@@ -198,7 +199,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
       );
 
   @override
-  Future<AppNotification> notifyAdPublished(GalleryListing ad) => push(
+  Future<AppNotification?> notifyAdPublished(GalleryListing ad) => push(
         title: const L('إعلانك الآن مباشر', 'Your ad is live'),
         body: L(
             '${ad.year} ${ad.make} ${ad.model} أصبح الآن في المعرض.',
@@ -283,7 +284,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
   }
 
   @override
-  Future<AppNotification> notifyApprovalWindowClosing(
+  Future<AppNotification?> notifyApprovalWindowClosing(
     ServiceRequest request,
     DateTime deadline,
   ) {
@@ -324,7 +325,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
       };
 
   @override
-  Future<AppNotification> notifyOrderPlaced(Order order) => push(
+  Future<AppNotification?> notifyOrderPlaced(Order order) => push(
         title: L('تم إنشاء الطلب ${order.id}', 'Order ${order.id} placed'),
         body: L(
             'تم احتجاز ${order.total.toStringAsFixed(2)} ر.ع — تُحرّر عند تأكيد الاستلام.',
@@ -334,7 +335,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
       );
 
   @override
-  Future<AppNotification> notifyEscrowReleased(Order order) => push(
+  Future<AppNotification?> notifyEscrowReleased(Order order) => push(
         title: L('تم تحرير الدفعة للطلب ${order.id}',
             'Payment released for order ${order.id}'),
         body: L(

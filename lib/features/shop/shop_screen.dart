@@ -9,8 +9,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
+import '../../state/startup_state.dart';
 import '../../data/models/models.dart';
 import 'product_widgets.dart';
 import 'shop_filter_sheet.dart';
@@ -100,6 +102,8 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
         .toList();
     final cart = ref.watch(cartProvider);
     final searching = _query.trim().isNotEmpty;
+    // Still on the app's first load: an empty catalogue has not arrived yet.
+    final loading = ref.watch(startupLoadingProvider);
     final evCar = ref.watch(primaryCarProvider);
     final evShortcut = evCar == null || evCar.plugsIn;
 
@@ -345,7 +349,14 @@ class _ShopScreenState extends ConsumerState<ShopScreen> {
                     ),
                   ),
                 ),
-                if (products.isEmpty)
+                if (products.isEmpty && loading)
+                  const SliverPadding(
+                    padding: EdgeInsets.fromLTRB(20, 4, 20, 10),
+                    sliver: SliverToBoxAdapter(
+                      child: ListSkeleton(rows: 4, height: 96),
+                    ),
+                  )
+                else if (products.isEmpty)
                   SliverToBoxAdapter(
                     child: _emptyState(searching, filter, s, ak),
                   )
@@ -1085,7 +1096,7 @@ class _CartBar extends ConsumerWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            Icon(LucideIcons.chevronRight,
+            Icon(DirectionalIcons.forwardChevron(context),
                 color: ak.onPrimary.withValues(alpha: 0.75)),
           ],
         ),

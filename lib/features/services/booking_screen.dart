@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:developer' as developer;
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -6,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/error/app_exception.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
@@ -98,6 +102,38 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       // to crash the screen on open.
       _fulfillment = offered.firstOrNull ?? Fulfillment.workshop;
     }
+    unawaited(_refreshSlots());
+  }
+
+  /// Asks for this workshop's live slots as the screen opens. The grid warmed
+  /// at start-up may be hours old — a "free" chip could be taken by now — and
+  /// since start-up moved slots to just after the first frame, a booking
+  /// opened in that first moment would otherwise show none at all.
+  ///
+  /// A failure keeps whatever grid was already there; the booking itself is
+  /// still checked by the server.
+  Future<void> _refreshSlots() async {
+    try {
+      await _marketplace.refreshAvailability(_offering.provider.id);
+    } on AppException catch (error, stack) {
+      developer.log(
+        'Could not refresh the slots; showing the ones already loaded',
+        name: 'BookingScreen',
+        error: error,
+        stackTrace: stack,
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      final availability = _availability;
+      final stillFree = availability.slots.contains(_slot) &&
+          availability.isAvailable(_slot);
+      if (!stillFree) {
+        _slot =
+            availability.slots.firstWhereOrNull(availability.isAvailable) ?? '';
+      }
+    });
   }
 
   @override
@@ -670,10 +706,24 @@ class _SummaryRow extends StatelessWidget {
               style:
                   const TextStyle(fontSize: 12.5, color: AppColors.ink2)),
         ),
-        DefaultTextStyle.merge(
-          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-          child: valueWidget ?? Text(value!),
-        ),
+        // A text value may wrap rather than run off the card: in Arabic the
+        // "When" row reads "الأربعاء 16 سبتمبر · 9:00 ص", and on the longer
+        // weekday names that overflowed a 402-px-wide phone by 11 px.
+        if (valueWidget case final widget?)
+          DefaultTextStyle.merge(
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+            child: widget,
+          )
+        else ...[
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value!,
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ],
     );
   }

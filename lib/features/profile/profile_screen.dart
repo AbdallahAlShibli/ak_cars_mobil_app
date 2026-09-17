@@ -590,9 +590,15 @@ class _IdentityCard extends ConsumerWidget {
             ),
             const SizedBox(width: 8),
             // A pencil on a guest card promised an editor for details that
-            // do not exist yet — a guest is starting registration.
+            // do not exist yet — a guest is starting registration. The
+            // chevron points the reading direction's "forward", like the rows
+            // below it: left in Arabic, right in English.
             Icon(
-              auth.isRegistered ? LucideIcons.pencil : LucideIcons.chevronRight,
+              auth.isRegistered
+                  ? LucideIcons.pencil
+                  : Directionality.of(context) == TextDirection.rtl
+                      ? LucideIcons.chevronLeft
+                      : LucideIcons.chevronRight,
               size: auth.isRegistered ? 17 : 20,
               color: fgSub,
             ),

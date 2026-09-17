@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/i18n/strings.dart';
@@ -218,7 +219,38 @@ class _OrderCard extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           _OrderActions(request: request),
+          const SizedBox(height: AppSpacing.xs),
+          _JobWorkspaceLink(request: request),
         ],
+      ),
+    );
+  }
+}
+
+/// Into the job workspace — check-in, inspection, extra work, job card and
+/// invoice for this booking.
+class _JobWorkspaceLink extends StatelessWidget {
+  const _JobWorkspaceLink({required this.request});
+
+  final ServiceRequest request;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final pending = request.pendingExtraWork.length;
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: TextButton.icon(
+        onPressed: () => context.push('/workshop/dashboard/jobs/${request.id}'),
+        icon: const Icon(LucideIcons.clipboardList, size: 16),
+        label: Text(
+          pending == 0
+              ? s.t('ملف العمل', 'Job workspace')
+              : s.t(
+                  'ملف العمل · $pending بانتظار العميل',
+                  'Job workspace · $pending awaiting customer',
+                ),
+        ),
       ),
     );
   }

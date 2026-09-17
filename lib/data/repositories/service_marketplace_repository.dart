@@ -53,7 +53,14 @@ abstract interface class ServiceMarketplaceRepository {
   /// [includeFounderLedger] adds the payout ledger and the audit log, which
   /// only a founder may read. Off by default: a guest cannot be a founder, so
   /// asking is two round-trips that can only answer `401`.
-  Future<void> warmUp({bool includeFounderLedger = false});
+  ///
+  /// [includeAvailability] false leaves every provider's bookable slots out:
+  /// they are live occupancy, never served from the start-up disk cache, so
+  /// start-up skips them and calls [warmAvailability] after the first frame.
+  Future<void> warmUp({
+    bool includeFounderLedger = false,
+    bool includeAvailability = true,
+  });
 
   /// Whether the catalogue has been fetched at least once this run.
   ///
@@ -385,6 +392,15 @@ abstract interface class ServiceMarketplaceRepository {
   /// Bookable slots for a provider, and which are already taken.
   BookingAvailability availabilityFor(String providerId);
 
+  /// Re-fetches one provider's bookable slots and caches them, so
+  /// [availabilityFor] answers with the live grid. Called as the booking
+  /// screen opens.
+  Future<BookingAvailability> refreshAvailability(String providerId);
+
+  /// Fetches every provider's slots. Start-up leaves them out of its warm-up
+  /// and runs this just after the first frame — see `AppBootstrap`.
+  Future<void> warmAvailability();
+
   Future<ServiceRequest> createRequest(CreateServiceRequestDraft draft);
 
   /// Opens a "part + installation" request against one workshop (spec §6).
@@ -519,7 +535,10 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
   final Map<String, BookingAvailability> _availability = {};
 
   @override
-  Future<void> warmUp({bool includeFounderLedger = false}) async {
+  Future<void> warmUp({
+    bool includeFounderLedger = false,
+    bool includeAvailability = true,
+  }) async {
     await Future.wait([
       _categories.load(_service.fetchCategories),
       _providers.load(_service.fetchProviders),
@@ -548,8 +567,30 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
       ],
     ]);
     await Future.wait([
-      for (final provider in _providers.value) _warmProvider(provider.id),
+      for (final provider in _providers.value)
+        _warmProvider(provider.id, includeAvailability: includeAvailability),
     ]);
+  }
+
+  @override
+  Future<void> warmAvailability() async {
+    await Future.wait([
+      for (final provider in _providers.value) refreshAvailability(provider.id),
+    ]);
+  }
+
+  @override
+  Future<BookingAvailability> refreshAvailability(String providerId) async {
+    // The booking screen only ever offers tomorrow's slots (there is no date
+    // picker) and labels the whole grid "Tomorrow" — so the day fetched here
+    // has to be tomorrow too, or the chips would show today's occupancy under
+    // a tomorrow label and a "free" slot could really be already taken.
+    final availability = await _service.fetchAvailability(
+      providerId,
+      date: DateTime.now().add(const Duration(days: 1)),
+    );
+    _availability[providerId] = availability;
+    return availability;
   }
 
   Future<void> _optionalForFounder(Future<void> Function() warmUp) async {
@@ -569,16 +610,21 @@ class ServiceMarketplaceRepositoryImpl implements ServiceMarketplaceRepository {
     }
   }
 
-  Future<void> _warmProvider(String providerId) async {
+  /// One provider's add-ons and, unless start-up defers them, its slots — in
+  /// parallel. They were fetched one after the other, which doubled the
+  /// round trips start-up waited on for every workshop.
+  Future<void> _warmProvider(
+    String providerId, {
+    required bool includeAvailability,
+  }) async {
+    await Future.wait([
+      _loadAddOns(providerId),
+      if (includeAvailability) refreshAvailability(providerId),
+    ]);
+  }
+
+  Future<void> _loadAddOns(String providerId) async {
     _addOns[providerId] = await _service.fetchAddOns(providerId);
-    // The booking screen only ever offers tomorrow's slots (there is no date
-    // picker) and labels the whole grid "Tomorrow" — so the day warmed here
-    // has to be tomorrow too, or the chips would show today's occupancy under
-    // a tomorrow label and a "free" slot could really be already taken.
-    _availability[providerId] = await _service.fetchAvailability(
-      providerId,
-      date: DateTime.now().add(const Duration(days: 1)),
-    );
   }
 
   @override

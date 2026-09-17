@@ -134,6 +134,37 @@ void main() {
     expect(container.read(notificationsProvider).first.id, fresh.id);
   });
 
+  // Regression: `NotificationRepositoryImpl.push` used to answer a blank
+  // placeholder (id `noop`, empty text, epoch-zero time) that every booking,
+  // order and ad handed to `adopt`, so the inbox grew an empty "1 Jan · 4:00"
+  // card whose tap posted `/notifications/noop/read` and failed.
+  testWidgets('a raised event adds the server row, never a blank card', (
+    tester,
+  ) async {
+    final service = await pump(tester, count: 1);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(NotificationsScreen)),
+    );
+
+    final raised = await container
+        .read(notificationRepositoryProvider)
+        .push(title: const L('ع', 'Local copy'), body: const L('ن', 'B'));
+    expect(raised, isNull);
+
+    // The server raises its own row for the event; adopting the repository's
+    // null answer is what brings that row onto the screen.
+    await service.push(title: const L('ع', 'From server'), body: const L('ن', 'B'));
+    container.read(notificationsProvider.notifier).adopt(raised);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final inbox = container.read(notificationsProvider);
+    expect(inbox, hasLength(2));
+    expect(inbox.first.title.en, 'From server');
+    expect(inbox.every((n) => n.title.en.isNotEmpty), isTrue);
+    expect(find.text('From server'), findsOneWidget);
+  });
+
   testWidgets('deleting after a push removes the right card', (tester) async {
     final service = await pump(tester, count: 2);
     final container = ProviderScope.containerOf(

@@ -192,7 +192,7 @@ class _AddNoteFieldState extends ConsumerState<_AddNoteField> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(LucideIcons.send, size: 16),
+              : const MirroredIcon(LucideIcons.send, size: 16),
           onPressed: _saving ? null : _submit,
         ),
       ],

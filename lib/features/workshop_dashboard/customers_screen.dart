@@ -230,7 +230,7 @@ class _CustomerRow extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: ak.inkSub),
             ),
             const SizedBox(width: AppSpacing.xs),
-            Icon(LucideIcons.chevronLeft, size: 15, color: ak.inkFaint),
+            Icon(DirectionalIcons.forwardChevron(context), size: 15, color: ak.inkFaint),
           ],
         ),
       ),

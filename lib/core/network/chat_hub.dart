@@ -19,7 +19,7 @@ class ChatHub {
   ChatHub({required AppConfig config, required this._tokens}) {
     _connection = HubConnectionBuilder()
         .withUrl(
-          '${config.apiBaseUrl}/hubs/chat',
+          hubUrl(config.apiBaseUrl),
           options: HttpConnectionOptions(
             // `tryRead…`: an unreadable store yields the same empty string a
             // signed-out user gets, so the handshake fails as an ordinary
@@ -32,6 +32,16 @@ class ChatHub {
         .build();
     _connection.on('ReceiveMessage', _onReceiveMessage);
   }
+
+  /// Where the hub lives for a given REST base URL.
+  ///
+  /// The API maps it at its root (`app.MapHub("/hubs/chat")`), outside the
+  /// `/api/v1` REST group, so it is resolved against the base URL's origin.
+  /// Appending to [AppConfig.apiBaseUrl] asked for `/api/v1/hubs/chat`, which
+  /// 404s — real-time chat never connected and every thread fell back to
+  /// polling.
+  static String hubUrl(String apiBaseUrl) =>
+      Uri.parse(apiBaseUrl).resolve('/hubs/chat').toString();
 
   final TokenStore _tokens;
   late final HubConnection _connection;

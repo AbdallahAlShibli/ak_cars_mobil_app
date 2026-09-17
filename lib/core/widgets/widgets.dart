@@ -6,6 +6,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 
+export 'directional_icons.dart';
 export 'promotion_card_face.dart';
 export 'rial_symbol.dart';
 

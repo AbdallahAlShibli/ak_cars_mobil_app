@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -73,6 +75,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
   void setNotifications(bool enabled) {
     state = state.copyWith(notifications: enabled);
     _prefs.setBool(AppConstants.prefsNotifications, enabled);
+    // Starts or stops the background service that delivers notifications
+    // while the app is closed; see `PushService.start`.
+    unawaited(ref.read(pushServiceProvider).start());
   }
 }
 

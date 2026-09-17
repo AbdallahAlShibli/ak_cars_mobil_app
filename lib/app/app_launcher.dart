@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -45,33 +47,77 @@ abstract final class AppLauncher {
           child: const AkCarsApp(),
         ),
       );
-    } catch (error, stack) {
-      // Reported as well as rendered: the screen shows the user what happened,
-      // this puts the stack where a developer (or a crash reporter, when one
-      // is wired up) can see it.
-      FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stack,
-          library: 'ak_cars',
-          context: ErrorDescription('during app start-up'),
-        ),
+      // What start-up deliberately left for later — the live refresh after a
+      // start-up painted from disk, and every workshop's slots — waits for
+      // the first frame, so it can never hold the launch screen up.
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => unawaited(AppBootstrap.completeWarmUp(container)),
       );
-      runApp(
-        BootFailureApp(
-          // Keyed by attempt so a *failed* retry rebuilds the screen from
-          // scratch. Without it `runApp` matches the widget type already on
-          // screen and keeps its state — leaving the button on "Trying…",
-          // disabled, with no way to try a third time.
-          key: ValueKey(attempt),
-          error: error,
-          onRetry: () => launch(
+      // The first load carries on after the app is up (see
+      // `AppBootstrap.firstFrameBudget`). If it fails with nothing stored to
+      // show, the app is an empty shell — exactly the "wrong app" start-up has
+      // always refused to present — so the failure screen takes over, and the
+      // container goes once the frame that still reads it is gone.
+      unawaited(
+        AppBootstrap.startupSettled(container).catchError((
+          Object error,
+          StackTrace stack,
+        ) {
+          _showFailure(
+            error,
+            stack,
             createContainer: createContainer,
             timeout: timeout,
-            attempt: attempt + 1,
-          ),
-        ),
+            attempt: attempt,
+          );
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => container.dispose(),
+          );
+        }),
+      );
+    } catch (error, stack) {
+      _showFailure(
+        error,
+        stack,
+        createContainer: createContainer,
+        timeout: timeout,
+        attempt: attempt,
       );
     }
+  }
+
+  static void _showFailure(
+    Object error,
+    StackTrace stack, {
+    required Future<ProviderContainer> Function() createContainer,
+    required Duration timeout,
+    required int attempt,
+  }) {
+    // Reported as well as rendered: the screen shows the user what happened,
+    // this puts the stack where a developer (or a crash reporter, when one
+    // is wired up) can see it.
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'ak_cars',
+        context: ErrorDescription('during app start-up'),
+      ),
+    );
+    runApp(
+      BootFailureApp(
+        // Keyed by attempt so a *failed* retry rebuilds the screen from
+        // scratch. Without it `runApp` matches the widget type already on
+        // screen and keeps its state — leaving the button on "Trying…",
+        // disabled, with no way to try a third time.
+        key: ValueKey(attempt),
+        error: error,
+        onRetry: () => launch(
+          createContainer: createContainer,
+          timeout: timeout,
+          attempt: attempt + 1,
+        ),
+      ),
+    );
   }
 }

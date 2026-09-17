@@ -270,7 +270,7 @@ class _ApplicationPointer extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.sm),
           UrgencyLabel(applicationWaitedLabel(s, provider), level: level),
-          Icon(LucideIcons.chevronLeft, size: 16, color: ak.inkFaint),
+          Icon(DirectionalIcons.forwardChevron(context), size: 16, color: ak.inkFaint),
         ],
       ),
     );

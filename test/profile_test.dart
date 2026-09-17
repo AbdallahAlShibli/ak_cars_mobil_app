@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:ak_cars_mobil_app/core/theme/app_theme.dart';
 import 'package:ak_cars_mobil_app/data/models/models.dart';
@@ -102,6 +103,38 @@ void main() {
     expect(find.textContaining('Complete your details to request'),
         findsNothing);
     expect(find.textContaining('Sign out'), findsWidgets);
+  });
+
+  // Regression: the guest card's chevron was a fixed `chevronRight`, so in
+  // Arabic it pointed backwards while every row under it pointed forward.
+  testWidgets('the guest card chevron points forward in both directions',
+      (tester) async {
+    Finder guestCard(String name) =>
+        find.ancestor(of: find.text(name), matching: find.byType(Row)).last;
+
+    await pumpProfile(tester);
+    expect(
+      find.descendant(
+          of: guestCard('زائر'), matching: find.byIcon(LucideIcons.chevronLeft)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+          of: guestCard('زائر'), matching: find.byIcon(LucideIcons.chevronRight)),
+      findsNothing,
+    );
+
+    await pumpProfile(tester, locale: 'en');
+    expect(
+      find.descendant(
+          of: guestCard('Guest'), matching: find.byIcon(LucideIcons.chevronRight)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+          of: guestCard('Guest'), matching: find.byIcon(LucideIcons.chevronLeft)),
+      findsNothing,
+    );
   });
 
   testWidgets('sign out clears the profile and returns to guest',

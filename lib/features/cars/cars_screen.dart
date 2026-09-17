@@ -14,7 +14,9 @@ import '../../core/utils/contact.dart';
 import '../../core/widgets/car_media.dart';
 import '../../core/widgets/rial_symbol.dart';
 import '../../core/widgets/sand_widgets.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../state/app_state.dart';
+import '../../state/startup_state.dart';
 import '../../data/models/models.dart';
 import 'cars_filter_screen.dart';
 
@@ -339,7 +341,10 @@ class _CarsScreenState extends ConsumerState<CarsScreen> {
               ],
             ),
             const SizedBox(height: 11),
-            if (feed.isEmpty)
+            // Still on the app's first load: "no listings yet" would be a guess.
+            if (feed.isEmpty && ref.watch(startupLoadingProvider))
+              const ListSkeleton(rows: 3, height: 180)
+            else if (feed.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Center(

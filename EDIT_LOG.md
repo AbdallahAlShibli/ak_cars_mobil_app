@@ -17,6 +17,1007 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-16 · Job workspace for workshops, and founder funding queue + performance table
+
+**Baseline:** the entry below, uncommitted. API side: `AKCarsMobileAPI`, migration `20260915164614_AddJobWorkspace` (see `docs/WORKSHOP_DASHBOARD_PLAN.md`).
+
+Request, verbatim: "Create a plan to update my project for workshops dashboard also make changes with the admin owner dashboard. Then apply the plan on both side the flutter and the api. Keep in your mind the app in live staging now. Make sure everything is working. Check if there any errors and fix."
+
+### What was added (additive only — every new wire field is optional)
+
+| File | Change |
+|---|---|
+| `lib/data/models/job_workspace.dart` (new) | `VehicleCheckIn`, `InspectionItem`, `ExtraWorkRequest`, `JobCardLine`, `JobCard`, `Invoice`/`InvoiceLine`, `WorkshopBusinessKpis`, `WorkshopPerformanceRow`, `ExtraWorkQueueItem`, enums with bilingual labels. Unknown enum values fall back instead of throwing. |
+| `lib/data/models/service_request.dart` | Optional `checkIn`, `inspection`, `extraWork`, `invoiceNumber` (+ `pendingExtraWork`); included in `fromJson`/`toJson`/`copyWith` and in `==` (by timestamp/status). |
+| `lib/data/models/workshop_metrics.dart` | Optional `business` KPIs. |
+| `lib/core/network/api_client.dart`, `dio_api_client.dart` | New `putList` (the inspection PUT returns the list). Test doubles `OfflineApiClient` and `_RecordingApiClient` implement it. |
+| `lib/core/constants/api_endpoints.dart` | Workshop, customer and founder job-workspace routes. |
+| `lib/data/services/job_workspace_service.dart`, `api/api_job_workspace_service.dart` (new), `lib/di/providers.dart` | `JobWorkspaceService` + REST implementation, `jobWorkspaceServiceProvider`. Photo ids that are not GUIDs are re-keyed before sending (the API binds `Guid`). |
+| `lib/state/job_workspace_state.dart` (new) | autoDispose `jobCardProvider`, `invoiceProvider`, `founderWorkshopPerformanceProvider`, `founderExtraWorkQueueProvider`; `JobStages` mirrors the API stage rules; `jobWorkspaceErrorText`. |
+| `lib/features/workshop_dashboard/job_workspace/*` (new) | `/workshop/dashboard/jobs/:id` with tabs Check-in, Inspection, Extra work, Job card, Invoice. Saves patch the booking locally and refresh `workshopRequestsProvider`. |
+| `lib/features/services/invoice_screen.dart`, `job_report_widgets.dart`, `job_media_widgets.dart` (new) | `/invoice/:id`; customer tracking shows pending extra work with Approve/Decline, the check-in, the inspection report, answered extra work and "View invoice". |
+| `lib/features/workshop_dashboard/orders_screen.dart` | "Job workspace" link on every order card (with pending-extra-work count). |
+| `lib/features/workshop_dashboard/statistics_screen.dart` | "Running the workshop" KPIs block. |
+| `lib/features/operations/admin_job_workspace_sections.dart` (new), `admin_money_tab.dart`, `admin_workshops_tab.dart` | Founder: extra-work funding queue (confirm funds) in Money; 30-day workshop performance cards in Workshops. |
+| `lib/core/router/app_router.dart` | The two routes. The dashboard route sits under the existing `/workshop/dashboard` guard. |
+| `test/fakes/mock_job_workspace_service.dart` (new), `test/fakes/fakes.dart`, `test/job_workspace_test.dart` (new) | In-memory double bound in `fakeServiceOverrides`; model + request-body tests. |
+
+### Verified
+
+- `flutter analyze`: no issues. `flutter test`: 718 passed (includes the 9 new tests).
+- API verified end to end against the database copy `AKCarsMobileDb_Verify` (see the plan's progress log).
+- **Live database migrated 2026-09-16** with the owner's go-ahead: backup `AKCarsMobileDb_pre_JobWorkspace_20260916_233018.bak` (verified), then a delta-only idempotent script — 9 `CREATE TABLE`, 12 indexes, no `ALTER`/`UPDATE`/`DELETE`/`DROP`. Existing rows untouched; the running API answers `401` rather than `404` on the new routes.
+- **Founder side exercised on a real device 2026-09-17** (Samsung S23, debug build against the live API): signed in through Firebase phone auth, Money tab renders the extra-work funding queue (empty state — no extra work in live data), Workshops tab renders "أداء الورش (٣٠ يوماً)" with 10 real workshop cards and "—" for rates with no denominator.
+- **Workshop + customer side exercised on the device 2026-09-17** (read-only, live API): the "ملف العمل" link renders on every order card; `/workshop/dashboard/jobs/:id` opens with all five tabs; on an `awaitingApproval` booking, Check-in/Inspection/Extra work are locked with stage notices and disabled saves, Job card is editable (live `GET job-card` returns totals), and Invoice offers "إصدار الفاتورة". Customer tracking renders normally with the job report section empty. Nothing was written to live — "إصدار الفاتورة" was not pressed.
+- **Not yet covered:** the write path on live (save check-in, raise extra work, issue invoice). It needs a booking at `fundsHeld`/`acceptedByWorkshop`/`inProgress`; live has none today.
+
+---
+
+## 2026-09-15 · First launch paints within half a second, and a loading bar shows what is still loading
+
+**Baseline:** the entry below (start-up cache, read retries, compression), same day, uncommitted.
+
+Request, verbatim: "There is an issue with first loding app. It waiting the network to long. Fix that. Also each page loading data add a modern progress bar idea until data loaded."
+
+### What was still slow
+
+- **The disk cache only helps from the second launch on.** A first launch, a launch after sign-out, or one after the OS emptied the cache still awaited the whole warm-up (about 38 requests through the tunnel) before `runApp`.
+- **Why it had to wait:** screens read warm caches synchronously and had no loading state, so the design could not paint without data.
+
+### The fix
+
+| File | Change |
+|---|---|
+| `lib/app/bootstrap.dart` | `createContainer` starts the first load (`warmUp` without slots + `restore()`, inside `ResponseCacheScope.preferringCache()`, 20 s timeout) and waits only `firstFrameBudget` (500 ms, overridable) before returning. The load keeps running. A failure after the disk cache served something is logged and swallowed; a failure with nothing served is an error. New `startupSettled(container)`, backed by an `Expando`. `completeWarmUp` now awaits it first, and after a cached start also runs `restore(revalidate: true)`. `startupLoadingProvider` is set for the load's duration. |
+| `lib/app/app_launcher.dart` | After `runApp`, listens to `startupSettled`. On error it shows `BootFailureApp`, the same screen as before, and disposes the container after that frame. The failure-screen code moved to `_showFailure`. |
+| `lib/state/startup_state.dart` (new) | `startupLoadingProvider` (`start`/`finish`; default false, so hand-built test containers are unaffected). |
+| `lib/core/network/network_activity.dart` (new) | Counts requests in flight. `busy` changes in a microtask, because requests can start during a widget build. |
+| `lib/core/network/dio_api_client.dart` | `_send` wraps the old logic, now `_attempt`, in `begin`/`end`, so retries count once. The profile is removed from `_mustBeLive`: it is served from disk at start-up and re-checked live after the first frame. |
+| `lib/core/network/response_cache.dart` | `ResponseCacheScope.preferringCache()` + `run()`, so a caller knows whether anything was served even when the load threw. |
+| `lib/app/app_loading_bar.dart` (new) | 3 px amber comet sweeping over a faint track, with a soft glow. Shows while the first load runs or any request is in flight. 250 ms show delay (no flicker for fast requests), 450 ms minimum visible, 250 ms fade. RTL sweep. Reduce motion gets a still bar. `IgnorePointer`, with a "Loading" semantics label. |
+| `lib/app/ak_cars_app.dart` | `MaterialApp.router` builder stacks `AppLoadingBar` over every route. |
+| `lib/di/providers.dart` | `networkActivityProvider`, passed to `DioApiClient`. |
+| `lib/state/auth_state.dart` | `restore({revalidate})` drops a cached profile when the live answer is "no session". |
+| `lib/features/home/home_screen.dart` | `_SectionsLoading`: two headed skeleton rails while the first load runs and neither offers nor workshops have arrived. |
+| `lib/features/services/services_screen.dart` | `_warmIfCold` waits for the first load to settle instead of warming the catalogue a second time. |
+| `lib/features/services/requests_screen.dart`, `lib/features/shop/orders_screen.dart`, `lib/features/shop/shop_screen.dart`, `lib/features/cars/cars_screen.dart` | `ListSkeleton` instead of the empty state while the first load runs. |
+| `test/bootstrap_test.dart` | New group: the frame comes within the budget while a gated load finishes; a later failure is reported through `startupSettled`; a failure inside the budget fails `createContainer`. |
+| `test/app_loading_bar_test.dart`, `test/network_activity_test.dart` (new) | A quick request never shows the bar; a slow one shows and hides it; the bar stays up through the first load. Microtask folding works; a retried request is busy once. |
+| `test/response_cache_test.dart` | The slots-only live rule, and the profile served from disk. |
+
+### Behaviour to know about
+
+- **First launch** shows the app after at most 500 ms, with the amber bar and skeletons, and fills in as the load lands. Offline, the failure screen appears once the retries are exhausted (about 1–2 s), after the app has briefly shown.
+- **Expired session, cached start:** the app shows the signed-in profile for a moment, then drops to guest when the live check answers.
+- **Not covered:** the notifications screen loads its own list and still shows "all caught up" until it arrives; only the bar signals loading there.
+
+### Verified
+
+- `flutter analyze`: no issues.
+- Full `flutter test`: **709 passed, 0 failed**.
+- **Not verified:**
+  - on a phone
+  - the web build
+  - how the bar looks: covered only by widget tests, no screenshot
+
+---
+
+## 2026-09-15 · Splash no longer waits on the network: start-up cache, read retries, API compression
+
+**Baseline:** app `dd547c5` (on top of the failure-screen entry below). API: uncommitted working tree.
+
+Request, verbatim: "Fix the delaying process with splash screen. And improve the performance with any request and network trafficking with api."
+
+### What was actually slow (measured, not guessed)
+
+- **The server is fast.** Every start-up endpoint answered in 20–45 ms on `https://localhost:7291`.
+- **The tunnel is not.** Through `https://akcarsapi.0coders.com` the same endpoints took 0.75–1.6 s each. Single requests stalled for **17.7 s** and **48 s**, and the next attempt answered in about 1 s.
+- **Start-up multiplied it.** `AppBootstrap` awaited about 38 requests before `runApp`: 15 shared, 2 per workshop × 10 (add-ons, then slots, one after the other), and about 8 per signed-in account. The first frame waited for the slowest one. A stall over 20 s became the boot-failure screen.
+- **Payloads:** `/service-marketplace/offerings` is 146 KB (63 KB compressed) and `/promotions` is 84 KB for 4 rows (54 KB compressed). Images appear to be inline in the JSON. **Not changed**; see "Not done".
+
+### The fix
+
+| File | Change |
+|---|---|
+| `lib/core/network/response_cache.dart` (new) | `ResponseCache` (`FileResponseCache` in the temp dir, `NoResponseCache` for web/tests) and `ResponseCacheScope`, a zone value. File format: `{"k": key, "t": epoch ms, "b": body}`. The key is JWT `sub` + host + path + sorted query. Max age 7 days. Writes go to a temp file and are renamed. |
+| `lib/core/network/dio_api_client.dart` | `get`/`getList` go through `_read`. Inside a `preferCached` scope they answer from disk; inside `record` they fetch and store; outside any scope nothing changes. `/slots` and `/user/profile` are never cached (`_mustBeLive`). GETs use `readTimeout` and retry `connectionTimeout`/`receiveTimeout`/`connectionError` up to `readRetries` times with a 400 ms × attempt backoff. Writes are never retried. `HttpClient.idleTimeout` is `connectionIdleTimeout` on every native build; only the dev-cert trust stays development-only. |
+| `lib/config/app_config.dart` | `readTimeout` 8 s, `readRetries` 2, `connectionIdleTimeout` 60 s, all in `copyWith`. |
+| `lib/app/bootstrap.dart` | Warm-up runs in `preferCached` without slots. `restore()` now runs beside it (`Future.wait`, `eagerError`) instead of after it. New `completeWarmUp` refreshes everything if anything came from disk, otherwise only slots. New `bootServedFromCacheProvider`. |
+| `lib/app/app_launcher.dart` | Schedules `completeWarmUp` in a post-frame callback after `runApp`. |
+| `lib/data/repositories/service_marketplace_repository.dart` | `warmUp(includeAvailability:)`, `warmAvailability()`, `refreshAvailability(id)`. Each workshop's add-ons and slots are now fetched in parallel. |
+| `lib/state/session_refresh.dart` | `_refillWarmCaches` and `loadSessionLists` run in `ResponseCacheScope.record`, so every refresh (sign-in, pull-to-refresh, the post-frame one) stores for the next start. |
+| `lib/state/auth_state.dart` | Sign-out clears the response cache. |
+| `lib/features/services/booking_screen.dart` | Refreshes its workshop's slots on open and reselects if the chosen slot was taken. **Also fixed a pre-existing overflow:** `_SummaryRow`'s text value had no width limit, and "الأربعاء 16 سبتمبر · 9:00 ص" overflowed a 402-px screen by 11 px. It surfaced only on long Arabic weekday names, which is why it passed on the commit date. |
+| `lib/di/providers.dart` | `responseCacheProvider` (`NoResponseCache` on web), passed to `DioApiClient`. |
+| `AKCarsMobileAPI/src/AKCars.Api/Program.cs` | `AddResponseCompression` (Brotli + gzip, `Fastest`, `EnableForHttps`, plus `application/problem+json`) and `UseResponseCompression()` right after `UseExceptionHandler()`. `EnableForHttps` is safe because auth is a bearer header, not a cookie. |
+| `test/fakes/fakes.dart` | Overrides `responseCacheProvider` with `NoResponseCache`. |
+| `test/response_cache_test.dart`, `test/api_read_retry_test.dart` (new) | Round trip, expiry, corrupt file, clear. Disk hit makes no request; a miss is fetched and stored; slots/profile stay live; another account misses. A stalled read retries and answers; repeated stalls give up after the retries; a stalled write is sent once. |
+| `test/bootstrap_test.dart` | The contract changed: slots are empty after `createContainer` and filled by `completeWarmUp`. |
+
+### Behaviour to know about
+
+- **The first launch** (and after sign-out, or once the OS empties the cache) still waits on the network, minus the slots and with `restore()` in parallel. **Every launch after that** paints from disk, then repaints with live data a moment later.
+- **The post-frame refresh** is the pull-to-refresh path, so it invalidates the chat and my-ads providers the same way. For about a second after launch, a booking opened from a cached start shows the slots the booking screen fetched itself.
+- **Per-account answers** (garage, bookings, orders) are stored in the app's private cache directory in plain JSON, keyed by account and deleted on sign-out. The tokens stay in the keystore.
+
+### Verified
+
+- `flutter analyze`: no issues.
+- Full `flutter test`: 697 passed, 3 failed. Two were the pre-existing booking overflow; one was a teardown race in the new cache test (Windows kept a file open during a background write). Both are fixed. The rerun of the five affected files passed (48 tests). Final full-suite rerun after both fixes: **all tests passed** (exit code 0).
+- API: `dotnet build` to a scratch folder succeeded. `dotnet test` built into a scratch `OutDir` passed 1088 tests. The normal build is locked by Visual Studio and the running API (PID 4312).
+- **Not verified:**
+  - on a phone
+  - compression on the live API (the running instance must be restarted to pick it up)
+  - the web build
+
+### Not done (worth a decision)
+
+- **Base64 images inline** in `/service-marketplace/offerings` and `/promotions`: most of the bytes on every refresh. Serving image URLs would shrink both to a few KB.
+- **HTTP/2** through Cloudflare (`dio_http2_adapter`, a new package) would multiplex start-up's parallel requests over one TLS connection.
+- **ETag/304 revalidation** would make the post-frame refresh cheap when nothing changed.
+
+---
+
+## 2026-09-15 · Start-up failure screen redesigned: animated diagram of where it broke
+
+**Baseline:** app `dd547c5` (on top of the background-push entry below).
+
+Request, verbatim: "Update this page. Make it modern ui with graphics and animations and add info graphics animated images". The screenshot showed the old screen reading `ApiException(502): Request failed` under "check your connection".
+
+**What the screenshot actually was:** at 08:44 the Cloudflare tunnel had no origin (cloudflared restarted at 08:44:54), so it answered 502. By the time it was checked, `https://akcarsapi.0coders.com/health/live` answered 200. The old copy blamed the user's connection, which was the one thing that worked.
+
+### Design
+
+- **Classifies the failure by exception type** (`BootFailureKind`):
+  - `NetworkException` → offline
+  - `ApiException` 5xx → server down
+  - `RequestTimeoutException` / `TimeoutException` → too slow
+  - anything else → unexpected
+- **Headline, explanation and three numbered tips per kind**, in Arabic and English. For example: "Our server isn't responding — the problem is on our side, not yours", with "Your account and bookings are safe" as the first tip.
+- **Animated hero:** the kind's icon on a floating disc with rings radiating outward. Red for an outage, amber otherwise.
+- **Infographic:** Your phone → Internet → AK Cars server.
+  - Working links carry moving data dots.
+  - A broken link's dots fade out before a pulsing ✕.
+  - A slow link's dots crawl.
+  - Each node shows Working / No response / Too slow / Not reached, plus a code chip (`HTTP 502`, `OFFLINE`, `TIMEOUT`, `APP ERROR`). RTL-aware.
+- **Motion:** a staggered entrance and drifting background glows. Reduce-motion shows the finished screen with no running animation.
+- **Actions:** "Try again" is pinned to the bottom so it never scrolls away. "Error details" opens a bottom sheet with the raw error and "Copy details".
+- Still its own `MaterialApp` with no providers (the container may not exist). Uses `AkColors`, `AppSpacing`, `context.text` and Lucide only; no new package.
+
+### Changes
+
+| File | Change |
+|---|---|
+| `lib/app/boot_failure_kind.dart` (new) | `BootFailureKind.of`, `badgeFor`, `faultyNode`/`brokenLink`, icon, bilingual headline/explanation/tips |
+| `lib/app/boot_failure_visuals.dart` (new) | `StaggerIn`, `AmbientBackdrop`, `FailureHero` (rings painter), `ConnectionInfographic` (nodes + links painter), `TipTile` |
+| `lib/app/boot_failure_screen.dart` | rebuilt layout and details sheet. Controllers are created in `initState` and started after the first frame: starting them during the build `runApp` triggers on a failed retry tripped `elapsedInSeconds >= 0` in `boot_failure_test`. |
+| `test/boot_failure_screen_test.dart` (new) | 11 tests: classification, badges, copy completeness, 502 and offline diagrams, copy-to-clipboard, reduce motion, Arabic |
+
+`test/boot_failure_test.dart` is unchanged and passes. It still finds "The app could not start" (now the tinted eyebrow), "Try again", "Error details" and the error text.
+
+### Verified
+
+- `flutter analyze` on `lib/app` and both test files: no issues.
+- `boot_failure_screen_test` + `boot_failure_test`, run together: 16/16 passed. A 12th screen test was added afterwards: all four kinds at 360×740, in English and Arabic, with no overflow. The screen file passes 12/12.
+- Full `flutter test`: 685 passed, 2 failed (the known `booking_screen.dart:664` Arabic overflow).
+- **Rendered for real:** a `flutter build web --release` pointed at a local stub answering 502 for every API call, reproducing the reported screenshot.
+  - The app classified the failure as server down: phone ✓, internet ✓, a pulsing ✕ before the server, `HTTP 502`, the three server-down tips, and "Try again" pinned at the bottom.
+  - Checked in dark mode (headless Chrome) and in light mode at 375×812 (browser pane).
+  - The headless capture clipped the right edge; the 375px render showed that was the capture tool, not the layout.
+- **Not** checked on the phone itself.
+
+---
+
+## 2026-09-15 · Notifications reach the notification center while the app is closed (Android)
+
+**Baseline:** app `dd547c5`, API `a2c7ab5` (continues "Push notifications now reach the notification center while the app is open" below, whose "Still true" section this resolves on Android).
+
+Request, verbatim: "there is still notification center issue. when app is open it will works fine and if it closed then no notifications recived. solve the issue."
+
+### Cause
+
+The only delivery path was the app's own SignalR connection. When the app is closed, or backgrounded long enough to be frozen, that connection is gone, and nothing else could show a notification. FCM is off the table ("Do not user the firebase FCM", 2026-09-14).
+
+### Design
+
+- **Android foreground service.** `flutter_background_service`, type `remoteMessaging`, holds its own connection to `/hubs/notifications` with the app's UI gone. It restarts after a reboot or an app update. Its ongoing notification sits on a silent low-importance channel the user can hide.
+- **Per-install push key, not the session.** Refresh tokens rotate and a reused one burns the whole family (`RefreshSessionCommand`), so a second isolate refreshing beside the app would sign the user out.
+  - While signed in, the app registers a random 32-byte key (`POST /notifications/devices`) and the service presents it as `?device_key=`.
+  - The API stores only its SHA-256 and accepts it only on the notification hub.
+  - The key lapses after `RefreshTokenDays` without re-registration (the app re-registers daily and on account change). Sign-out deletes it.
+- **Catch-up.** The service never stops retrying (capped back-off), and after every (re)connect it calls the new hub method `Missed(since)` with the last moment it was alive. Rows raised during a network gap or doze are still shown, bounded to the newest 20 within 3 days. Shown ids are remembered, so no banner repeats.
+- **One banner per row.** The app and the service can both receive a row while the app is open. Both post it under a stable FNV-1a id with `onlyAlertOnce`.
+- **Settings → Notifications** now actually gates something: off stops the service and suppresses system banners; the inbox keeps working.
+
+### Changes — API
+
+| File | Change |
+|---|---|
+| `src/AKCars.Infrastructure/Push/DeviceKeyAuthenticationHandler.cs` (new) | `DeviceKey` scheme. Reads `device_key` only on `/hubs/notifications`, hashes it, and matches a `DeviceRegistrations` row registered within `RefreshTokenDays` for an existing user. Issues `NameIdentifier`. |
+| `Push/NotificationHub.cs` | `[Authorize]` accepts JWT or `DeviceKey`. New `Missed(DateTime since)`: unread, undismissed rows after `since` (clamped to 3 days), newest 20 returned oldest first. |
+| `Push/PushServiceCollectionExtensions.cs` | notification hub `ClientTimeoutInterval` 2 min (dozing phones ping late) |
+| `Infrastructure/DependencyInjection.cs` | registers the `DeviceKey` scheme beside JWT; JWT stays the default for everything else |
+| `Application/Notifications/RegisterDevice/RegisterDeviceCommand.cs` | stores `HashToken(key)`; token length 32–512; registering a key removes it from any other account |
+| `Application/Notifications/UnregisterDevice/UnregisterDeviceCommand.cs` | looks up by hash |
+| `tests/AKCars.Tests/Push/DeviceKeyNotificationHubTests.cs` (new) | 8 end-to-end tests. A registered key receives notifications, and only its hash is stored. An unknown, deleted or lapsed key gets 401. A key moved to another account delivers only that account's rows. The key does not authenticate REST. `Missed` returns unread rows since a time and excludes read ones. |
+
+The endpoints and table already existed from the FCM attempt; no migration. `DeviceRegistrations.Token` is still `nvarchar(4000)` with its `(UserId, Token)` index, so the hub's lookup by token alone scans that small table.
+
+### Changes — app
+
+| File | Change |
+|---|---|
+| `lib/core/push/background_push.dart` (new) | `BackgroundPush.enable/disable/restart` (Android only) and the service entry point `backgroundPushMain`. The entry point stops itself when there is no key or notifications are off. |
+| `lib/core/push/background_push_channel.dart` (new) | the service isolate's connection: device-key URL, never-give-up retry policy (stops only on 401), `Missed` catch-up, alive timestamp, shown-id list, language from prefs |
+| `lib/core/push/notification_display.dart` (new) | the notification plugin code moved out of `PushService`, shared by both isolates; stable `idFor`, `onlyAlertOnce`, quiet connection channel |
+| `lib/core/push/push_key_store.dart` (new) | per-install key in secure storage (same options as `TokenStore`) |
+| `lib/core/push/push_service.dart` | takes `ApiClient`. `start()` registers the key (new key, daily, or account change by JWT `sub`), then enables the service, restarting it on an account switch. `stop()` disables the service and deletes the key on server and device. `dispose()` no longer counts as a sign-out. Banners respect the Notifications setting. Public API unchanged. |
+| `lib/data/services/api/api_auth_service.dart` | `signOut` stops push **before** `POST /auth/logout`, so unregistering still authenticates |
+| `lib/state/settings_state.dart` | `setNotifications` calls `pushService.start()` to start/stop the service |
+| `lib/core/utils/jwt_claims.dart` | `jwtSubject` |
+| `lib/data/services/token_store.dart` | secure-storage options made public (`androidOptions`, `iosOptions`) for `PushKeyStore` |
+| `lib/core/constants/app_constants.dart` | `prefsPushRegisteredAt/For`, `prefsPushShownIds`, `prefsPushAliveAt` |
+| `lib/di/providers.dart` | passes `apiClientProvider` into `PushService` |
+| `android/app/src/main/AndroidManifest.xml` | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_REMOTE_MESSAGING`, service `foregroundServiceType="remoteMessaging"` |
+| `pubspec.yaml` / `pubspec.lock` | `flutter_background_service: ^5.1.0` |
+| `test/background_push_test.dart` (new) | 14 tests: key shape, hub URL, stable ids, retry/401 policy, catch-up window, shown-id bounds, `jwtSubject` |
+
+### Verified
+
+- API `dotnet build -c Release`: 0 warnings, 0 errors. `dotnet test -c Release`: 1088/1088 passed (8 new).
+- `flutter analyze lib test`: no issues.
+- `background_push_test`, `push_payload_test`, `api_auth_service_phone_test`: 27/27 passed.
+- Full `flutter test`: 674 passed, 2 failed — both the known `booking_screen.dart:664` Arabic overflow (`contact_gating_test`, `translation_coverage_test`), confirmed by running them alone.
+- `flutter build apk --debug`: built (manifest merge with the library's service, and `flutter_background_service_android` 6.3.1, compile).
+- **Not** verified on a device: the service starting, surviving a swipe-away, delivering a real notification while closed, and restarting after reboot. The API instance on the tunnel still runs the old code until restarted.
+
+### Limits
+
+- **iOS:** still nothing while closed. Only APNs can wake a suspended iOS app, and the iOS build was not compiled here (Windows).
+- **Android:** force-stop from system settings, and some manufacturers' battery managers (Xiaomi, Huawei, some Samsung modes), still kill the service. The user may need to exempt AK Cars from battery optimisation on those phones.
+- **Restart needed:** the running API must be restarted for the device-key scheme and `Missed`, and the phone needs a new build.
+
+---
+
+## 2026-09-14 · Stale or repeated escrow event no longer crashes ("'System' may not fire 'cancelBooking' from 'Cancelled'")
+
+**Baseline:** app `dd547c5`, API `a2c7ab5`.
+
+Reported, verbatim: "Exception has occurred. BusinessRuleException (BusinessRuleException: 'System' may not fire 'cancelBooking' from 'Cancelled'.)"
+
+### Evidence (API log, booking `e4dbcae2…`)
+
+| Time | Event |
+|---|---|
+| 23:19:20.5 | `GET /service-marketplace/requests` (the repository's "before" read) |
+| 23:19:23.7 | `POST …/status` cancel → 200; "Booking cancelled" raised and pushed |
+| 23:19:24.9 | audit append |
+| 23:19:25.4 | `GET /service-marketplace/requests` (a second fire's "before" read) |
+| 23:19:29.2 | second `POST …/status` cancel → **422** |
+
+- A second `fire(cancelBooking)` ran against a local copy that still showed `createdPendingPayment`. The API refused correctly.
+- **Why it crashed:** `RequestsNotifier.fire` rethrew the 422, and the tracking screen's "Cancel booking" called it straight from `onPressed`, unawaited, with no confirmation, so it surfaced as an unhandled exception.
+- **"System":** the API's placeholder actor when none of the caller's roles may make the move; it never meant the platform itself had fired the event.
+- **Checked and ruled out:** parsing (`escrow: "cancelled"` matches case-insensitively), and whether any test taps the tracking button (none do).
+
+### Changes
+
+| File | Change |
+|---|---|
+| `lib/state/requests_state.dart` | `fire`: `_inFlight` set, so a second event for a booking already on the wire returns `null`. `BusinessRuleException(code: escrow_transition_not_allowed)` now means the screen was stale: `load()` and return `null`, the same contract as the local check. Other errors still propagate. |
+| `lib/state/operator_queue_state.dart` | the same for other people's bookings (refreshes the queue instead of `load()`); own bookings still delegate |
+| `lib/features/services/tracking_screen.dart` | "Cancel booking" asks for confirmation (the event `isDestructive`), awaits the fire, and shows a snackbar on any other `AppException` |
+| `AKCarsMobileAPI/src/AKCars.Application/Marketplace/ApplyEscrowEvent/ApplyEscrowEventCommand.cs` | the 422 detail names the caller's roles (e.g. `'Customer/Founder'`) instead of `'System'`; the code is unchanged |
+| `test/escrow_stale_event_test.dart` (new) | a cancel the server already applied returns `null` and the list catches up; a second cancel while the first is in flight is not sent; the operator queue path behaves the same |
+
+### Verified
+
+- `flutter analyze lib test`: no issues.
+- Full `flutter test`: 659 passed, 2 failed (the known `booking_screen.dart:664` Arabic overflow).
+- API `dotnet build -c Release`: 0 warnings, 0 errors. `dotnet test -c Release`: 1080 passed.
+- **Not** checked on a device. The running API needs a restart for the new message text.
+
+---
+
+## 2026-09-14 · Home avatar opens the profile page
+
+**Baseline:** app `dd547c5`.
+
+Request, verbatim: "Update the app which when user cli k on the profile icon it should open the profile page". The screenshot shows the Arabic Home tab and its round "A" avatar beside "أهلاً، Abdullah!".
+
+**Cause:** the avatar in `HomeScreen`'s greeting row was a plain `Container` with no tap handler.
+
+| File | Change |
+|---|---|
+| `lib/features/home/home_screen.dart` | The avatar is wrapped in `Semantics(button, label: "حسابي" / "My account")` and a `GestureDetector` (key `home-profile-avatar`) calling `context.go('/profile')`. It uses `go`, not `push`: `/profile` is a `StatefulShellRoute` branch, so this switches to the same tab as the bottom bar instead of stacking a second profile page. |
+| `test/home_profile_avatar_test.dart` (new) | tapping the avatar opens `/profile` in Arabic and English; the avatar is exposed as a tappable button labelled "My account" |
+
+### Verified
+
+- `flutter analyze` on both files: no issues.
+- `home_profile_avatar_test`, `screens_smoke_test`, `ev_test`: 75 passed.
+- **Not** checked on a device. The phone's installed APK predates this change.
+
+---
+
+## 2026-09-14 · Push notifications now reach the notification center while the app is open
+
+**Baseline:** app `dd547c5` (continues "Own push service over SignalR" below).
+
+Request, verbatim: "Pushing notifications not working as expected. The api send notification but I think the app not send notification as Pushing notification in the notification center."
+
+### Evidence (API log, `%TEMP%\AKCarsApi\logs`)
+
+- The phone ran the new build (release APK 22:03) and connected to `/hubs/notifications` (negotiate 200, WebSocket 101). Windows: 22:05:30–22:05:49, 22:05:58–22:06:11, 22:08:23–22:10:20, 22:27:01–22:28:53, 22:34:56–22:36:44.
+- Pushes landed inside those windows:
+  - 22:09:00 "Booking cancelled" and 22:09:33 "New message" (during 22:08–22:10).
+  - 22:36:11 "Your request was sent" and "New booking request" (during 22:34–22:36).
+- At 22:36:24 the phone fetched `/notifications` and marked one read, so the app was open.
+- **Cause:** `PushService._onFrame` only called `_show` when `lifecycleState != resumed`. Every push that arrived came while the app was in the foreground, so each one updated the inbox and never reached the notification center.
+- Between windows there were no reconnect attempts (e.g. 22:10:20 → 22:27:01). The app was backgrounded or closed, and the OS stops its own socket, which is the documented limit of not using FCM/APNs.
+- Release shrinking was checked and ruled out: flutter_local_notifications 22.x ships its own rules (v19+), and `@mipmap/ic_launcher` is referenced by the manifest.
+
+### Changes
+
+| File | Change |
+|---|---|
+| `lib/core/push/push_service.dart` | `_onFrame` shows the system notification for every frame, foreground included. iOS details add `presentList`. The unused `WidgetsBinding`/`AppLifecycleState` import was removed. The class doc now states the behaviour. |
+
+### Verified
+
+- `flutter analyze lib test`: no issues.
+- Full `flutter test`: 653 passed, 2 failed (the known `booking_screen.dart:664` Arabic overflow).
+- **Not** verified on the phone. The installed release APK (22:03) predates this change and must be rebuilt and reinstalled. The foreground banner path has no widget test because the plugin has no platform side under `flutter_tester`.
+
+### Still true
+
+Notifications raised while the app is backgrounded long enough for the OS to freeze it, or closed, are not shown until it is opened again. The inbox then catches up; no row is lost. Showing those needs an Android foreground service keeping the connection alive, or a platform push service. That is a design decision for the user.
+
+---
+
+## 2026-09-14 · Every forward arrow and chevron follows the reading direction
+
+**Baseline:** app `dd547c5` (continues the guest-card entry below).
+
+Request, verbatim: "Fix all row in the app which fiz the ltr and rtl". Read as every arrow/chevron that should follow the text direction; it follows the guest-card chevron fix.
+
+### Cause
+
+Rows, cards and calls to action used a fixed `LucideIcons.chevronRight`/`arrowRight` (pointing backwards in Arabic) or `chevronLeft` (backwards in English). About half of the app already chose the glyph from `Directionality`; these sites did not.
+
+### Changes
+
+| File | Change |
+|---|---|
+| `lib/core/widgets/directional_icons.dart` (new) | `DirectionalIcons.forwardChevron(context)` / `forwardArrow(context)`. `MirroredIcon` flips an LTR-drawn symbol in RTL with `Transform.flip`, not `IconData.matchTextDirection`, whose non-const `IconData` would break release icon tree-shaking. |
+| `lib/core/widgets/widgets.dart` | exports it |
+| `lib/features/home/home_screen.dart` | search "go" arrow |
+| `lib/features/home/home_widgets.dart` | "Book this offer" arrow, "add your car" card arrow, offer card arrow, service-row chevron |
+| `lib/features/garage/my_cars_screen.dart` | "add your details" nudge chevron |
+| `lib/features/garage/maintenance_screen.dart` | weekly challenge row (was fixed `chevronLeft`) |
+| `lib/features/cars/listing_detail_screen.dart` | seller row chevron (no longer `const`) |
+| `lib/features/shop/shop_screen.dart` | "View cart" bar chevron |
+| `lib/features/services/part_request_screen.dart` | choose-car row chevron |
+| `lib/features/operations/admin_today_tab.dart`, `admin_money_tab.dart` | application row / "Manage workshop" action (were fixed `chevronLeft`) |
+| `lib/features/workshop_dashboard/customers_screen.dart` | customer row (was fixed `chevronLeft`) |
+| `lib/core/widgets/escrow_timeline.dart` | branch connector `cornerDownRight`, mirrored in RTL (direct import) |
+| `lib/features/services/chat_screen.dart` | send button, mirrored (direct import) |
+| `lib/features/auth/login_screen.dart` | "code sent to" send icon, mirrored |
+| `lib/features/auth/register_screen.dart` | "I have an account" log-in icon, mirrored |
+| `lib/features/workshop_dashboard/customer_detail_screen.dart` | note submit `send` icon, mirrored |
+| `test/directional_icons_test.dart` (new) | helper and `MirroredIcon` in both directions; a source scan that fails on any `LucideIcons.(chevron\|arrow)(Left\|Right)` in `lib` without `rtl` on that line or the 3 above it (exempt: the helper, and `icon_codec.dart`'s server-sent names) |
+
+### Verified
+
+- `flutter analyze lib test`: no issues. The first run caught `chat_screen.dart` not importing the barrel; fixed with a direct import.
+- Full `flutter test`: 653 passed, 2 failed. Both are the known `booking_screen.dart:664` Arabic overflow. The scan found no remaining fixed chevrons or arrows.
+- **Not** checked on a device.
+
+### Left alone
+
+- Icons passed as `IconData` into shared tiles (the auth-gate "I have an account" `logIn` tile, profile sign-out `logOut` row, product "Returns" `undo2`, notification icons from `icon_codec`), and the register screen's edit/cancel `undo2`. Mirroring these needs a change to the tile widgets themselves.
+- Already direction-aware sites were not refactored onto the helper.
+
+---
+
+## 2026-09-14 · Profile guest card chevron follows the reading direction
+
+**Baseline:** app `dd547c5`.
+
+Request, verbatim: "Fix the selected icon which make it compatibility with rtl and ltr". The screenshot shows the Arabic profile tab: the guest card ("زائر") had a `>` chevron while every row under it had `<`.
+
+**Cause:** `profile_screen.dart` (header card, ~line 595) used a fixed `LucideIcons.chevronRight` for guests. In Arabic that points backwards. The rows in the same file already choose `chevronLeft`/`chevronRight` from `Directionality`.
+
+| File | Change |
+|---|---|
+| `lib/features/profile/profile_screen.dart` | guest: `chevronLeft` in RTL, `chevronRight` in LTR; registered users still get the pencil |
+| `test/profile_test.dart` | + "the guest card chevron points forward in both directions" (Arabic: left, not right; English: right, not left), scoped to the card's row |
+
+### Verified
+
+- `flutter analyze` on both files: no issues.
+- `profile_test`, `account_test`, `account_business_panel_test`, `screens_smoke_test`: all passed.
+- **Not** checked on a device.
+
+### Left alone
+
+About a dozen other forward chevrons/arrows are hard-coded to one direction (`home_widgets.dart`, `home_screen.dart`, `my_cars_screen.dart`, `maintenance_screen.dart`, `shop_screen.dart`, `listing_detail_screen.dart`, `part_request_screen.dart`, `admin_today_tab.dart`, `admin_money_tab.dart`, `customers_screen.dart`). They are outside this request, so they were suggested as a separate task.
+
+---
+
+## 2026-09-14 · Android SHA fingerprints registered in Firebase
+
+**Baseline:** app `dd547c5`. No code changed.
+
+Request, verbatim: "Solve note number 2: Android fingerprints. Your Android app has no SHA-1/SHA-256 fingerprints registered in Firebase, so on a phone it can still fail to verify the app even with billing on. Add the fingerprints to the project"
+
+- `firebase apps:android:sha:list` for app `1:775272834629:android:f1a93ff6f6b174b8abe52c` (`om.akcars.app`, project `akcars-878ad`) first answered "No SHA certificate hashes found". The CLI is signed in as the project owner's account.
+- Registered with `firebase apps:android:sha:create`, then re-listed ("2 SHA hash(es) total"):
+  - SHA_1 `d1b578040e4bc85c7c279e86034fc162a7549924`
+  - SHA_256 `dd45da9441f17cb0f1777392d92137f6836dbf18e06624f9beb55399e6bf23c9`
+- These are the debug keystore (`%USERPROFILE%\.android\debug.keystore`). There is no release keystore or `key.properties`, and `release` is signed with the debug config too, so these cover every build this machine produces today.
+- `android/app/google-services.json` was re-downloaded with `firebase apps:sdkconfig` (package checked to be `om.akcars.app` before replacing). A field-by-field compare with the previous file (kept as `android/app/google-services.json.bak`) found **no differences**. Registering SHA hashes does not change this file when only phone auth is used (no OAuth clients), so the app needs no rebuild for this change. Both files are untracked; the `.bak` can be deleted.
+
+### Verified
+
+- The re-listed hashes match `keytool -list -v` for the debug keystore.
+- **Not** verified: a phone sign-in on a device. SMS is still blocked by `BILLING_NOT_ENABLED` (see the entry below).
+
+### Still to do
+
+- A real release keystore, and Google Play App Signing's key, each need their own SHA-1/SHA-256 added the same way when they exist. A Play-installed build is signed by Google's key, not this one.
+- Firebase Android phone auth uses Play Integrity; confirm the Play Integrity API is enabled for the Google Cloud project if verification still fails once billing is on.
+
+---
+
+## 2026-09-14 · Phone login blocked by Firebase setup; development fallback to the API code
+
+**Baseline:** app `dd547c5`, continuing the entries below. No API change.
+
+Request, verbatim: "Check the login issues and fix then. I'm facing login issues with firebase". The user was asked how phone login should behave while Firebase cannot send SMS, answered "No preference", and got the recommended option.
+
+### Diagnosis
+
+- **Where it stops.** The API log (`%TEMP%\AKCarsApi\logs`) shows `/auth/login/check` answering 204/404 and `/auth/register/check` answering 409, but no `/auth/login/phone` after them. The flow stopped in the app, at Firebase.
+- **Firebase itself.** A probe of `accounts:sendVerificationCode` with an invalid reCAPTCHA token (no SMS can be sent) returned:
+  - `+968…` → `400 BILLING_NOT_ENABLED`: the project is on the Spark plan.
+  - `+1…` → `400 OPERATION_NOT_ALLOWED : SMS unable to be sent until this region enabled`: SMS region policy.
+- **Android.** `google-services.json` for `om.akcars.app` has **no** `oauth_client` or `certificate_hash`, so no SHA fingerprint is registered.
+  - Debug keystore SHA-1: `D1:B5:78:04:0E:4B:C8:5C:7C:27:9E:86:03:4F:C1:62:A7:54:99:24`
+  - Debug keystore SHA-256: `DD:45:DA:94:41:F1:7C:B0:F1:77:73:92:D9:21:37:F6:83:6D:BF:18:E0:66:24:F9:BE:B5:53:99:E6:BF:23:C9`
+- **Web.** Authorized domains are `localhost`, `akcars-878ad.firebaseapp.com` and `akcars-878ad.web.app`, so web is not blocked by domain.
+- **App.** All of these arrived as `PhoneVerificationFailure.unavailable`, shown as "SMS verification is not available right now — try again later", with no way to sign in by phone at all.
+
+### Changes
+
+| File | Change |
+|---|---|
+| `lib/core/error/app_exception.dart` | new `PhoneVerificationFailure.notConfigured` (billing off, region blocked, provider disabled, build or domain not registered), separate from `unavailable` |
+| `lib/data/services/firebase/firebase_phone_verification_service.dart` | mapping moved to `@visibleForTesting reasonFor(code, message)`. Setup codes map to `notConfigured`, and so does a message carrying `BILLING_NOT_ENABLED`, `OPERATION_NOT_ALLOWED` or "region enabled" (native SDKs can report those under a generic code). `captcha-check-failed` stays `unavailable`. |
+| `lib/features/auth/phone_code_sheet.dart` | `notConfigured` shows "SMS sign-in isn't set up for this app yet"; debug builds append Firebase's code |
+| `lib/config/app_config.dart` | `apiOtpFallbackAllowed` / `apiOtpFallbackAllowedFor`: development environment **and** a non-release build |
+| `lib/features/auth/login_screen.dart` | On `notConfigured` with the fallback allowed: `requestOtp` (the API's own code), `_firebaseSmsNotSetUp` makes the rest of the screen use the 4-digit API path, and a notice card on the code step says where the code is. The snackbar stays one line: the first two-line version covered the verify button, which a test caught. |
+| `lib/features/auth/register_screen.dart` | same condition: registers without the Firebase token, as desktop does (the development API has `RequireVerifiedPhoneOnRegister=false`). Otherwise the refusal is rethrown and reported. |
+| `test/phone_login_test.dart` | optional `config`; + "development build falls back…", + "outside development the refusal stands and says why" |
+| `test/phone_verification_failure_test.dart` (new) | code and message mapping, and the fallback gate across environments and build modes |
+
+Production and staging behaviour is unchanged: Firebase remains the only phone proof there.
+
+### Verified
+
+- `flutter analyze lib test`: no issues.
+- Full `flutter test`: 648 passed, 2 failed. Both failures are the known `booking_screen.dart:664` Arabic overflow; all phone/login tests pass, including the new ones.
+- Running API: `POST /api/v1/auth/login` for an existing account returned 200, and `LogSmsGateway` wrote the verification code to the API log (the fallback's server side).
+- **Not** verified on a device or in a browser.
+
+### Needs the user (Firebase console; cannot be done from code)
+
+1. Upgrade `akcars-878ad` to Blaze (billing), or SMS never reaches real numbers.
+2. Authentication → Settings → SMS region policy: allow Oman (+968).
+3. Project settings → Android app `om.akcars.app`: add the SHA-1/SHA-256 above (and the release keystore's), then download `google-services.json` again.
+4. Alternatively, for development without billing: add test phone numbers and run with `--dart-define=AK_PHONE_AUTH_TEST_MODE=true`.
+
+---
+
+## 2026-09-14 · Own push service over SignalR (FCM removed)
+
+**Baseline:** app `dd547c5`, API `a2c7ab5`. This **replaces** the push half of the entry below ("Real push notifications (FCM)…"). The chat hub path fix from that entry stays.
+
+Request, verbatim: "Do not user the firebase FCM. Create your own push notification service in the api then test it."
+
+### Design
+
+- **API:** `NotificationSender` writes the inbox row and enqueues its id, as before. `PushDispatchHostedService` waits for the row to be committed (it reads at once, then retries after 200 ms, 1 s and 3 s; a row that never appears was rolled back and is skipped). It then sends the row as a `NotificationDto` to every live connection the user has on the new `[Authorize]` SignalR hub at `/hubs/notifications`, method `Notification`. The frame is the same JSON as `GET /api/v1/notifications`.
+- **App:** `PushService` is a SignalR client with automatic reconnect. It starts on sign-in, on a signed-in cold start and on each return to the foreground, and stops on sign-out before the tokens are cleared.
+  - Frames go to `dataMessages()`, which the inbox adopts. When the app is not in the foreground, `flutter_local_notifications` also shows a system notification in the app's current language; a tap opens the row's route.
+  - Every connect and reconnect fires `connections()`, and the inbox reloads, because the server does not replay rows raised while a device was offline.
+- **Limit (inherent without FCM/APNs):** nothing reaches a device whose app process is not running. Android kills backgrounded apps and iOS suspends them within seconds. No row is lost: it is on the server, and the next connect fetches it.
+
+### Changes
+
+API:
+
+| File | Change |
+|---|---|
+| `src/AKCars.Infrastructure/Push/NotificationHub.cs` (new) | `[Authorize]` hub; `Path`, `NotificationMethod` |
+| `Push/SignalRNotificationPusher.cs` (new) | `INotificationPusher` → `IHubContext<NotificationHub>.Clients.User(id)` |
+| `Push/PushDispatchHostedService.cs` | rewritten for the pusher; no FCM, no device tokens |
+| `Push/PushServiceCollectionExtensions.cs` | `AddPush(services)`: pusher, queue, worker |
+| `Push/PushQueue.cs`, `Services/NotificationSender.cs` | unchanged from the entry below (queue + enqueue) |
+| `src/AKCars.Api/Program.cs` | `MapHub<NotificationHub>("/hubs/notifications")` (JWT via `access_token` already covers `/hubs`) |
+| `Infrastructure/DependencyInjection.cs` | `AddPush(services)` |
+| **deleted** `Push/FcmPushGateway.cs`, `Push/GoogleAccessTokenSource.cs`, `Push/FcmSettings.cs`, `tests/.../Push/FcmPushGatewayTests.cs` | FCM removed |
+| `DeviceRegistration.cs`, `DeviceRegistrationConfiguration.cs`, `RegisterDeviceCommand.cs`, `NotificationEndpoints.cs`, `appsettings.json` | reverted to baseline (no `Language`, no `Firebase:Messaging`) |
+| migration `20260914135855_AddDeviceRegistrationLanguage` | local DB rolled back to `20260913105131_AddPromotionImage`, then `ef migrations remove`; the column is gone and the snapshot reverted |
+| `tests/AKCars.Tests/AKCars.Tests.csproj` | + `Microsoft.AspNetCore.SignalR.Client` 8.0.10 (tests only) |
+| `tests/AKCars.Tests/Push/NotificationHubTests.cs` (new) | 4 end-to-end tests with a real SignalR client |
+
+App:
+
+| File | Change |
+|---|---|
+| `pubspec.yaml` / `pubspec.lock` | − `firebase_messaging`; + `flutter_local_notifications` ^22.3.1 |
+| `lib/core/push/push_service.dart` | rewritten: `start`, `stop`, `dispose`, `dataMessages`, `connections`, `openedRoutes`; statics `hubUrl`, `decodeFrame`, `routeOf`, `textFor` |
+| `lib/di/providers.dart` | `PushService(config, tokens, preferences)` plus `onDispose` |
+| `lib/app/ak_cars_app.dart` | `WidgetsBindingObserver`: `start()` on launch and resume; a tap reloads the inbox and opens the route |
+| `lib/state/notifications_state.dart` | reloads the inbox on every `connections()` event |
+| `lib/data/services/api/api_auth_service.dart` | sign-in `start()` (not awaited), sign-out `stop()` |
+| `lib/state/settings_state.dart` | language re-registration from the entry below removed |
+| `android/app/build.gradle.kts` | core-library desugaring (required by the plugin) |
+| `android/app/src/main/AndroidManifest.xml` | `POST_NOTIFICATIONS` (it used to arrive via `firebase_messaging`) |
+| `ios/Runner/AppDelegate.swift` | `UNUserNotificationCenter` delegate, for taps |
+| `test/fakes/offline_api_client.dart` | `SilentPushService` matches the new API |
+| `test/push_payload_test.dart` | rewritten: frame decode, malformed frames, text language, route, hub URLs |
+
+### Verified
+
+- **API build and suite:** `dotnet build -c Release` has 0 warnings and 0 errors. `dotnet test -c Release` passed 1080/1080 (the 7 FCM tests are gone, 4 hub tests added). `NotificationHubTests` over the real pipeline (JWT, `NotificationSender`, queue, commit check, SignalR) all pass:
+  - the raised row reaches the owner's connection, and its id matches `GET /api/v1/notifications`;
+  - a row for another user is never delivered;
+  - every open connection of the user receives it;
+  - no token means 401.
+- **Live on Kestrel + local SQL Server** (Release build on `https://localhost:7399`): `/health/live` returned 200. `POST /hubs/notifications/negotiate` returned 401 with no token and 401 with a bad token, while an unmapped hub returned 404. No errors at startup.
+- **App:** `flutter analyze lib test` found no issues. `push_payload_test` (6) and `api_auth_service_phone_test` (6) all passed. Full `flutter test` shows only the 2 known `booking_screen.dart:664` Arabic overflow failures. No `firebase_messaging` or FCM references remain in either repo.
+- **Not verified:** a real device receiving a notification (no device run, and no Android/iOS build this session; iOS cannot be built on Windows), the system banner and tap-to-open, and the long-polling fallback over the Cloudflare tunnel (the tests use long polling in-process). The Visual Studio API instance runs old code until restarted.
+
+### Left alone
+
+- `DeviceRegistrations` table and `POST/DELETE /notifications/devices`: pre-existing FCM-token endpoints, now unused by the app. Removing them is a schema change; left for a decision.
+- `firebase_core` / `firebase_auth` stay: phone sign-in still uses Firebase Auth.
+- Inbox times are still 4 hours off (API sends `Time` without `Z`), as noted below.
+
+---
+
+## 2026-09-14 · Real push notifications (FCM) and the chat hub path
+
+**Baseline:** app `dd547c5`, API `a2c7ab5` (continues the entries below).
+
+Request, verbatim: "Yes do it and fix everything". This answers the offer to fix the chat hub path and add server-side push sending.
+
+### Chat hub
+
+The app connected to `${apiBaseUrl}/hubs/chat`, i.e. `/api/v1/hubs/chat`, which returns 404. The API maps the hub at `/hubs/chat`. Real-time chat had never connected.
+
+`ChatHub.hubUrl` now resolves `/hubs/chat` against the base URL's origin.
+
+### Push: API
+
+Before this, the API had no sender at all. `NotificationSender` only logged "FCM push is logged, not sent", so registered devices never received anything.
+
+| File | Change |
+|---|---|
+| `src/AKCars.Infrastructure/Push/FcmSettings.cs` (new) | `Firebase:Messaging:CredentialsPath`, the path to a service-account key. Empty means push is off. |
+| `Push/GoogleAccessTokenSource.cs` (new) | Service-account JWT-bearer OAuth: RS256 assertion (existing `System.IdentityModel.Tokens.Jwt`, no new package), exchanged for a `firebase.messaging` token and cached until 5 minutes before expiry |
+| `Push/FcmPushGateway.cs` (new) | FCM HTTP v1, one POST per device. Visible `notification` block in the device's language (Arabic when unknown). The whole inbox row as a JSON string under `data.payload`. Reports `UNREGISTERED` and invalid-token responses as dead; other 400s never delete a registration; device tokens are never logged. |
+| `Push/PushQueue.cs`, `Push/PushDispatchHostedService.cs` (new) | Bounded in-process queue. A worker sends after the request: it re-reads the row (waiting up to about 4 s for the caller's transaction to commit; a rolled-back row gets no push), sends to every registration, and deletes dead tokens. Logs a warning at startup when push is off. |
+| `Push/PushServiceCollectionExtensions.cs` (new) | Registration; `ValidateOnStart` fails the API if the configured path has no file |
+| `Services/NotificationSender.cs` | enqueues the row after `SaveChanges` |
+| `DependencyInjection.cs` | `AddPush` |
+| `Domain/Entities/DeviceRegistration.cs`, `DeviceRegistrationConfiguration.cs` | nullable `Language` (`nvarchar(5)`) |
+| `Application/Notifications/RegisterDevice/RegisterDeviceCommand.cs`, `Api/Endpoints/NotificationEndpoints.cs` | optional `language` (`ar`/`en`) on `POST /notifications/devices`; omitted keeps the stored value |
+| `Persistence/Migrations/20260914135855_AddDeviceRegistrationLanguage` (new) | adds the column only (nullable, no default, no backfill) |
+| `appsettings.json` | `Firebase:Messaging:CredentialsPath: ""` |
+| `tests/AKCars.Tests/Push/FcmPushGatewayTests.cs` (new) | 7 tests |
+
+### Push: app
+
+| File | Change |
+|---|---|
+| `lib/core/push/push_service.dart` | Asks for notification permission before registering (Android 13+ / iOS). Sends `language` from `SharedPreferences`. `dataMessages()` decodes `payload` and ignores other frames. New `openedRoutes()` covers the launch message plus background taps. Static `decodeData` / `routeOf`. |
+| `lib/di/providers.dart` | passes preferences into `PushService` |
+| `lib/app/ak_cars_app.dart` | now stateful: a tapped notification reloads the inbox and pushes its route |
+| `lib/state/settings_state.dart` | changing language re-registers a signed-in device |
+| `lib/core/network/chat_hub.dart` | `hubUrl` |
+| `test/fakes/offline_api_client.dart` | `SilentPushService.openedRoutes` |
+| `test/push_payload_test.dart` (new) | payload decode, route, malformed frames, hub URL |
+
+### Verified
+
+- API: `dotnet build -c Release` has 0 warnings and 0 errors. `dotnet test -c Release` passed 1083/1083, including the 7 new push tests.
+- `dotnet ef database update` applied the migration to the local `.\SQLEXPRESS` `AKCarsMobileDb`. `DeviceRegistrations.Language` exists as nullable `nvarchar(5)`.
+- App: `flutter analyze lib test` found no issues. `push_payload_test`, `notifications_screen_test` and `notifications_inbox_test` all passed. Full `flutter test` shows only the 2 known `booking_screen.dart:664` Arabic overflow failures.
+- **Not** verified end to end: no service-account key exists on this machine, so no real push has been sent. The Visual Studio API instance still runs the old code until it is restarted. Not checked on a device, and iOS additionally needs an APNs key in Firebase and the Push Notifications capability in Xcode.
+
+### Found, not fixed
+
+- **Inbox times are 4 hours off.** Every inbox endpoint serialises `Notification.Time` without `Z` (`DateTimeKind.Unspecified` from EF), so the app parses a UTC time as local. The push payload deliberately uses the same format so pushed and fetched rows agree. The right fix is one API-wide UTC convention; other DTOs probably have the same issue.
+- **Push queue is not durable.** An API restart drops queued pushes (inbox rows are unaffected).
+
+---
+
+## 2026-09-14 · Blank notification card that fails when tapped
+
+**Baseline:** `dd547c5` (continues the entries below).
+
+Request, verbatim: "The notification feature is not working currently. When I tried to open a notification but an error happened." Screenshot: an inbox card with no title or body, dated "1 يناير · 4:00 ص". Tapping it showed "تعذّر تنفيذ الإجراء."
+
+### Cause
+
+- The database rows were fine (title, body and time all present).
+- The card was `NotificationRepositoryImpl._noop`: id `noop`, empty `L`s, `DateTime.fromMillisecondsSinceEpoch(0)`, which is 1 Jan 1970 04:00 in Oman.
+- `push()` returned it from every `notify*()`. Its comment said it was "never inserted anywhere", but all 10 call sites pass the result to `NotificationsNotifier.adopt`. Those are `requests_state.dart` (place, placePartRequest, submitQuote, fire, the review invitation, the approval reminder), `orders_state.dart` (place, advance, confirmReceived) and `post_ad_screen.dart`.
+- Each booking, order or ad added one blank card.
+- Tapping it called `markRead('noop')`, which is `POST /notifications/noop/read`. The API route is `/{id:guid}/read`, so it returned 404 and the screen showed its generic failure snackbar.
+
+### Changes
+
+| File | Change |
+|---|---|
+| `lib/data/repositories/notification_repository.dart` | `_noop` removed; `push` answers `null`. `push` and the seven non-null `notify*()` methods are now `Future<AppNotification?>`, in both the interface and the implementation. Wording of the lifecycle copy is unchanged. |
+| `lib/state/notifications_state.dart` | `adopt(null)` reloads the inbox, so the server's real row for the event appears straight away. Failures are swallowed by the new `_reloadQuietly` (the booking already succeeded). Non-null `adopt` (push frames) is unchanged. |
+| `test/notifications_screen_test.dart` | new: "a raised event adds the server row, never a blank card" |
+
+The blank card already on a phone is in-memory only; it goes once the app is rebuilt and the inbox reloads.
+
+### Verified
+
+- `flutter analyze lib` and `flutter analyze test`: no issues.
+- `notifications_screen_test.dart` + `notifications_inbox_test.dart`: 15 of 15 passed, including the new test.
+- Full `flutter test`: the same 2 failures as before, both the known `booking_screen.dart:664` Arabic overflow. Nothing new.
+- **Not** verified on the phone.
+
+### Found, not fixed
+
+- The API has no push sender at all (no FCM or Firebase messaging code in `AKCarsMobileAPI/src`). Devices register tokens via `POST /notifications/devices`, but nothing ever sends to them, so `PushService.dataMessages()` never fires. New notifications appear only when the inbox is fetched (now also after the user's own actions).
+- `chat_hub.dart` uses the wrong hub path (see the tunnel entry below).
+
+---
+
+## 2026-09-14 · API console logs are also written to a temp file
+
+**Baseline:** API `a2c7ab5` (on top of the uncommitted `RealIpHeader` change below). No app code changed.
+
+Request, verbatim: "Record every logs in the api console and save the records in a temp file to review later"
+
+| File | Change |
+|---|---|
+| `AKCarsMobileAPI/src/AKCars.Api/appsettings.json` | Serilog `WriteTo` gains a `File` sink next to `Console`. Path `%TEMP%\AKCarsApi\logs\akcars-api-YYYYMMDD.log`, one file per day (or every 100 MB), 14 files kept, `shared: true`. Template: `yyyy-MM-dd HH:mm:ss.fff zzz [LVL] SourceContext: message` plus the exception. |
+
+- No new package: `Serilog.Sinks.File` 5.0.0 already comes in with `Serilog.AspNetCore` 8.0.3.
+- Same minimum levels as the console (Information; `Microsoft.AspNetCore` and EF Core at Warning), so the file matches what the console shows.
+
+### Verified
+
+- Built to a scratch folder and ran it on `https://localhost:7399` in Development; requested `/health/live` (200), `/api/v1/cars` (200) and `/does-not-exist` (404).
+- The file appeared at `C:\Users\alkas\AppData\Local\Temp\AKCarsApi\logs\akcars-api-20260914.log`, with `%TEMP%` expanded (no literal folder). It held all 9 lines the console printed: startup, the request-logging lines for all three requests, and the MediatR `LoggingBehaviour` lines.
+- **Not** verified in the Visual Studio instance on 7291: it needs a restart to pick the change up.
+
+### Worth knowing
+
+- With `Sms:Provider = Log` (the Development setting), OTP codes and phone numbers are logged, and they now persist in this file for up to 14 days.
+- The integration tests' `WebApplicationFactory` hosts boot the same `Program`, so test runs append to the same file.
+
+---
+
+## 2026-09-14 · Default API host is now the Cloudflare tunnel
+
+**Baseline:** `dd547c5` (continues the two tunnel entries below).
+
+Request, verbatim: "yes make it the default". This answers the question of whether `_sharedApiBaseUrl` should move from `https://localhost:7291/api/v1` to the tunnel.
+
+| File | Change |
+|---|---|
+| `lib/config/app_config.dart` | `_sharedApiBaseUrl` changed to `https://akcarsapi.0coders.com/api/v1`; comment re-dated 2026-09-14 and names the `AK_API_BASE_URL` override for talking to localhost directly |
+| `test/bootstrap_test.dart` | expected default URL updated |
+| `test/data_source_switch_test.dart` | expected per-environment URL updated |
+
+Nothing else was tied to localhost:
+- The Android debug `network_security_config.xml` only permits cleartext to `10.0.2.2`.
+- `DioApiClient`'s dev-only `badCertificateCallback` is harmless against Cloudflare's valid certificate.
+- `test/fakes` comments still mention `localhost:7291` as the host a test *would* reach; they are descriptive only and were left as they are.
+
+### Verified
+
+- `flutter analyze lib test`: no issues.
+- `flutter test`: 635 passed, 2 failed. Both failures are the known `booking_screen.dart:664` Row overflow ("Booking screen — Arabic" and "the value card is worded positively"), being fixed in a separate session. The two edited tests pass.
+- Through the tunnel: `GET /health/live` and `GET /api/v1/cars` returned 200.
+- The tunnel's live remote ingress still has **no** `noTLSVerify`. Requests currently succeed because a user-started `cloudflared tunnel run` (pid 25720) is up; the LocalSystem service connector still fails origin TLS.
+
+### Found, not fixed
+
+- `lib/core/network/chat_hub.dart:22` connects to `${apiBaseUrl}/hubs/chat`, i.e. `/api/v1/hubs/chat`, which returns 404 on the tunnel and on localhost. The API maps the hub at `/hubs/chat` (outside the `/api/v1` group), which returns 401 without a token, so the route is there. Real-time chat has never connected; this predates the host change.
+
+---
+
+## 2026-09-14 · Tunnel credentials file was invalid (`cloudflared tunnel run` failed)
+
+**Baseline:** same as the entry below, and it corrects that entry: the credentials file was not "existing and fine".
+
+Reported: `cloudflared tunnel run` failed with "Invalid JSON when parsing credentials file: illegal base64 data at input byte 8".
+
+- `bddde064-….json` had the right `TunnelID`, but its `TunnelSecret` was a 36-character non-base64 value. It matched neither the token's secret nor its decoded form.
+- Moved it aside to `C:\Users\alkas\.cloudflared\bddde064-….json.invalid.bak`, then regenerated it with `cloudflared tunnel token --cred-file <path> bddde064-…`, which uses `cert.pem`.
+- No repo files changed.
+
+### Verified
+
+- The new file parses and its secret base64-decodes.
+- `cloudflared tunnel run` as the user registered 4 connections (sin02, mct01 ×2, sin22) and received the remote ingress config.
+- Public `GET /health/live` returned 200 six times out of six while that connector ran; the test connector was stopped afterwards.
+- **Still open:** the LocalSystem service connector returns 502 until *No TLS Verify* is on in the dashboard. With both connectors running, requests routed to the service fail. cloudflared 2026.2.0 reports it is outdated (2026.9.1 available).
+
+---
+
+## 2026-09-14 · Cloudflare tunnel for the API (akcarsapi.0coders.com) returned 502
+
+**Baseline:** app `dd547c5`, API `a2c7ab5`. No app code changed.
+
+Request, verbatim: "I'm trying to use cloudflared tunnel to host the api. I create public link in the tunnel which is https://akcarsapi.0coders.com … the tunnel id is: bddde064-cb92-45c1-9d8f-c87dbb924645 … the tunnel files should be in this path C:\Users\alkas\.cloudflared … make sure and fix all issues to make it works fine."
+
+### Diagnosis
+
+- The tunnel (`AKCarsMobile`) is dashboard-managed: the `cloudflared` Windows service runs `tunnel run --token …` as **LocalSystem**, and its ingress comes from Cloudflare (`akcarsapi.0coders.com → https://localhost:7291`, no origin TLS options).
+- Every public request got **502**. The same token run as the `alkas` user served 6/6 requests with 200.
+- The cause: AKCars.Api serves the ASP.NET Core dev cert (`CN=localhost`, thumbprint `3D3DF3FF…`). It is trusted in `CurrentUser\Root` only, not `LocalMachine\Root`, so the LocalSystem connector fails origin TLS verification.
+- `~/.cloudflared/config.yml` pointed at another tunnel (`testpaymentapi`) and a credentials file that does not exist. The service never reads it, but any user-level `cloudflared` run did.
+- Behind the tunnel every request reaches Kestrel from loopback. The rate limiter keyed on `X-Real-IP`, which Cloudflare never sends, so all users would have shared one bucket (5 logins a minute for the whole world).
+
+### Changes
+
+| File | Change |
+|---|---|
+| `C:\Users\alkas\.cloudflared\config.yml` (outside both repos) | points at tunnel `bddde064-…` and its existing credentials JSON; `noTLSVerify: true` on the origin |
+| `AKCarsMobileAPI/src/AKCars.Api/appsettings.json` | `IpRateLimiting:RealIpHeader` changed from `X-Real-IP` to `CF-Connecting-IP`; requests without the header (local emulator) still fall back to the socket IP. Safe only while Kestrel binds to localhost; if the API is ever reachable without Cloudflare in front, that header can be spoofed. |
+
+**Not changed, needs the user in the Cloudflare dashboard:** the remote route needs *No TLS Verify* on. Changing the Windows service or trusting the dev cert machine-wide was deliberately avoided (system security settings). The app's `_sharedApiBaseUrl` was left as `https://localhost:7291/api/v1` (its comment says not to change it until told); use `--dart-define=AK_API_BASE_URL=https://akcarsapi.0coders.com/api/v1`.
+
+### Verified
+
+- `cloudflared tunnel ingress validate` returns OK; `ingress rule` matches rule #0.
+- Public `GET /health/live` returned 200 through a user-level connector; 502 through the service.
+- **Not** verified: the service after the dashboard toggle, and the rate-limit header change (the API has to be restarted to pick it up).
+
+### Left alone (worth a decision)
+
+- The API runs with `ASPNETCORE_ENVIRONMENT=Development` and is now public. That means Swagger UI is public and the `DevWeb` CORS policy allows any origin with credentials.
+
+---
+
+## 2026-09-14 · Phone sign-in 400 diagnosed; a test mode without reCAPTCHA
+
+**Baseline:** `dd547c5` (continues the entry below).
+
+Request, verbatim: "POST https://identitytoolkit.googleapis.com/v1/accounts:sendVerificationCode?key=… 400 (Bad Request) also remove using reCaptha"
+
+### The 400 was not reCAPTCHA
+
+Asked `accounts:sendVerificationCode` directly, with the project's public web
+key and a deliberately invalid reCAPTCHA token (so no SMS could go out):
+
+| Number | Firebase's answer |
+|---|---|
+| `+96890000000` (Oman) | `BILLING_NOT_ENABLED` |
+| `+16505553434` (US, fictional) | `OPERATION_NOT_ALLOWED : SMS unable to be sent until this region enabled by the app developer.` |
+
+So for Omani numbers the project is still on the Spark plan; Firebase sends no
+SMS until it is on Blaze. No code change fixes that.
+
+### reCAPTCHA cannot simply be removed
+
+- **Web:** Firebase requires a reCAPTCHA verifier for phone sign-in. It is
+  invisible by default and only challenges when Google is unsure.
+- **Android:** no reCAPTCHA when Play Integrity passes (SHA-256 registered,
+  Google Play services); it falls back to reCAPTCHA otherwise, including for an
+  app not installed from the Play Store.
+- **iOS:** silent APNs push, reCAPTCHA as the fallback.
+
+What code *can* do is Firebase's testing mode, which renders a mock instead and
+accepts only the console's test phone numbers. Added, and locked out of
+production.
+
+| File | Change |
+|---|---|
+| `lib/config/app_config.dart` | `phoneAuthTestMode` from `--dart-define=AK_PHONE_AUTH_TEST_MODE=true`; `phoneAuthTestModeAllowed` refuses it in production (and an unrecognised `AK_ENV` resolves to production) |
+| `lib/data/services/firebase/firebase_phone_verification_service.dart` | applies `setSettings(appVerificationDisabledForTesting: true)` once when asked; logs Firebase's own error code (`developer.log`, name `PhoneVerification`), since the screens word billing / region / provider failures as one sentence |
+| `lib/di/providers.dart` | passes the switch in |
+| `test/phone_auth_test_mode_test.dart` | new: production never honours it |
+
+### Verified
+
+- `flutter analyze lib test` — no issues.
+- `flutter test` — 635 passed, 2 failed: the Arabic booking-screen overflow
+  already recorded below (being fixed in a separate session).
+- **Not** run against Firebase in test mode: that needs a test phone number added
+  in the console first.
+
+---
+## 2026-09-14 · Phone login and registration through Firebase phone auth
+
+**Baseline:** `dd547c5` (continues the entry below). API side in
+`AKCarsMobileAPI`, same day, uncommitted.
+
+Request, verbatim: "add phone login which with the previous login idea. the new
+idea is if login successfly with firebase phone login then login to the app. and
+also for register. if all app validations pass then register the new phone
+number to login later."
+
+### The flow
+
+- **Login (phone):** validate the number → `POST /auth/login/check` (sends
+  nothing; `404` offers registration, so no SMS is spent on a number with no
+  account) → Firebase texts a 6-digit code → Firebase confirms it and issues an
+  ID token → `POST /auth/login/phone` → the API verifies the token itself, finds
+  the account by the number inside it, and returns the normal session.
+- **Register:** the form's own validation → `POST /auth/register/check` (every
+  server rule, saving nothing: a taken phone is reported *before* any SMS) →
+  Firebase code in a sheet over the form → `POST /auth/register` with
+  `phoneVerificationToken`. The API refuses a token for a different number.
+- **Email login** is unchanged (the API's own code), and so is phone login on
+  desktop, where Firebase phone auth cannot run.
+
+The app never tells the API a number is verified; the API checks Firebase's
+signature, project, expiry and sign-in provider on every token.
+
+### App changes
+
+| File | Change |
+|---|---|
+| `pubspec.yaml` | `firebase_auth: ^5.7.0` |
+| `lib/core/firebase/firebase_init.dart` | new: one memoised `Firebase.initializeApp` for push and phone auth, which can both ask in the same frame |
+| `lib/core/push/push_service.dart` | uses it |
+| `lib/core/error/app_exception.dart` | `PhoneVerificationException` + `PhoneVerificationFailure` (in the sealed class's own library) |
+| `lib/data/services/phone_verification_service.dart` | new contract: `sendCode`, `confirmCode`, `isSupported` |
+| `lib/data/services/firebase/firebase_phone_verification_service.dart` | Firebase implementation: native `verifyPhoneNumber` (incl. Android instant verification and resend tokens), web `signInWithPhoneNumber`; signs back out of Firebase as soon as it has the token, so no second session outlives the app's sign-out |
+| `lib/di/providers.dart` | `phoneVerificationServiceProvider` |
+| `lib/core/constants/api_endpoints.dart` | `loginCheck`, `loginPhone`, `registerCheck` |
+| `lib/data/services/auth_service.dart`, `api/api_auth_service.dart`, `repositories/auth_repository.dart`, `state/auth_state.dart` | `accountExists`, `loginWithVerifiedPhone`, `validateRegistration`, `register(..., phoneVerificationToken:)`; login and phone login share one `_signIn` |
+| `lib/core/network/dio_api_client.dart` | an empty `2xx` body (`204`) now decodes to an empty map instead of throwing `SerializationException` |
+| `lib/features/auth/phone_code_sheet.dart` | new: the SMS code sheet and `phoneVerificationMessage` wording |
+| `lib/features/auth/login_screen.dart` | phone channel via Firebase, 6-digit code, new server-error wording (`phone_token_invalid`, account gone) |
+| `lib/features/auth/register_screen.dart` | `_provePhone` before `register`; the submit spinner stops while the sheet waits for the user |
+| `lib/features/auth/auth_form_widgets.dart` | `AuthPhone.e164` |
+
+**Found on the way — the `204` fix above.** `POST /auth/logout` answers `204`,
+and `_asObject` threw on its empty body. `ApiAuthService.signOut` still cleared
+the token in its `finally`, and `AuthNotifier.signOut` logged the throw as
+"Sign-out call failed" — so every sign-out logged a failure that was not one.
+The new `/check` routes answer the same way, which is how it surfaced.
+
+### Tests
+
+- New: `phone_login_test.dart` (real screen + router: code login, no SMS for an
+  unregistered number, instant verification, email still on the API code),
+  `phone_code_sheet_test.dart`, `api_auth_service_phone_test.dart` (request
+  bodies and `204`/`404` handling).
+- `account_test.dart`: registration tests now confirm the SMS code; new cases for
+  the token reaching `register`, a taken phone refused before any SMS, and
+  closing the sheet creating nothing.
+- `login_error_messages_test.dart`: the server-code cases moved to the email
+  channel (that is the only place the server code still runs); new Firebase
+  cases.
+- Doubles: `FakePhoneVerificationService`; `MockAuthService` and the two
+  `session_refresh_test` doubles gained the new members.
+
+### Verified
+
+- `flutter analyze lib test` — no issues.
+- `flutter test` — 632 passed, **2 failed**: the Arabic booking-screen
+  `RenderFlex` overflow (`booking_screen.dart:664`) recorded in the entry below
+  as not caused by this work. Unchanged by this entry.
+- API: `dotnet test` — 1076 passed (33 new: token verification with real RS256
+  keys, handler and HTTP tests for the three routes and registration).
+- **Not** run on a device or against real Firebase: the console setup below has
+  not been done, so no real SMS has been sent or verified.
+
+### Still needs a human
+
+- **Firebase console:** Blaze plan; enable the Phone provider; add test phone
+  numbers; Android SHA-1/SHA-256 for `om.akcars.app`; APNs key for iOS; web
+  authorised domains. Listed in the API README, "Phone sign-in (Firebase)".
+- **iOS:** `flutterfire configure` on a Mac (no `GoogleService-Info.plist` yet).
+- **Changing the phone in "My details" is not re-verified.** `PUT /user/profile`
+  accepts a new number without proof, so an account can move to a number its
+  owner does not hold. Left as it was — that screen is behind a session the
+  original number proved — but worth closing.
+
+---
+## 2026-09-14 · App ID renamed to om.akcars.app, ahead of Firebase registration
+
+**Baseline:** `dd547c5`.
+
+Request: run `flutterfire configure --project=akcars-878ad`. Before that could
+run, the app still carried Flutter's template IDs, and `flutterfire configure`
+registers the Firebase Android/iOS apps under whatever IDs it finds. The user
+chose `om.akcars.app`.
+
+### Why before, not after
+
+- The Play Store rejects any `com.example.*` application ID.
+- Firebase ties each registered app to its ID: `google-services.json` is matched
+  against `applicationId`, and phone auth's Android SHA fingerprints hang off
+  that registration. Registering under the template ID would have meant
+  registering, and re-downloading every config, a second time.
+
+### What changed
+
+| File | Change |
+|---|---|
+| `android/app/build.gradle.kts` | `namespace` and `applicationId` → `om.akcars.app`; the template TODO replaced with a note on what depends on the ID |
+| `android/app/src/main/kotlin/om/akcars/app/MainActivity.kt` | moved from `com/example/ak_cars_mobil_app/` (`git mv`), package line updated |
+| `ios/Runner.xcodeproj/project.pbxproj` | all six `PRODUCT_BUNDLE_IDENTIFIER`s: app → `om.akcars.app` (Debug/Release/Profile), tests → `om.akcars.app.RunnerTests` |
+
+### Verified
+
+- `flutter build apk --debug` — built. That compiles the moved `MainActivity`
+  against the new namespace, which is what a wrong package line would break.
+- No `com.example` / `akCarsMobilApp` reference left outside build output.
+- **Not** built for iOS (Windows machine), and `flutterfire configure` itself
+  was **not** run: the FlutterFire and Firebase CLIs are not installed and
+  `firebase login` needs the user's own Google sign-in.
+
+### Still needs a human
+
+- An Android install of the old `com.example` build is a *different app* to the
+  OS. Uninstall it from test devices; it will not upgrade in place.
+
+### Then: Firebase project `akcars-878ad` connected
+
+The user ran `flutterfire configure` against the renamed IDs. It registered
+Android, iOS and web apps in `akcars-878ad` and generated:
+
+| File | What it is |
+|---|---|
+| `lib/firebase_options.dart` | `DefaultFirebaseOptions` for android / ios / web (desktop throws `UnsupportedError`) |
+| `android/app/google-services.json` | `package_name` `om.akcars.app` |
+| `firebase.json` | FlutterFire's record of the above, so a re-run updates rather than duplicates |
+| `android/settings.gradle.kts`, `android/app/build.gradle.kts` | `com.google.gms.google-services` 4.3.15 declared and applied, inside FlutterFire's START/END markers |
+
+No `ios/Runner/GoogleService-Info.plist` was written: FlutterFire skips the Xcode
+step on Windows. Dart-side init does not need it (options are passed
+explicitly), but native iOS push/APNs setup will, so re-run `flutterfire
+configure` on a Mac before shipping iOS.
+
+These files identify the Firebase project; they are not secrets and are not
+git-ignored. Access is controlled by Firebase security rules and API-key
+restrictions, not by hiding them.
+
+Changes by hand:
+
+- `lib/core/push/push_service.dart`: `Firebase.initializeApp(options:
+  DefaultFirebaseOptions.currentPlatform)`. Without options, web has no config
+  to read. Doc comment no longer says Firebase is unconfigured.
+- `lib/di/providers.dart`: `pushServiceProvider` doc comment, same staleness.
+
+### Verified (Firebase step)
+
+- `flutter analyze lib test` — no issues.
+- `flutter build apk --debug` — built with the Google Services plugin applied
+  (AGP 9.0.1 + google-services 4.3.15). Warnings were plugin Java deprecations.
+- `flutter test` — **two failures**, both `A RenderFlex overflowed by 11 pixels`
+  at the `Row` in `lib/features/services/booking_screen.dart:664`, in Arabic:
+  `contact_gating_test` "the value card is worded positively, in both
+  languages" and `translation_coverage_test` "Booking screen — Arabic".
+  Not caused by this work as far as can be told (no layout code changed; the
+  file is untouched), but **not proven pre-existing**: running them on a clean
+  `dd547c5` worktree crashed the Flutter tool itself (SwiftPackageManager
+  directory listing), so the baseline comparison could not be made. The
+  2026-09-13 entry below recorded 614 passing, so something changed since;
+  left for a separate fix.
+- **Not** run on a device: push delivery end to end, and web init, are
+  unexercised.
+
+---
+
 ## 2026-09-13 · A tapped announcement card opens what it advertises
 
 **Baseline:** `0636b04` (continues the entry below).
