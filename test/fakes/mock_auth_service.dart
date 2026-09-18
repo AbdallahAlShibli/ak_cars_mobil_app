@@ -43,22 +43,64 @@ class MockAuthService with MockServiceBase implements AuthService {
     return _save(profile);
   }
 
+  /// The only registration code [verifyRegistrationOtp] accepts.
+  static const validRegistrationCode = '1234';
+
+  /// The verification token a correct code returns: it names the phone, so a
+  /// test can check the token that rode along with [register].
+  static String tokenFor(String phone) => 'phone-verified:$phone';
+
+  /// Every number a registration code was "texted" to, in order.
+  final registrationCodesSentTo = <String>[];
+
   /// Refuses a phone that already has the stored account, the way
-  /// `POST /auth/register/check` answers `409 account_already_exists`.
+  /// `POST /auth/register/otp` answers `409 account_already_exists`.
   @override
-  Future<void> validateRegistration(UserProfile profile) async {
+  Future<void> requestRegistrationOtp(String phone) async {
     final account = await _readStoredAccount();
-    if (account != null && _matches(account, profile.phone)) {
+    if (account != null && _matches(account, phone)) {
       throw const BusinessRuleException(
-        'An account with that phone or email already exists.',
+        'An account with that phone already exists.',
         code: 'account_already_exists',
       );
     }
+    registrationCodesSentTo.add(phone);
     return respond(null);
   }
 
   @override
-  Future<UserProfile> updateProfile(UserProfile profile) => _save(profile);
+  Future<String> verifyRegistrationOtp(String phone, String code) async {
+    if (code != validRegistrationCode) {
+      throw const UnauthorizedException(
+        'Wrong or expired code.',
+        code: 'otp_invalid_or_expired',
+      );
+    }
+    return respond(tokenFor(phone));
+  }
+
+  /// The phone verification token the last [updateProfile] carried.
+  String? lastProfileUpdateToken;
+
+  /// Refuses a changed phone with no proof, the way `PUT /user/profile`
+  /// answers `422 phone_verification_required`.
+  @override
+  Future<UserProfile> updateProfile(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) async {
+    lastProfileUpdateToken = phoneVerificationToken;
+    final account = await _readStoredAccount();
+    if (account != null &&
+        !_matches(account, profile.phone) &&
+        phoneVerificationToken != tokenFor(profile.phone)) {
+      throw const BusinessRuleException(
+        'Verify the phone number first.',
+        code: 'phone_verification_required',
+      );
+    }
+    return _save(profile);
+  }
 
   @override
   Future<bool> requestOtp(String identifier) async {
@@ -75,24 +117,6 @@ class MockAuthService with MockServiceBase implements AuthService {
     }
     // No OTP of its own to check against — `code` is threaded through only so
     // the API implementation has somewhere real to put it.
-    await prefs.setBool(AppConstants.prefsSessionActive, true);
-    return respond(account);
-  }
-
-  @override
-  Future<bool> accountExists(String identifier) => requestOtp(identifier);
-
-  /// Accepts `FakePhoneVerificationService` tokens, which carry the phone
-  /// they verified.
-  @override
-  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) async {
-    const prefix = 'firebase-token:';
-    final account = await _readStoredAccount();
-    if (account == null ||
-        !firebaseIdToken.startsWith(prefix) ||
-        !_matches(account, firebaseIdToken.substring(prefix.length))) {
-      throw const NotFoundException('No account matches that verified phone');
-    }
     await prefs.setBool(AppConstants.prefsSessionActive, true);
     return respond(account);
   }

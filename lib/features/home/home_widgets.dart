@@ -18,6 +18,7 @@ import '../../data/repositories/service_marketplace_repository.dart';
 import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import '../garage/maintenance_screen.dart';
+import 'home_car_pulse.dart';
 
 final _fmt = intl.NumberFormat('#,###', 'en');
 
@@ -255,7 +256,11 @@ class _DiscountCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(DirectionalIcons.forwardArrow(context), size: 13, color: ak.promoTitle),
+                Icon(
+                  DirectionalIcons.forwardArrow(context),
+                  size: 13,
+                  color: ak.promoTitle,
+                ),
               ],
             ),
           ],
@@ -389,7 +394,10 @@ PromotionTarget promotionTarget(
       : marketplace.providerById(providerId);
   if (provider != null) {
     final name = provider.name.of(s);
-    return (route: '/services?q=${Uri.encodeQueryComponent(name)}', push: false);
+    return (
+      route: '/services?q=${Uri.encodeQueryComponent(name)}',
+      push: false,
+    );
   }
 
   return (route: '/services', push: false);
@@ -417,9 +425,8 @@ class _AnnouncementCard extends ConsumerWidget {
     final target = promotionTarget(offer, marketplace, s);
 
     return SandPressable(
-      onTap: () => target.push
-          ? context.push(target.route)
-          : context.go(target.route),
+      onTap: () =>
+          target.push ? context.push(target.route) : context.go(target.route),
       // The card itself is [PromotionCardFace], shared verbatim with the
       // founder's content editor so the preview there cannot drift from what a
       // customer is actually shown. Everything resolved from data — the
@@ -509,6 +516,7 @@ class HomeCarCard extends ConsumerWidget {
     final due = ref.watch(maintenanceDueForCarProvider(car.id));
     final book = ref.watch(maintenanceBookProvider(car.id));
     final urgent = due.byUrgency.firstOrNull;
+    final pulse = CarPulse.from(due);
     final projected = book.projectedOdometerKm();
     final odometer = projected ?? car.odometerKm;
     // Only a *projected* reading carries the "estimated" suffix — a number the
@@ -644,6 +652,10 @@ class HomeCarCard extends ConsumerWidget {
                         ),
                     ],
                   ),
+                  if (pulse != null) ...[
+                    const SizedBox(height: 14),
+                    CarPulseBlock(pulse: pulse),
+                  ],
                   const SizedBox(height: 12),
                   _DueStrip(car: car, item: urgent),
                 ],
@@ -757,20 +769,22 @@ class _DueStrip extends ConsumerWidget {
     // "متأخّر — احجز الآن" rather than another shade of "coming up".
     final overdue = d.status == DueStatus.due;
     final near = d.status == DueStatus.near;
-    final color = overdue
-        ? ak.danger
-        : near
-        ? ak.amber
-        : ak.success;
     final textColor = overdue
         ? ak.dangerText
         : near
         ? ak.amberText
         : ak.success;
 
+    // The pulse block above already draws this line's bar, so the strip is the
+    // one step to take next rather than a second copy of the same progress.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          s.t('الخطوة التالية', 'Next step'),
+          style: TextStyle(fontSize: 11.5, color: ak.inkFaint),
+        ),
+        const SizedBox(height: 2),
         Row(
           children: [
             Expanded(
@@ -778,7 +792,11 @@ class _DueStrip extends ConsumerWidget {
                 d.shortTitle.of(s),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12.5, color: ak.inkSub),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: ak.ink,
+                ),
               ),
             ),
             const SizedBox(width: 6),
@@ -792,9 +810,7 @@ class _DueStrip extends ConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        SandProgressBar(value: d.progress!, color: color, animate: true),
-        const SizedBox(height: 11),
+        const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
           child: SandPressable(
@@ -892,7 +908,11 @@ class HomeAddCarCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            Icon(DirectionalIcons.forwardArrow(context), size: 16, color: ak.ink),
+            Icon(
+              DirectionalIcons.forwardArrow(context),
+              size: 16,
+              color: ak.ink,
+            ),
           ],
         ),
       ),
@@ -1051,7 +1071,11 @@ class _RecommendationCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(child: _price(context, s, ak)),
-                Icon(DirectionalIcons.forwardArrow(context), size: 13, color: ak.ink),
+                Icon(
+                  DirectionalIcons.forwardArrow(context),
+                  size: 13,
+                  color: ak.ink,
+                ),
               ],
             ),
           ],
@@ -1228,7 +1252,11 @@ class _MostBookedRow extends ConsumerWidget {
                 style: AppTheme.numeric(size: 14, color: ak.ink),
               )
             else
-              Icon(DirectionalIcons.forwardChevron(context), size: 15, color: ak.inkFaint),
+              Icon(
+                DirectionalIcons.forwardChevron(context),
+                size: 15,
+                color: ak.inkFaint,
+              ),
           ],
         ),
       ),
@@ -1593,14 +1621,17 @@ class _DistanceTrailing extends StatelessWidget {
   Widget build(BuildContext context) {
     final ak = AkColors.of(context);
     final s = S.of(context);
+    final km = provider.knownDistanceKm;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text(
-          '${provider.distanceKm.toStringAsFixed(1)} ${s.km}',
-          style: AppTheme.numeric(size: 13, color: ak.ink),
-        ),
-        const SizedBox(height: 2),
+        if (km != null) ...[
+          Text(
+            '${km.toStringAsFixed(1)} ${s.km}',
+            style: AppTheme.numeric(size: 13, color: ak.ink),
+          ),
+          const SizedBox(height: 2),
+        ],
         Text(
           s.approvedBadge,
           style: TextStyle(fontSize: 12.5, color: ak.inkFaint),

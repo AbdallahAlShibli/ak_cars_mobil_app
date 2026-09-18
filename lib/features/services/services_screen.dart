@@ -783,7 +783,10 @@ class _OfferingCard extends ConsumerWidget {
               const SizedBox(height: AppSpacing.xs),
               // Distance is the honest version of "near you" once results can
               // come from further out.
-              if (local)
+              // No distance on record: say nothing rather than "0 km".
+              if (offering.provider.knownDistanceKm == null)
+                const SizedBox.shrink()
+              else if (local)
                 StatusBadge.good(
                   '${offering.provider.distanceKm.toStringAsFixed(0)} ${s.km}',
                 )

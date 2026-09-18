@@ -217,39 +217,28 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// Sends the API's own one-time code to [identifier]; false when no account
-  /// matches, and the screen offers registration instead. Used by the email
-  /// channel, and for phones where Firebase phone sign-in cannot run.
-  Future<bool> requestOtp(String identifier) =>
-      ref.read(authRepositoryProvider).requestOtp(identifier);
+  /// Texts a login code to [phone]; false when no account has that number,
+  /// and the screen offers registration instead.
+  Future<bool> requestOtp(String phone) =>
+      ref.read(authRepositoryProvider).requestOtp(phone);
 
-  /// Whether an account uses [identifier]. Sends nothing: asked before
-  /// Firebase texts a login code, so an unregistered number is offered
-  /// registration instead of being charged an SMS it cannot use.
-  Future<bool> accountExists(String identifier) =>
-      ref.read(authRepositoryProvider).accountExists(identifier);
+  /// Texts a registration code to [phone]. Throws `account_already_exists`
+  /// for a number that already has an account; nothing is sent for it.
+  Future<void> requestRegistrationOtp(String phone) =>
+      ref.read(authRepositoryProvider).requestRegistrationOtp(phone);
 
-  /// Every server-side registration rule, saving nothing. Throws what
-  /// [register] would throw; asked before Firebase texts a registration code.
-  Future<void> validateRegistration(UserProfile profile) =>
-      ref.read(authRepositoryProvider).validateRegistration(profile);
+  /// Checks a registration code and returns the token [register] carries.
+  /// Starts no session: the account does not exist until [register].
+  Future<String> verifyRegistrationOtp(String phone, String code) =>
+      ref.read(authRepositoryProvider).verifyRegistrationOtp(phone, code);
 
-  /// Starts the session once the login screen has verified the API's own OTP.
+  /// Starts the session once the login screen has verified the texted OTP.
   ///
   /// Mirrors [register]'s optimism/rollback shape: the caller pops back to
   /// wherever login was reached from as soon as this returns, so the state
   /// is set before the round-trip settles, not after.
-  Future<void> login(String identifier, String code) => _signIn(
-    () => ref.read(authRepositoryProvider).login(identifier, code),
-  );
-
-  /// Starts the session for the account whose phone Firebase just verified
-  /// by SMS. The API checks [firebaseIdToken] and finds the account itself.
-  Future<void> loginWithVerifiedPhone(String firebaseIdToken) => _signIn(
-    () => ref
-        .read(authRepositoryProvider)
-        .loginWithVerifiedPhone(firebaseIdToken),
-  );
+  Future<void> login(String identifier, String code) =>
+      _signIn(() => ref.read(authRepositoryProvider).login(identifier, code));
 
   /// The part of every sign-in that does not care how the user proved who
   /// they are.
@@ -272,6 +261,7 @@ class AuthNotifier extends Notifier<AuthState> {
       rethrow;
     }
   }
+
   /// Hands the server whatever this device built while nobody was signed in,
   /// then re-reads the entire app for the account that now owns it.
   ///
@@ -348,7 +338,14 @@ class AuthNotifier extends Notifier<AuthState> {
   /// through OTP again for changing an address. The repository has had
   /// `updateProfile` since the start — nothing was calling it, which is why
   /// "My details" could only ever re-run the sign-up form.
-  Future<void> updateProfile(UserProfile profile) async {
+  ///
+  /// The one exception is the phone: it is the login, so a changed number
+  /// carries [phoneVerificationToken] for the new number, the same proof
+  /// registering needs.
+  Future<void> updateProfile(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) async {
     final previous = state;
     // Keep the server-assigned id: the form has no field for it, so a bare
     // copy would silently detach the profile from its account.
@@ -357,7 +354,10 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       final stored = await ref
           .read(authRepositoryProvider)
-          .updateProfile(merged);
+          .updateProfile(
+            merged,
+            phoneVerificationToken: phoneVerificationToken,
+          );
       state = state.copyWith(profile: stored);
     } catch (_) {
       state = previous;

@@ -15,23 +15,25 @@ abstract interface class AuthRepository {
     String? phoneVerificationToken,
   });
 
-  /// Every server-side registration rule, saving nothing.
-  Future<void> validateRegistration(UserProfile profile);
+  /// Texts a registration code to [phone]; see [AuthService.requestRegistrationOtp].
+  Future<void> requestRegistrationOtp(String phone);
 
-  Future<UserProfile> updateProfile(UserProfile profile);
+  /// The phone verification token for a correct code; see
+  /// [AuthService.verifyRegistrationOtp].
+  Future<String> verifyRegistrationOtp(String phone, String code);
+
+  /// [phoneVerificationToken]: see [AuthService.updateProfile].
+  Future<UserProfile> updateProfile(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  });
 
   /// Sends a one-time code to [identifier]; false when no account matched.
   Future<bool> requestOtp(String identifier);
 
-  /// Whether an account uses [identifier]. Sends nothing.
-  Future<bool> accountExists(String identifier);
-
   /// Verifies [code] and starts the session for the account [identifier]
   /// resolves to.
   Future<UserProfile> login(String identifier, String code);
-
-  /// Starts the session for the account whose phone Firebase verified.
-  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken);
 
   Future<void> signOut();
 }
@@ -54,28 +56,28 @@ class AuthRepositoryImpl implements AuthRepository {
   );
 
   @override
-  Future<void> validateRegistration(UserProfile profile) =>
-      _service.validateRegistration(profile);
+  Future<void> requestRegistrationOtp(String phone) =>
+      _service.requestRegistrationOtp(phone);
 
   @override
-  Future<UserProfile> updateProfile(UserProfile profile) =>
-      _service.updateProfile(profile);
+  Future<String> verifyRegistrationOtp(String phone, String code) =>
+      _service.verifyRegistrationOtp(phone, code);
 
   @override
-  Future<bool> requestOtp(String identifier) =>
-      _service.requestOtp(identifier);
+  Future<UserProfile> updateProfile(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) => _service.updateProfile(
+    profile,
+    phoneVerificationToken: phoneVerificationToken,
+  );
 
   @override
-  Future<bool> accountExists(String identifier) =>
-      _service.accountExists(identifier);
+  Future<bool> requestOtp(String identifier) => _service.requestOtp(identifier);
 
   @override
   Future<UserProfile> login(String identifier, String code) =>
       _service.login(identifier, code);
-
-  @override
-  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) =>
-      _service.loginWithVerifiedPhone(firebaseIdToken);
 
   @override
   Future<void> signOut() => _service.signOut();

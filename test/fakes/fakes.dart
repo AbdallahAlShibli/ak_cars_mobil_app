@@ -19,7 +19,6 @@ import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'fake_phone_verification_service.dart';
 import 'mock_auth_service.dart';
 import 'mock_cars_service.dart';
 import 'mock_catalog_service.dart';
@@ -110,9 +109,6 @@ List<Override> fakeServiceOverrides(SharedPreferences prefs) => [
   // sign-out clears this cache.
   responseCacheProvider.overrideWithValue(const NoResponseCache()),
   pushServiceProvider.overrideWithValue(const SilentPushService()),
-  phoneVerificationServiceProvider.overrideWithValue(
-    FakePhoneVerificationService(),
-  ),
   catalogServiceProvider.overrideWithValue(MockCatalogService()),
   authServiceProvider.overrideWithValue(MockAuthService(prefs: prefs)),
   serviceMarketplaceServiceProvider.overrideWithValue(

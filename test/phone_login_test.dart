@@ -1,9 +1,6 @@
 import 'dart:convert';
 
-import 'package:ak_cars_mobil_app/config/app_config.dart';
-import 'package:ak_cars_mobil_app/config/app_environment.dart';
 import 'package:ak_cars_mobil_app/core/constants/app_constants.dart';
-import 'package:ak_cars_mobil_app/core/error/app_exception.dart';
 import 'package:ak_cars_mobil_app/data/models/user_profile.dart';
 import 'package:ak_cars_mobil_app/di/providers.dart';
 import 'package:ak_cars_mobil_app/features/auth/login_screen.dart';
@@ -14,43 +11,28 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
-import 'fakes/fake_phone_verification_service.dart';
 import 'helpers/test_harness.dart';
 
-/// Phone login: Firebase proves the number by SMS, then the API trades that
-/// proof for a session. Driven through the real screen and a real router.
+/// Phone login: the API texts a 4-digit code to a registered number, and the
+/// code starts the session. Driven through the real screen and a real router.
 void main() {
   const owner = UserProfile(
     name: 'Phone Owner',
     phone: '+968 9200 0001',
-    email: 'owner@akcars.om',
+    email: '',
     region: 'Muscat',
     address: '',
   );
 
-  /// What Firebase answers while the project cannot text this number —
-  /// the Spark plan, in the case that prompted the fallback.
-  const firebaseNotSetUp = PhoneVerificationException(
-    'billing-not-enabled: BILLING_NOT_ENABLED',
-    reason: PhoneVerificationFailure.notConfigured,
-  );
-
-  Future<(ProviderContainer, FakePhoneVerificationService)> pumpLogin(
+  Future<ProviderContainer> pumpLogin(
     WidgetTester tester, {
     bool registered = true,
-    bool instantVerification = false,
-    AppConfig? config,
   }) async {
     tester.view.physicalSize = const Size(402 * 3, 874 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
 
-    final phones = FakePhoneVerificationService()
-      ..verifyInstantly = instantVerification;
-    final container = await createTestContainer(overrides: [
-      phoneVerificationServiceProvider.overrideWithValue(phones),
-      if (config != null) appConfigProvider.overrideWithValue(config),
-    ]);
+    final container = await createTestContainer();
     if (registered) {
       // An account that already exists "on the server" (the mock keeps it in
       // prefs), with nobody signed in to it.
@@ -91,7 +73,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    return (container, phones);
+    return container;
   }
 
   Future<void> sendCodeTo(WidgetTester tester, String localPhone) async {
@@ -101,17 +83,16 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a registered phone logs in with the 6-digit SMS code',
+  testWidgets('a registered phone logs in with the 4-digit SMS code',
       (tester) async {
-    final (container, phones) = await pumpLogin(tester);
+    final container = await pumpLogin(tester);
 
     await sendCodeTo(tester, '92000001');
 
-    expect(phones.sentTo, ['+96892000001']);
-    expect(find.text('Enter the 6-digit code we just sent you.'), findsOneWidget);
+    expect(find.text('Enter the 4-digit code we just sent you.'), findsOneWidget);
+    expect(find.text('+968 9200 0001'), findsOneWidget);
 
-    await tester.enterText(
-        find.byType(TextField).last, FakePhoneVerificationService.validCode);
+    await tester.enterText(find.byType(TextField).last, '4821');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Verify and log in'));
     await tester.pumpAndSettle();
@@ -121,79 +102,45 @@ void main() {
     expect(find.text('profile page'), findsOneWidget);
   });
 
-  testWidgets('an unregistered number is told so, and no SMS is sent',
+  testWidgets('an unregistered number is told so, and stays on the number',
       (tester) async {
-    final (container, phones) = await pumpLogin(tester, registered: false);
+    final container = await pumpLogin(tester, registered: false);
 
     await sendCodeTo(tester, '92000001');
 
     expect(find.text('No account with that number'), findsOneWidget);
-    expect(phones.sentTo, isEmpty);
+    expect(find.text('Verify and log in'), findsNothing);
     expect(container.read(authProvider).isRegistered, isFalse);
   });
 
-  testWidgets('a number the device verified by itself signs in with no code',
-      (tester) async {
-    final (container, _) = await pumpLogin(tester, instantVerification: true);
+  testWidgets('a landline is refused before anything is sent', (tester) async {
+    await pumpLogin(tester);
 
-    await sendCodeTo(tester, '92000001');
+    await sendCodeTo(tester, '24478120');
 
-    expect(container.read(authProvider).isRegistered, isTrue);
-    expect(find.text('profile page'), findsOneWidget);
+    expect(find.text('An Oman mobile number starting with 7 or 9'),
+        findsOneWidget);
+    expect(find.text('Verify and log in'), findsNothing);
   });
 
-  testWidgets('email login still uses the API code, not an SMS', (tester) async {
-    final (_, phones) = await pumpLogin(tester);
-
-    await tester.tap(find.text('Email'));
-    await tester.pumpAndSettle();
-    await sendCodeTo(tester, owner.email);
-
-    expect(phones.sentTo, isEmpty);
-    expect(find.text('Enter the 4-digit code we just sent you.'), findsOneWidget);
-  });
-
-  // Regression: with the Firebase project on the Spark plan every phone login
-  // failed at "SMS verification is not available right now", and nobody could
-  // sign in at all while the console was being set up.
-  testWidgets(
-      'a development build falls back to the API code when Firebase SMS is not set up',
-      (tester) async {
-    final (container, phones) = await pumpLogin(tester);
-    phones.sendFailure = firebaseNotSetUp;
+  testWidgets('a short code is caught before the API is asked', (tester) async {
+    final container = await pumpLogin(tester);
 
     await sendCodeTo(tester, '92000001');
-
-    expect(phones.sentTo, isEmpty);
-    expect(find.text('Enter the 4-digit code we just sent you.'), findsOneWidget);
-    // The why is on the code step, not in a bar that would cover the button.
-    expect(
-      find.textContaining("this development build uses the API's own 4-digit code"),
-      findsOneWidget,
-    );
-
-    await tester.enterText(find.byType(TextField).last, '4821');
+    await tester.enterText(find.byType(TextField).last, '12');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Verify and log in'));
     await tester.pumpAndSettle();
 
-    expect(container.read(authProvider).isRegistered, isTrue);
-    expect(find.text('profile page'), findsOneWidget);
+    expect(find.text('Enter the 4-digit code'), findsOneWidget);
+    expect(container.read(authProvider).isRegistered, isFalse);
   });
 
-  testWidgets('outside development the refusal stands and says why',
-      (tester) async {
-    final (container, phones) = await pumpLogin(
-      tester,
-      config: AppConfig.forEnvironment(AppEnvironment.production),
-    );
-    phones.sendFailure = firebaseNotSetUp;
+  // Email sign-in is switched off for now: the API has no e-mail sender.
+  testWidgets('there is no email option', (tester) async {
+    await pumpLogin(tester);
 
-    await sendCodeTo(tester, '92000001');
-
-    expect(find.textContaining("SMS sign-in isn't set up for this app yet"),
-        findsOneWidget);
-    expect(find.text('Enter the 4-digit code we just sent you.'), findsNothing);
-    expect(container.read(authProvider).isRegistered, isFalse);
+    expect(find.text('Email'), findsNothing);
+    expect(find.text('Phone number'), findsOneWidget);
   });
 }

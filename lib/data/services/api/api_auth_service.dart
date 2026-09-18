@@ -54,17 +54,34 @@ class ApiAuthService implements AuthService {
   }
 
   @override
-  Future<void> validateRegistration(UserProfile profile) async {
-    // `204` when it would be accepted. Every refusal arrives as the same
-    // exception `register` would throw, so the screen reports both one way.
-    await _client.post(ApiEndpoints.registerCheck, body: profile.toJson());
+  Future<void> requestRegistrationOtp(String phone) async {
+    // `204` once the code is out. A taken number arrives as the
+    // `account_already_exists` refusal `register` itself would give.
+    await _client.post(ApiEndpoints.registerOtp, body: {'phone': phone});
   }
 
   @override
-  Future<UserProfile> updateProfile(UserProfile profile) async =>
-      UserProfile.fromJson(
-        await _client.put(ApiEndpoints.updateProfile, body: profile.toJson()),
-      );
+  Future<String> verifyRegistrationOtp(String phone, String code) async {
+    final json = await _client.post(
+      ApiEndpoints.registerOtpVerify,
+      body: {'phone': phone, 'code': code},
+    );
+    return json.requireString('phoneVerificationToken');
+  }
+
+  @override
+  Future<UserProfile> updateProfile(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) async => UserProfile.fromJson(
+    await _client.put(
+      ApiEndpoints.updateProfile,
+      body: {
+        ...profile.toJson(),
+        'phoneVerificationToken': ?phoneVerificationToken,
+      },
+    ),
+  );
 
   @override
   Future<bool> requestOtp(String identifier) async {
@@ -82,33 +99,11 @@ class ApiAuthService implements AuthService {
   }
 
   @override
-  Future<bool> accountExists(String identifier) async {
-    try {
-      await _client.post(
-        ApiEndpoints.loginCheck,
-        body: {'identifier': identifier},
-      );
-      return true;
-    } on NotFoundException {
-      return false;
-    }
-  }
-
-  @override
-  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) async {
-    final json = await _client.post(
-      ApiEndpoints.loginPhone,
-      body: {'idToken': firebaseIdToken},
-    );
-    return _startSession(json);
-  }
-
-  @override
   Future<UserProfile> login(String identifier, String code) async {
-    final json = await _client.post(ApiEndpoints.loginVerify, body: {
-      'identifier': identifier,
-      'code': code,
-    });
+    final json = await _client.post(
+      ApiEndpoints.loginVerify,
+      body: {'identifier': identifier, 'code': code},
+    );
     return _startSession(json);
   }
 

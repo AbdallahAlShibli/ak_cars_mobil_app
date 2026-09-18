@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,101 +8,42 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/error/app_exception.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
-import '../../data/services/phone_verification_service.dart';
-import '../../di/providers.dart';
+import '../../state/app_state.dart';
 import 'auth_form_widgets.dart';
 
-/// What to tell someone whose SMS phone verification failed.
+/// Asks for the registration code already texted to [phone] and returns the
+/// phone verification token once the code is right. Null when the sheet is
+/// closed without confirming.
 ///
-/// Worded around what they can do next. A mistyped code and an expired one
-/// are told apart because Firebase tells them apart, unlike the API's own
-/// codes, which deliberately collapse both into `otp_invalid_or_expired`.
-String phoneVerificationMessage(S s, PhoneVerificationException error) {
-  final message = _friendlyMessage(s, error);
-  // The friendly sentence covers several Firebase causes (billing off, region
-  // blocked, build not registered); only Firebase's own code says which, and
-  // a debug build is where someone who can fix it is looking.
-  return kDebugMode && error.reason == PhoneVerificationFailure.notConfigured
-      ? '$message\n${error.message}'
-      : message;
-}
-
-String _friendlyMessage(S s, PhoneVerificationException error) =>
-    switch (error.reason) {
-      PhoneVerificationFailure.notConfigured => s.t(
-        'تسجيل الدخول برسالة SMS غير مُفعّل لهذا التطبيق بعد',
-        "SMS sign-in isn't set up for this app yet",
-      ),
-      PhoneVerificationFailure.invalidCode => s.t(
-        'الرمز غير صحيح — تحقّق منه وأعد المحاولة',
-        'That code is not right — check it and try again',
-      ),
-      PhoneVerificationFailure.codeExpired => s.t(
-        'انتهت صلاحية الرمز — اطلب رمزاً جديداً',
-        'That code has expired — ask for a new one',
-      ),
-      PhoneVerificationFailure.invalidPhoneNumber => s.t(
-        'لا يمكن إرسال رسالة إلى هذا الرقم',
-        'A text message cannot be sent to that number',
-      ),
-      PhoneVerificationFailure.tooManyRequests => s.t(
-        'محاولات كثيرة من هذا الجهاز — انتظر قليلاً ثم أعد المحاولة',
-        'Too many attempts from this device — wait a while, then try again',
-      ),
-      PhoneVerificationFailure.network => s.t(
-        'تعذّر الاتصال — تحقّق من اتصالك',
-        'Could not connect — check your connection',
-      ),
-      PhoneVerificationFailure.unavailable => s.t(
-        'التحقق برسالة SMS غير متاح حالياً — حاول لاحقاً',
-        'SMS verification is not available right now — try again later',
-      ),
-      PhoneVerificationFailure.cancelled => s.t(
-        'أُلغي التحقق',
-        'Verification was cancelled',
-      ),
-      PhoneVerificationFailure.unknown => s.t(
-        'تعذّر التحقق من الرقم — حاول مرة أخرى',
-        'Could not verify the number — try again',
-      ),
-    };
-
-/// Asks for the SMS code sent for [session] and returns the Firebase ID token
-/// once the code is right. Null when the sheet is closed without confirming.
-///
-/// A session the platform already verified (Android instant verification)
-/// never shows the sheet: there is nothing left to type.
+/// The caller sends the first code (`AuthNotifier.requestRegistrationOtp`)
+/// before opening this, so a number that already has an account is refused on
+/// the form rather than inside a sheet waiting for a code that never comes.
 Future<String?> showPhoneCodeSheet(
   BuildContext context, {
-  required PhoneVerificationSession session,
-}) {
-  final alreadyVerified = session.idToken;
-  if (alreadyVerified != null) return Future.value(alreadyVerified);
-  return showModalBottomSheet<String>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
-    builder: (_) => PhoneCodeSheet(session: session),
-  );
-}
+  required String phone,
+}) => showModalBottomSheet<String>(
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  showDragHandle: true,
+  builder: (_) => PhoneCodeSheet(phone: phone),
+);
 
-/// The code step as a sheet over a long form, so the form keeps everything
-/// that was typed into it while the code is entered.
+/// The registration code step as a sheet over the form, so the form keeps
+/// everything that was typed into it while the code is entered.
 class PhoneCodeSheet extends ConsumerStatefulWidget {
-  const PhoneCodeSheet({super.key, required this.session});
+  const PhoneCodeSheet({super.key, required this.phone});
 
-  final PhoneVerificationSession session;
+  /// As the account stores it: `+968 9200 1234`.
+  final String phone;
 
   @override
   ConsumerState<PhoneCodeSheet> createState() => _PhoneCodeSheetState();
 }
 
 class _PhoneCodeSheetState extends ConsumerState<PhoneCodeSheet> {
-  static const _codeLength = 6;
   static const _resendSeconds = 30;
 
-  late PhoneVerificationSession _session = widget.session;
   final _code = TextEditingController();
   String? _error;
   bool _busy = false;
@@ -136,12 +76,14 @@ class _PhoneCodeSheetState extends ConsumerState<PhoneCodeSheet> {
   Future<void> _confirm() async {
     final s = S.of(context);
     final code = _code.text.trim();
-    if (code.length != _codeLength) {
+    if (code.length != authCodeLength) {
       HapticFeedback.heavyImpact();
-      setState(() => _error = s.t(
-        'أدخل الرمز المكوّن من 6 أرقام',
-        'Enter the 6-digit code',
-      ));
+      setState(
+        () => _error = s.t(
+          'أدخل الرمز المكوّن من $authCodeLength أرقام',
+          'Enter the $authCodeLength-digit code',
+        ),
+      );
       return;
     }
 
@@ -151,15 +93,24 @@ class _PhoneCodeSheetState extends ConsumerState<PhoneCodeSheet> {
     });
     try {
       final token = await ref
-          .read(phoneVerificationServiceProvider)
-          .confirmCode(_session, code);
+          .read(authProvider.notifier)
+          .verifyRegistrationOtp(widget.phone, code);
       if (!mounted) return;
       HapticFeedback.mediumImpact();
       Navigator.of(context).pop(token);
-    } on PhoneVerificationException catch (error) {
+    } on AppException catch (error) {
       if (!mounted) return;
       HapticFeedback.heavyImpact();
-      setState(() => _error = phoneVerificationMessage(s, error));
+      setState(
+        () => _error = authVerifyCodeMessage(
+          s,
+          error,
+          fallback: s.t(
+            'تعذّر التحقق من الرقم — حاول مرة أخرى',
+            'Could not verify the number — try again',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -173,20 +124,14 @@ class _PhoneCodeSheetState extends ConsumerState<PhoneCodeSheet> {
       _code.clear();
     });
     try {
-      final session = await ref
-          .read(phoneVerificationServiceProvider)
-          .sendCode(_session.phone);
+      await ref
+          .read(authProvider.notifier)
+          .requestRegistrationOtp(widget.phone);
       if (!mounted) return;
-      final alreadyVerified = session.idToken;
-      if (alreadyVerified != null) {
-        Navigator.of(context).pop(alreadyVerified);
-        return;
-      }
-      setState(() => _session = session);
       _startResendCountdown();
-    } on PhoneVerificationException catch (error) {
+    } on AppException catch (error) {
       if (!mounted) return;
-      setState(() => _error = phoneVerificationMessage(s, error));
+      setState(() => _error = authSendCodeMessage(s, error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -226,8 +171,8 @@ class _PhoneCodeSheetState extends ConsumerState<PhoneCodeSheet> {
           const SizedBox(height: 6),
           Text(
             s.t(
-              'أدخل الرمز المكوّن من 6 أرقام الذي أرسلناه برسالة SMS إلى',
-              'Enter the 6-digit code we texted to',
+              'أدخل الرمز المكوّن من $authCodeLength أرقام الذي أرسلناه برسالة SMS إلى',
+              'Enter the $authCodeLength-digit code we texted to',
             ),
             style: TextStyle(fontSize: 12.5, height: 1.5, color: ak.inkFaint),
           ),
@@ -235,7 +180,7 @@ class _PhoneCodeSheetState extends ConsumerState<PhoneCodeSheet> {
           Directionality(
             textDirection: TextDirection.ltr,
             child: Text(
-              _session.phone,
+              widget.phone,
               textAlign: TextAlign.start,
               style: TextStyle(
                 fontSize: 13.5,
@@ -247,7 +192,7 @@ class _PhoneCodeSheetState extends ConsumerState<PhoneCodeSheet> {
           const SizedBox(height: 16),
           AuthOtpBoxes(
             controller: _code,
-            length: _codeLength,
+            length: authCodeLength,
             error: _error,
             onChanged: (_) {
               if (_error != null) setState(() => _error = null);
@@ -268,7 +213,10 @@ class _PhoneCodeSheetState extends ConsumerState<PhoneCodeSheet> {
                     onPressed: _busy ? null : _resend,
                     icon: const Icon(LucideIcons.rotateCw, size: 15),
                     label: Text(
-                      s.t('لم يصلك الرمز؟ أعد الإرسال', "Didn't get it? Resend"),
+                      s.t(
+                        'لم يصلك الرمز؟ أعد الإرسال',
+                        "Didn't get it? Resend",
+                      ),
                       style: const TextStyle(fontSize: 12.5),
                     ),
                   ),

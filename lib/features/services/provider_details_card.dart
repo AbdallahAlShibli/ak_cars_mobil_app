@@ -110,8 +110,8 @@ class ProviderDetailsCard extends ConsumerWidget {
                     const SizedBox(height: 3),
                     Text(
                       isolateNumbers(
-                        '$area${s.t('، ', ', ')}$region · '
-                        '${provider.distanceKm} ${s.km}',
+                        '$area${s.t('، ', ', ')}$region'
+                        '${provider.knownDistanceKm == null ? '' : ' · ${provider.distanceKm} ${s.km}'}',
                         rtl: s.isAr,
                       ),
                       style: TextStyle(fontSize: 11.5, color: ak.inkSub),

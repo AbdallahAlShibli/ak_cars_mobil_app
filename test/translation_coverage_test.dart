@@ -157,13 +157,13 @@ void main() {
     en: ['Choose model', 'Choose year'],
   );
 
-  // "Verify with" / "التوثيق عبر" and the verify-and-continue button went
-  // with the OTP block on 2026-08-10 — `POST /auth/register` has no code step.
+  // A new account proves its phone first; the name and address fields open
+  // only after that, so the phone step is what a fresh screen shows.
   bilingualTest(
     'Register screen',
     () => const RegisterScreen(),
-    ar: ['أكمل بياناتك', 'الاسم الكامل', 'متابعة'],
-    en: ['Complete your details', 'Full name', 'Continue'],
+    ar: ['أكمل بياناتك', 'رقم هاتفك', 'إرسال رمز التحقق', 'متابعة'],
+    en: ['Complete your details', 'Your phone number', 'Send verification code', 'Continue'],
   );
 
   bilingualTest(

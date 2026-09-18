@@ -17,6 +17,225 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-18 · Home "نبض سيارتك" (Direction A, phase 1), no more "0 km" workshops, per-phone OTP budget
+
+**Baseline:** the entry below, uncommitted.
+
+Request, verbatim: "Apply the previous design with this design then write a plan to develop the full project then check if there any errors or bugs and fix." — then, after the plan: "Start working on the plan. Then let me know when you finish".
+
+### Bug check first (before any change)
+
+`flutter analyze` clean, `flutter test` 722 passed, API `dotnet test` 1120 passed. Live: `/health` 200 locally and through the tunnel; `/auth/login` and `/auth/register/otp` refuse an e-mail and a landline with 400. A security review of the uncommitted OTP work found no critical issue and one HIGH (below).
+
+### Changes
+
+| File | Change |
+|---|---|
+| `lib/features/home/home_car_pulse.dart` (new) | `CarPulse.from(dueItems)`: care score 0–100 = average share of each *measured* interval left; state ready / soon / overdue; an overdue line caps the score at 49. Null when nothing is measured — no score is shown from mileage alone. `CarPulseBlock`: ring + word + up to 3 bars. |
+| `lib/features/home/home_widgets.dart` | `HomeCarCard` shows the pulse block above the due strip. The strip's countdown branch is now "الخطوة التالية" + item + remaining + book button (its progress bar moved into the pulse bars). `_DistanceTrailing` hides an unknown distance. |
+| `lib/features/home/home_screen.dart` | "حدّث العداد" tile (opens the existing `showMileageSheet` for the first car; only with a car). "الأكثر حجزاً" shows only when there are no per-car suggestions — one service rail, not two. Weekly-challenge pill hidden at 0 weeks. |
+| `lib/core/i18n/strings.dart` | `carStatusTitle` → "نبض سيارتك" / "Your car's pulse". |
+| `lib/data/models/service_provider.dart` + 5 service screens | `knownDistanceKm` (null when the record says 0). `DistanceKm` is a stored column, not measured from the user, and is 0 for real workshops — every screen printed "0 km"/"0.0 كم". Now the distance is omitted (service detail shows the approved badge instead). |
+| API `Auth/Common/OtpChallenges.cs`, `ErrorCodes.cs`, `RequestOtpCommand`, `RequestRegistrationOtpCommand` | **Security (HIGH):** attempts were capped per challenge and rate limits were per-IP only, so requesting a fresh code reset the guess budget. Now per phone, per hour: at most 5 codes (`429 otp_too_many_requests`, no SMS) and at most 10 wrong guesses across all its codes (then every verify answers `otp_invalid_or_expired`). `IssueAsync` returns `Result`. |
+| `lib/core/error/app_exception.dart`, `lib/core/network/dio_api_client.dart`, `lib/features/auth/auth_form_widgets.dart` | `RateLimitedException.code`; the send-code message for `otp_too_many_requests` says "try again in an hour" instead of "a minute". |
+| Tests | `car_pulse_test` (new, 4), `screens_smoke_test` (new title, no score without records, pulse on the overdue car, "حدّث العداد"), `login_error_messages_test` (hour message), API `RegistrationOtpTests` (5-codes cap, 10-guesses lock). |
+
+### Verified
+
+- `flutter analyze`: no issues. `flutter test`: **727 passed**. API `dotnet test`: **1122 passed**.
+
+### Not verified
+
+- Not looked at on a device or in a browser — widget tests only. The ring/bars layout on a narrow phone is covered by the smoke tests' overflow check, not by eye.
+- The per-phone cap was not exercised against the live API (it would text a real number).
+
+---
+
+## 2026-09-17 · Why no OTP arrives: a trial Twilio account, a Log provider and a duplicate tunnel connector — and the app now says which
+
+**Baseline:** the entry below, uncommitted.
+
+Request, verbatim: "there is an issue with sending and receiving the otp , it keep telling me can't sending the otp for now. check and fix the issue."
+
+### What was actually wrong (none of it in the app's code)
+
+1. **Twilio refuses every send.** `dotnet run --project tools/AKCars.SmsCheck` and a live send both say it: account `AC0f55…` is a **trial** account with **no phone numbers**, and `Sms:Twilio:From = +1 737 250 8034` is not a number on it. Twilio's answer to a real request: `HTTP 422, error 572002: No Twilio trial phone number is assigned for messaging to this destination number. Please add the 'to' number as a verified recipient.` Nothing can be texted until that is fixed in the Twilio console (buy a number, or a Messaging Service with a sender ID registered for Oman, plus SMS Geographic Permissions for Oman).
+2. **The plain `https` launch profile never texts.** Only `https (Twilio)` sets `Sms__Provider=Twilio`; otherwise `appsettings.json` leaves `Log`, which prints the code to the console.
+3. **`akcarsapi.0coders.com` fails ~2 requests in 3 with a Cloudflare 502.** Two connectors serve the tunnel: the console `cloudflared tunnel run` (local `config.yml` → `https://localhost:7291`, correct) and the **Windows service** "Cloudflared agent", which runs the same tunnel id from a dashboard token and cannot reach the API. Cloudflare load-balances between them. A 502 reaches the app as "Could not send the code — try again". Not fixable from here: `sc stop cloudflared` is access-denied without elevation.
+
+### Changes (so the next occurrence names itself)
+
+| File | Change |
+|---|---|
+| API `Common/GlobalExceptionHandler.cs`, `Application/Common/ErrorCodes.cs` | `SmsDeliveryException` → `503` + `sms_send_failed` + "The verification code could not be sent. Try again shortly.", logged with the gateway's own reason. It was a bare `500` whose detail is deliberately withheld, so the app could only say "could not send". |
+| API `Services/Sms/TwilioReadinessCheck.cs` (new), registered in `AddSms` | When `Sms:Provider` is `Twilio`, asks Twilio at start-up (credentials, trial status, sender ownership) and logs it — `SMS will not be sent — Twilio Sender: …` for this account. Never fails the boot; not awaited. |
+| API `Services/Sms/TwilioAccountCheck.cs` | Moved from `tools/AKCars.SmsCheck` into Infrastructure so the API and the tool run the same checks (tool and its test updated). |
+| API `Program.cs` | Start-up warning when `Sms:Provider` is `Log`: codes are logged, not texted, and which profile to use instead. |
+| API `README.md` | The two behaviours above, in the OTP delivery section. |
+| App `lib/features/auth/auth_form_widgets.dart` | `authSendCodeMessage`: `sms_send_failed` → "Our SMS provider wouldn't send the message — try again shortly"; any other 5xx → "Our server isn't responding — try again shortly" (the 502s above). `authVerifyCodeMessage` gets the same 5xx case. Both in Arabic and English. |
+| Tests | API: a refused send answers `503 sms_send_failed` without leaking Twilio's text (`PhoneAuthEndpointsTests`, `RecordingOtpSender.Failure`). App: the two new send messages (`login_error_messages_test`). |
+
+### Verified
+
+- API `dotnet test`: **1120 passed**. App `flutter analyze`: no issues; `flutter test`: **722 passed**.
+- Live, against a local API with `Sms__Provider=Twilio` (in-memory DB, spare port): `POST /auth/register/otp` → `503 {"code":"sms_send_failed"}`, no SMS sent, Twilio's 572002 in the log, and the start-up check logged the trial-account warning and the sender error.
+- The public API's intermittent 502 measured directly: 8 requests → 1 × 200, 7 × 502.
+
+### Not verified / left for the operator
+
+- The Twilio account itself (needs the console: upgrade, a number or registered sender ID, Oman enabled). Until then **no code can arrive**, whatever the app does.
+- Stopping or reconfiguring the duplicate `cloudflared` Windows service (needs an elevated shell, or the tunnel's dashboard config).
+- The app change was not run on a device; covered by widget tests only.
+
+---
+
+## 2026-09-17 · API down at start-up: error page instead of the launch screen or stale data
+
+**Baseline:** the entry below, uncommitted.
+
+Request, verbatim: "There are some bugs in the app. The scenario is: when open app and login' then I turned off the api then open the app but the app stucked on first splash screen. It should showing me the error page." (with a screenshot of the Android launch screen)
+
+### What was found
+
+- **Reproduced in the browser** (API run in-memory, signed in, API stopped, reload), both ways the stopped API can answer — connection refused, and an instant `502` like Cloudflare in front of a stopped API: the web build showed the failure screen both times. **The Android launch-screen hang itself was not reproduced**: no device or emulator was available (no `adb` device, no AVD system image).
+- Two real defects on the path, independent of that:
+  1. **Up to 20 s of OS launch screen.** `AppLauncher` called `runApp` only after `createContainer`, which may wait up to `bootTimeout` (20 s) before the failure screen. Android shows nothing during that — it reads as a frozen app.
+  2. **A start-up painted from the disk cache never showed the error page.** With a stored session, the Android build answers the first load from `FileResponseCache` (web has no disk cache, which is why the browser always failed properly). That start-up never touched the network, and `completeWarmUp` swallowed every refresh failure, so the API being down was never surfaced.
+
+### Changes
+
+| File | Change |
+|---|---|
+| `lib/app/launch_screen.dart` (new) | `LaunchScreenApp`: the mark on the system background (black/white by platform brightness), a spinner after 1.5 s. |
+| `lib/app/app_launcher.dart` | `runApp(LaunchScreenApp())` before anything is awaited (first attempt only), so Android's launch screen goes at once. `completeWarmUp` errors now go to the failure screen too (`failWith`, shared with `startupSettled`, guarded against running twice). |
+| `lib/app/bootstrap.dart` | `completeWarmUp`: when the start-up was painted from disk, `_ensureServerReachable` first — `GET /health`; `NetworkException`, `RequestTimeoutException` and 5xx rethrow (→ failure screen, e.g. "Our server isn't responding · HTTP 502"); any other answer (404 from an older API, 401…) counts as a live server. Reads keep their retries, so one stall through the tunnel does not fail start-up. |
+| `lib/core/constants/api_endpoints.dart` | `health = '/health'`. |
+| API `src/AKCars.Api/Program.cs` | `GET /api/v1/health` → `{status:"live"}`, anonymous, no DB. |
+| `test/boot_failure_test.dart` | + launch frame painted before the bootstrap produces anything; + painted-from-disk: unreachable → failure, 502 → "Our server isn't responding", healthy → app kept, 404 → app kept. (These start past onboarding: the first-launch screen's endless animation plus two back-to-back `runApp` calls trips a test-binding ticker assertion.) |
+
+Behaviour change to note: since 2026-09-15 a cold start with the API down but a warm disk cache opened on last run's data. It now opens on it for the moment the health check takes, then shows the failure screen with "Try again".
+
+### Verified
+
+- `flutter analyze`: no issues. `flutter test`: **720 passed**. API `dotnet test`: **1119 passed**; `GET /api/v1/health` → `200 {"status":"live"}` live.
+- Browser (web build, signed in, stub answering every request `502`): app → failure screen "Our server isn't responding · HTTP 502".
+
+### Not verified
+
+- **On an Android device.** Neither the original launch-screen hang nor the fix was run on a phone. If the launch screen still sticks after this build, the wait is below Dart (the Android main thread — the background push service's engine is the first suspect, since it keeps running in the same process after the app closes); a `adb logcat` from a launch would show it.
+
+---
+
+## 2026-09-17 · A changed phone in "My details" needs an SMS code; login is phone only on the API too
+
+**Baseline:** the entry below, uncommitted. Fixes the two issues that entry listed under "Known, left alone".
+
+Request, verbatim: "Fix the issues"
+
+### 1. Changing the phone on an existing account
+
+The phone is the login, but `PUT /user/profile` saved any new number with no proof, so a signed-in user could move their account onto a number they do not hold.
+
+| File | Change |
+|---|---|
+| API `Application/Auth/Common/PhoneProof.cs` (new) | The token check, shared by registration and profile update (was private to `RegisterUserCommand`). |
+| API `Application/Auth/Profile/UpdateProfileCommand.cs` | Optional `PhoneVerificationToken`. When the normalized phone differs from the stored one: Omani mobile only (`400`), then `PhoneProof` (`422 phone_verification_required` / `401 phone_token_invalid` / `422 phone_verification_mismatch`). New: `409 account_already_exists` when the phone or e-mail belongs to another account (it previously wasn't checked at all). Same number written differently needs nothing. |
+| API `Api/Endpoints/UserEndpoints.cs` | `UpdateProfileRequest.PhoneVerificationToken`. |
+| API `IPhoneVerificationTokens`, `PhoneVerificationSettings`, `appsettings*.json` | `RequiredForRegistration` / `PhoneVerification:RequiredOnRegister` renamed to `Required` / `PhoneVerification:Required`, since it now covers both. (Key introduced earlier today, never deployed.) |
+| App `auth_service.dart`, `api_auth_service.dart`, `auth_repository.dart`, `auth_state.dart` | `updateProfile(profile, {phoneVerificationToken})`; the API body includes the token only when given. |
+| App `register_screen.dart` | "My details": `_phoneChanged`; the verify bar appears under the phone as soon as it differs from the one on file; Save is refused on screen until the new number is verified; the token is sent only for a changed phone. Taken-number messages don't point a signed-in user at login. Notice card says a new number needs a code. |
+
+The code is sent through the existing `/auth/register/otp` → `/verify`, which already refuses a number that has an account — exactly the rule a new phone needs.
+
+### 2. `/auth/login` phone only
+
+| File | Change |
+|---|---|
+| API `RequestOtpCommand.cs`, `VerifyOtpCommand.cs` | Validator: Omani mobile only (`400` for an e-mail or landline); lookup by phone only. |
+| API `SmsOtpSender.cs`, `IdentifierNormalizer.cs` | Removed the e-mail no-send branch, `LooksLikeEmail` and `Normalize`. |
+| API `README.md` | "Known gap" → "Phone only"; profile route row; setting renamed. |
+
+### Tests
+
+- API: + `ProfilePhoneChangeTests` (unchanged number, no proof, proved, mismatch, forged, landline, phone/e-mail conflict), `LoginIsPhoneOnlyTests`; − `SmsOtpSenderTests.Does_not_send_for_an_e_mail_identifier`; setting rename in fakes/tests.
+- App: `account_test` — "changing the phone saves it, with nothing to re-verify" (which encoded the bug) replaced by "changing the phone needs an SMS code for the new number" and "the same number written differently is not a change"; `api_auth_service_phone_test` + profile token body; `MockAuthService.updateProfile` refuses an unproved phone change like the API.
+
+### Verified
+
+- API `dotnet test`: **1119 passed**. App `flutter analyze`: no issues; `flutter test`: **715 passed**.
+- Live on local API (Development, Log SMS): login with e-mail → 400, landline → 400, unregistered mobile → 404, `PUT /user/profile` without a session → 401.
+
+### Not verified
+
+- A real phone change through `PUT /user/profile` over HTTP (it needs a signed-in account; I did not create or modify one in the local DB). Covered by handler unit tests and the widget test only.
+- No real Twilio SMS; no device run.
+
+---
+
+## 2026-09-17 · Firebase phone auth removed; login and registration back on the API's Twilio OTP; phone verified first when registering; email sign-in off
+
+**Baseline:** `89cd1f6` (app), `74db785` (API, `AKCarsMobileAPI`). API migration `20260917143049_AddOtpPurpose`, applied to the local `AKCarsMobileDb`.
+
+Request, verbatim: "the Firebase phone Auth not working as expected, so I decide to  back to use the Twilio  service as before.  remove everythings related to Firebase and then apply the idea of Twilio  otp. also in the register when user enter the phone number add validation to let him send otp to check if it's real number then he can complete the register steps. also for now, remove the login and register by email."
+
+### The flows now
+
+- **Login (phone only):** `POST /auth/login` texts a 4-digit code through `Sms:Provider` (Twilio in production, `Log` in Development) → `POST /auth/login/verify`. No channel switch, no Firebase path, no desktop/dev fallback.
+- **Registration:** account type → phone → **Send verification code** (`POST /auth/register/otp`; `409` for a number that already has an account, pointed at login) → code sheet (`POST /auth/register/otp/verify` returns a 30-minute `phoneVerificationToken`) → the name/governorate/address/workshop fields open only now, the phone field locks with "Number verified · Change" → **Continue** (`POST /auth/register` with the token). An expired/refused token on submit sends the user back to re-verify, keeping everything else they typed.
+- **Email:** gone from login and from sign-up. "My details" for an existing account still shows and saves the email on file.
+
+### API (`AKCarsMobileAPI`)
+
+| File | Change |
+|---|---|
+| `Domain/Enums/Enums.cs`, `Domain/Entities/OtpChallenge.cs`, `Persistence/Configurations/OtpChallengeConfiguration.cs` | New `OtpPurpose { Login, Registration }` (stored as string); `UserId` nullable (a registration code has no account yet). |
+| `Migrations/20260917143049_AddOtpPurpose.cs` | Generated with `defaultValue: ""` for `Purpose` — **changed to `"Login"`**, same trap as the `ServiceOffering.IsActive` backfill: an empty string cannot be read back as the enum. `Down` deletes registration rows before `UserId` goes non-null again. |
+| `Application/Auth/Common/OtpChallenges.cs` (new) | One issue/consume implementation (4 digits, 5 min, 5 attempts, purpose-filtered). `RequestOtpCommand`/`VerifyOtpCommand` now use it; `OtpHasher` moved in. |
+| `Application/Auth/Register/RequestRegistrationOtpCommand.cs`, `VerifyRegistrationOtpCommand.cs` (new) | The two registration OTP steps. Validator: Omani mobile only (`IdentifierNormalizer.IsOmaniMobile`). |
+| `Application/Common/Interfaces/IPhoneVerificationTokens.cs` (new) replaces `IPhoneTokenVerifier.cs` | Issue + verify a proved-phone token. |
+| `Infrastructure/Identity/PhoneVerificationTokenService.cs`, `PhoneVerificationSettings.cs` (new) | HS256 JWT on `Jwt:SigningKey`, audience `akcars-phone-verification` (never accepted as a session; an access token is never accepted as a proof). |
+| `Application/Auth/Register/RegisterUserCommand.cs` | Checks the new token; compares 8 local digits. |
+| `Api/Endpoints/AuthEndpoints.cs` | + `/register/otp`, `/register/otp/verify`; − `/login/check`, `/login/phone`. |
+| Deleted | `Identity/PhoneAuth/*` (Firebase verifier, Google key source, settings, DI), `LoginWithVerifiedPhoneCommand`, `AccountExistsQuery`, `IdentifierNormalizer.OmaniMobileLocalDigits`, `ErrorCodes.AccountNotFound`. |
+| `appsettings.json` / `.Development.json` | `Firebase` section → `PhoneVerification { RequiredOnRegister, TokenMinutes }` (Development: not required). Rate limits: − login/check, login/phone; + register/otp 5/min & 20/h, register/otp/verify 10/min. |
+| `README.md` | "Phone sign-in (Firebase)" replaced by "Phone verification for registration". |
+| Tests | − `FirebasePhoneTokenVerifierTests`, `LoginWithVerifiedPhoneCommandTests`; + `RegistrationOtpTests`, `PhoneVerificationTokenServiceTests`; `PhoneAuthEndpointsTests` rewritten around the real OTP → token → register flow; `AuthTestSupport` fakes replaced (`FakePhoneVerificationTokens`, `RecordingOtpSender`). |
+
+### App (`ak_cars_mobil_app`)
+
+| File | Change |
+|---|---|
+| `pubspec.yaml`, `android/app/build.gradle.kts`, `android/settings.gradle.kts` | − `firebase_core`, `firebase_auth`, the google-services Gradle plugin. |
+| Deleted | `lib/firebase_options.dart`, `lib/core/firebase/`, `lib/data/services/firebase/`, `lib/data/services/phone_verification_service.dart`, `android/app/google-services.json` (+ the untracked `.bak`), `test/phone_auth_test_mode_test.dart`, `test/phone_verification_failure_test.dart`, `test/fakes/fake_phone_verification_service.dart`. |
+| `lib/config/app_config.dart`, `lib/core/error/app_exception.dart`, `lib/di/providers.dart` | − `phoneAuthTestMode`, `apiOtpFallbackAllowed`, `PhoneVerificationException/Failure`, `phoneVerificationServiceProvider`. |
+| `lib/data/services/auth_service.dart`, `api/api_auth_service.dart`, `repositories/auth_repository.dart`, `lib/state/auth_state.dart`, `lib/core/constants/api_endpoints.dart` | − `accountExists`, `loginWithVerifiedPhone`, `validateRegistration`; + `requestRegistrationOtp`, `verifyRegistrationOtp`. |
+| `lib/features/auth/auth_form_widgets.dart` | − `AuthChannel`/`AuthChannelSwitch`; + `AuthPhone.error` (one phone rule), `authCodeLength`, `authSendCodeMessage`, `authVerifyCodeMessage`. |
+| `lib/features/auth/login_screen.dart` | Phone only, API code only. |
+| `lib/features/auth/phone_code_sheet.dart` | `showPhoneCodeSheet(context, phone:)`: 4-digit API code, resend via `requestRegistrationOtp`, returns the token. |
+| `lib/features/auth/register_screen.dart` | Phone-first gate (`_verifyPhone`, `_PhoneVerifyBar`, `_phoneField`, `_detailFields`); email only in edit mode; `phone_token_invalid`/`phone_verification_required` on submit → re-verify. Removed the "phone always required, even when verifying by email" line. |
+| Tests | `phone_login_test`, `login_error_messages_test`, `phone_code_sheet_test` rewritten; `account_test` registration cases moved to the phone-first flow (+ taken number, closed sheet, wrong code, change verified number, no email field); `api_auth_service_phone_test`, `session_refresh_test`, `translation_coverage_test`, `fakes/mock_auth_service.dart`, `fakes/fakes.dart` updated. |
+
+### Verified
+
+- API: `dotnet test` — **1107 passed, 0 failed**.
+- App: `flutter analyze` — no issues; `flutter test` — **713 passed**.
+- `dotnet ef database update` applied `AddOtpPurpose` to the local SQLEXPRESS `AKCarsMobileDb`.
+- Live HTTP against the API on `https://localhost:7391` (Development, `Sms:Provider=Log`, verification required): send code 204; landline 400; wrong code 401; right code 200 + token; same code again 401; token on another number 422 mismatch; forged token 401; no token 422; login for unregistered number 404; `/login/phone` 404; verification token as a bearer 401. No account was created.
+
+### Not verified
+
+- **No real Twilio SMS was sent** and the app was not run on a device — the flow was checked through widget tests and the Log gateway only. Before shipping, run the API with the `https (Twilio)` launch profile and register/log in once on a phone.
+- The staging/production database still needs `AddOtpPurpose` applied; until it is, every login code request fails (the column does not exist).
+- `flutter pub get` was run on Windows only; iOS pods were not refreshed (`cd ios && pod install` on a Mac).
+
+### Known, left alone
+
+- "My details" still saves a changed phone number with no re-verification (`PUT /user/profile`). With login being phone-only, that lets a signed-in user move their account to a number they do not hold. Worth gating behind the same OTP.
+- `/auth/login` still accepts an e-mail identifier server-side (it sends nothing); only the app stopped offering it.
+- `README.md` still lists Firebase Cloud Messaging under Push; push has been SignalR since before this change.
+
+---
+
 ## 2026-09-16 · Job workspace for workshops, and founder funding queue + performance table
 
 **Baseline:** the entry below, uncommitted. API side: `AKCarsMobileAPI`, migration `20260915164614_AddJobWorkspace` (see `docs/WORKSHOP_DASHBOARD_PLAN.md`).

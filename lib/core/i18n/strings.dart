@@ -225,7 +225,7 @@ class S {
   /// Section 1. Named for the question it answers rather than for the objects
   /// it lists: the cards are the user's cars, but the point of them is what
   /// each car needs next.
-  String get carStatusTitle => t('حالة سيارتي', 'My car status');
+  String get carStatusTitle => t('نبض سيارتك', "Your car's pulse");
   String get myCarsTitle => t('سياراتي', 'My cars');
   String get addCar => t('أضف سيارة', 'Add a car');
 

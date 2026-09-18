@@ -643,7 +643,9 @@ class ServiceDetailScreen extends ConsumerWidget {
                   const SizedBox(height: 4),
                   Text(
                     showProvider
-                        ? '${o.provider.distanceKm} ${s.km}'
+                        ? (o.provider.knownDistanceKm == null
+                            ? s.approvedBadge
+                            : '${o.provider.distanceKm} ${s.km}')
                         : (o.durationMin != null
                             ? s.t('${o.durationMin} دقيقة', '${o.durationMin} min')
                             : s.t('حسب العمل', 'Open-ended')),

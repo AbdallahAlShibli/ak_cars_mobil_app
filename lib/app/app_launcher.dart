@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'ak_cars_app.dart';
 import 'bootstrap.dart';
 import 'boot_failure_screen.dart';
+import 'launch_screen.dart';
 
 /// How the app gets from `main()` to a first frame — **always**.
 ///
@@ -36,6 +37,11 @@ abstract final class AppLauncher {
     // Called before the first `await` so a failure that happens *during* the
     // bootstrap still has a binding to run the failure screen on.
     WidgetsFlutterBinding.ensureInitialized();
+    // A frame before anything is awaited, so Android's own launch screen goes
+    // at once and whatever start-up waits on below happens on a screen the
+    // app controls — see [LaunchScreenApp]. A retry already has the failure
+    // screen's "Trying…" up, which says more than a logo.
+    if (attempt == 1) runApp(const LaunchScreenApp());
     try {
       // The outermost guarantee: however the bootstrap is put together, and
       // whatever it decides to wait on, it gets this long to produce a
@@ -47,34 +53,39 @@ abstract final class AppLauncher {
           child: const AkCarsApp(),
         ),
       );
+      var failed = false;
+      void failWith(Object error, StackTrace stack) {
+        if (failed) return;
+        failed = true;
+        _showFailure(
+          error,
+          stack,
+          createContainer: createContainer,
+          timeout: timeout,
+          attempt: attempt,
+        );
+        // Once the frame that still reads the container is gone.
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => container.dispose(),
+        );
+      }
+
       // What start-up deliberately left for later — the live refresh after a
       // start-up painted from disk, and every workshop's slots — waits for
-      // the first frame, so it can never hold the launch screen up.
+      // the first frame, so it can never hold the launch screen up. A start-up
+      // painted from disk whose server turns out to be unreachable fails
+      // here: showing last run's data as if all were well would hide that
+      // nothing on screen can be refreshed, booked or paid for.
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => unawaited(AppBootstrap.completeWarmUp(container)),
+        (_) => unawaited(
+          AppBootstrap.completeWarmUp(container).catchError(failWith),
+        ),
       );
       // The first load carries on after the app is up (see
       // `AppBootstrap.firstFrameBudget`). If it fails with nothing stored to
       // show, the app is an empty shell — exactly the "wrong app" start-up has
-      // always refused to present — so the failure screen takes over, and the
-      // container goes once the frame that still reads it is gone.
-      unawaited(
-        AppBootstrap.startupSettled(container).catchError((
-          Object error,
-          StackTrace stack,
-        ) {
-          _showFailure(
-            error,
-            stack,
-            createContainer: createContainer,
-            timeout: timeout,
-            attempt: attempt,
-          );
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => container.dispose(),
-          );
-        }),
-      );
+      // always refused to present — so the failure screen takes over.
+      unawaited(AppBootstrap.startupSettled(container).catchError(failWith));
     } catch (error, stack) {
       _showFailure(
         error,

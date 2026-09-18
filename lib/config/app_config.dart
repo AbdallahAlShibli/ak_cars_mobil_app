@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kReleaseMode;
 
 import 'app_environment.dart';
 
@@ -105,50 +104,6 @@ class AppConfig {
   /// `core/widgets/car_artwork.dart`.
   static const bool useRemoteVehicleImages =
       bool.fromEnvironment('AK_REMOTE_CAR_IMAGES', defaultValue: true);
-
-  /// Phone sign-in without the real reCAPTCHA (web) or Play Integrity / APNs
-  /// check (mobile): Firebase shows a mock instead, and **only the test phone
-  /// numbers set in the Firebase console work** — real numbers are refused.
-  ///
-  /// For development and demos:
-  /// `--dart-define=AK_PHONE_AUTH_TEST_MODE=true`. Ignored in production (see
-  /// [phoneAuthTestModeAllowed]), so a stray define in a release command
-  /// cannot switch app verification off for real users.
-  bool get phoneAuthTestMode => phoneAuthTestModeAllowed(
-    environment,
-    requested: _phoneAuthTestModeRequested,
-  );
-
-  static const _phoneAuthTestModeRequested =
-      bool.fromEnvironment('AK_PHONE_AUTH_TEST_MODE', defaultValue: false);
-
-  /// Whether a requested phone-auth test mode may take effect in [environment].
-  static bool phoneAuthTestModeAllowed(
-    AppEnvironment environment, {
-    required bool requested,
-  }) => requested && environment != AppEnvironment.production;
-
-  /// Whether phone login and registration may fall back to the API's own
-  /// code when Firebase reports that SMS sign-in is not set up for this app
-  /// (`PhoneVerificationFailure.notConfigured`: billing off, SMS region
-  /// blocked, build not registered).
-  ///
-  /// Development debug builds only. The API's own code is texted by whatever
-  /// `Sms:Provider` it runs — `Log` in development, which writes the code to
-  /// the API log — so this keeps a developer able to sign in while the
-  /// Firebase console is being set up. Production and staging keep Firebase
-  /// as the only proof of a phone, and a release build never falls back
-  /// whatever `AK_ENV` says (see [apiOtpFallbackAllowedFor]).
-  bool get apiOtpFallbackAllowed =>
-      apiOtpFallbackAllowedFor(environment, releaseBuild: kReleaseMode);
-
-  /// Two locks, like `DioApiClient`'s dev-certificate trust: the environment,
-  /// and the build mode — an `AK_ENV` define that fails open cannot turn this
-  /// on in a release build.
-  static bool apiOtpFallbackAllowedFor(
-    AppEnvironment environment, {
-    required bool releaseBuild,
-  }) => environment.isDevelopment && !releaseBuild;
 
   /// Configuration for the environment this binary was built for.
   ///

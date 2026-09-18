@@ -63,8 +63,6 @@ import '../data/repositories/service_marketplace_repository.dart';
 import '../data/repositories/shop_repository.dart';
 import '../data/repositories/workshop_repository.dart';
 import '../data/services/auth_service.dart';
-import '../data/services/firebase/firebase_phone_verification_service.dart';
-import '../data/services/phone_verification_service.dart';
 import '../data/services/cars_service.dart';
 import '../data/services/catalog_service.dart';
 import '../data/services/challenge_service.dart';
@@ -109,16 +107,6 @@ final pushServiceProvider = Provider<PushService>((ref) {
   ref.onDispose(push.dispose);
   return push;
 });
-
-/// Proves a phone number by SMS for login and registration. Firebase
-/// Authentication sends and checks the code; see [PhoneVerificationService].
-final phoneVerificationServiceProvider = Provider<PhoneVerificationService>(
-  (ref) => FirebasePhoneVerificationService(
-    disableAppVerificationForTesting: ref
-        .watch(appConfigProvider)
-        .phoneAuthTestMode,
-  ),
-);
 
 /// The SignalR connection backing live chat delivery — a single connection
 /// shared by every open thread. Only constructed when the API path is bound;

@@ -14,6 +14,7 @@ import '../../core/widgets/widgets.dart';
 import '../../data/models/models.dart';
 import '../../state/app_state.dart';
 import '../../state/startup_state.dart';
+import '../garage/my_cars_screen.dart' show showMileageSheet;
 import 'home_widgets.dart';
 
 /// The app's front page.
@@ -89,6 +90,7 @@ class HomeScreen extends ConsumerWidget {
     final auth = ref.watch(authProvider);
     final cars = ref.watch(garageProvider);
     final firstName = auth.profile?.name.split(' ').first;
+    final primaryCar = cars.firstOrNull;
 
     // Section 3 has three possible bodies and can end up with none of them —
     // a brand-new marketplace with no approved workshop at all.
@@ -115,7 +117,11 @@ class HomeScreen extends ConsumerWidget {
       // ---- supporting material, most personal first
       if (ref.watch(homeRecommendationsProvider).isNotEmpty)
         const HomeRecommendationsRail(),
-      if (ref.watch(mostBookedServicesProvider).isNotEmpty)
+      // One service rail, not two: the recommendations already rank popular
+      // work by the same booking counts, so the aggregate list only stands in
+      // when there is nothing car-specific to suggest.
+      if (ref.watch(homeRecommendationsProvider).isEmpty &&
+          ref.watch(mostBookedServicesProvider).isNotEmpty)
         const HomeMostBookedSection(),
       if (ref.watch(homeAnnouncementsProvider).isNotEmpty)
         const HomeAnnouncementsRail(),
@@ -247,6 +253,16 @@ class HomeScreen extends ConsumerWidget {
                     onTap: () => context.go('/services'),
                   ),
                   const SizedBox(width: AppSpacing.md),
+                  // The between-services habit: every reading sharpens the
+                  // countdowns on the car card above.
+                  if (primaryCar != null) ...[
+                    _ActionTile(
+                      icon: LucideIcons.gauge,
+                      label: s.t('حدّث العداد', 'Update mileage'),
+                      onTap: () => showMileageSheet(context, ref, primaryCar),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                  ],
                   _ActionTile(
                     icon: LucideIcons.zap,
                     label: s.roadside,
@@ -421,14 +437,16 @@ class _ChallengeStrip extends ConsumerWidget {
               ],
             ),
           ),
-          SandStatusPill(
-            s.t(
-              '${challenge.streakWeeks} أسابيع',
-              '${challenge.streakWeeks}-week streak',
+          // "0 weeks" is not a streak — the pill appears with the first one.
+          if (challenge.streakWeeks > 0)
+            SandStatusPill(
+              s.t(
+                '${challenge.streakWeeks} أسابيع',
+                '${challenge.streakWeeks}-week streak',
+              ),
+              background: ak.amberBgSoft,
+              foreground: ak.amberText,
             ),
-            background: ak.amberBgSoft,
-            foreground: ak.amberText,
-          ),
         ],
       ),
     );

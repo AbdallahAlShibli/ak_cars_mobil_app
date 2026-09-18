@@ -11,29 +11,21 @@ import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/widgets.dart';
-import '../../data/services/phone_verification_service.dart';
-import '../../di/providers.dart';
 import '../../state/app_state.dart';
 import 'auth_form_widgets.dart';
-import 'phone_code_sheet.dart';
 
 /// Sign back in to an account that already registered.
 ///
 /// Registration and login used to be the same screen wearing two hats — a
 /// returning user retyped their name, address and governorate just to prove
 /// they were still themselves. This screen asks for exactly one thing: the
-/// phone or email the account was registered with. Prove it with a code and
-/// the session starts with everything already on file, [AccountKind] and all
-/// — the profile decides what the rest of the app shows, this screen only
-/// decides *whose* profile that is.
+/// phone number the account was registered with. Prove it with the code the
+/// API texts to it and the session starts with everything already on file,
+/// [AccountKind] and all — the profile decides what the rest of the app shows,
+/// this screen only decides *whose* profile that is.
 ///
-/// The phone/email choice is explicit — a `_ChannelCard` pair, same shape as
-/// the register screen's OTP-channel picker — rather than one field that
-/// guesses from an `@`. A guessed field cannot validate: it has no fixed
-/// shape to check typing against until the user commits to which kind of
-/// value they're typing, and a wrong guess mid-type (an Oman number typed
-/// digit-by-digit briefly looks like nothing in particular) flickered the
-/// icon and hint under the user's hands.
+/// Phone only, for now. Email sign-in was offered beside it, but the API has
+/// no e-mail sender, so a code "sent" to an address never arrived.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -45,10 +37,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// How long before "resend" becomes available again.
   static const _resendSeconds = 30;
 
-  AuthChannel _channel = AuthChannel.phone;
-
   final _phone = TextEditingController();
-  final _email = TextEditingController();
   final _otp = TextEditingController();
 
   bool _sending = false;
@@ -57,110 +46,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   int _resendIn = 0;
   Timer? _resendTimer;
 
-  /// Field key ('phone' | 'email' | 'otp') → message, shown under the
-  /// offending row — same map shape the register screen uses.
+  /// Field key ('phone' | 'otp') → message, shown under the offending row —
+  /// same map shape the register screen uses.
   final _errors = <String, String>{};
-
-  /// The Firebase code currently out for the phone channel.
-  PhoneVerificationSession? _phoneSession;
-
-  /// Set once Firebase has said SMS sign-in is not set up for this app
-  /// (billing off, region blocked, build not registered) in a build allowed
-  /// to fall back — see `AppConfig.apiOtpFallbackAllowed`. Phone login then
-  /// uses the API's own code for the rest of this screen, as desktop does.
-  bool _firebaseSmsNotSetUp = false;
-
-  /// Phone login proves the number through Firebase wherever that can run
-  /// (Android, iOS, web). Email, and phone on desktop, use the API's own code.
-  bool get _phoneViaFirebase =>
-      _channel == AuthChannel.phone &&
-      !_firebaseSmsNotSetUp &&
-      ref.read(phoneVerificationServiceProvider).isSupported;
-
-  /// Firebase's SMS codes are six digits; the API's own are four.
-  int get _codeLength => _phoneViaFirebase ? 6 : 4;
 
   @override
   void dispose() {
     _resendTimer?.cancel();
     _phone.dispose();
-    _email.dispose();
     _otp.dispose();
     super.dispose();
   }
 
-  // ------------------------------------------------------------ identifier
-
-  /// The address a code is sent to and matched against — the full E.164-ish
-  /// phone for the phone channel, the trimmed email for the other. Never
-  /// built from raw field text directly, so a stray space in an email or an
-  /// unformatted phone can't silently reach the repository.
-  String get _identifier => _channel == AuthChannel.phone
-      ? AuthPhone.full(AuthPhone.local(_phone.text))
-      : _email.text.trim().toLowerCase();
-
-  void _switchChannel(AuthChannel channel) {
-    if (_channel == channel) return;
-    HapticFeedback.selectionClick();
-    setState(() {
-      _channel = channel;
-      // A code already sent proves the *other* address; switching voids it
-      // rather than leaving a stale "sent to" line on screen.
-      _otpSent = false;
-      _phoneSession = null;
-      _otp.clear();
-      _errors.remove('otp');
-      _errors.remove('phone');
-      _errors.remove('email');
-    });
-    _resendTimer?.cancel();
-  }
-
-  // ------------------------------------------------------------ validation
-
-  String? _phoneError(S s) {
-    final local = AuthPhone.local(_phone.text);
-    if (local.isEmpty) {
-      return s.t('رقم الهاتف مطلوب', 'Phone number is required');
-    }
-    if (local.length != 8) {
-      return s.t('رقم عُماني من 8 أرقام', 'An 8-digit Oman number');
-    }
-    // The code arrives by SMS, so a landline (2x) cannot receive it.
-    if (!RegExp(r'^[79]').hasMatch(local)) {
-      return s.t('رقم هاتف نقّال عُماني يبدأ بـ 7 أو 9',
-          'An Oman mobile number starting with 7 or 9');
-    }
-    return null;
-  }
-
-  String? _emailError(S s) {
-    final email = _email.text.trim();
-    if (email.isEmpty) {
-      return s.t('البريد الإلكتروني مطلوب', 'Email is required');
-    }
-    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-      return s.t('صيغة بريد غير صحيحة', 'That does not look like an email');
-    }
-    return null;
-  }
-
-  /// The active channel's field error, or null when it validates.
-  String? get _currentFieldError =>
-      _channel == AuthChannel.phone ? _errors['phone'] : _errors['email'];
-
-  bool _validateIdentifier(S s) {
-    final error =
-        _channel == AuthChannel.phone ? _phoneError(s) : _emailError(s);
-    setState(() {
-      if (error == null) {
-        _errors.remove(_channel == AuthChannel.phone ? 'phone' : 'email');
-      } else {
-        _errors[_channel == AuthChannel.phone ? 'phone' : 'email'] = error;
-      }
-    });
-    return error == null;
-  }
+  /// The number a code is sent to and matched against, as accounts store it.
+  /// Never the raw field text, so an unformatted phone can't silently reach
+  /// the repository.
+  String get _identifier => AuthPhone.full(AuthPhone.local(_phone.text));
 
   void _clearFieldError(String key) {
     if (_errors.containsKey(key)) setState(() => _errors.remove(key));
@@ -170,65 +71,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _sendCode() async {
     final s = S.of(context);
-    if (!_validateIdentifier(s)) {
+    // A resend from the code step reports under the code: the phone field is
+    // not on screen there.
+    final errorKey = _otpSent ? 'otp' : 'phone';
+    final invalid = AuthPhone.error(s, _phone.text);
+    if (invalid != null) {
       HapticFeedback.heavyImpact();
+      setState(() => _errors[errorKey] = invalid);
       return;
     }
 
     final identifier = _identifier;
-    final viaFirebase = _phoneViaFirebase;
-    // A resend from the code step reports under the code: the identifier
-    // field is not on screen there.
-    final errorKey = _otpSent
-        ? 'otp'
-        : (_channel == AuthChannel.phone ? 'phone' : 'email');
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _errors.remove(errorKey);
+    });
     try {
-      final notifier = ref.read(authProvider.notifier);
-      // Firebase texts the code itself, so the account is looked up first
-      // without sending anything: an unregistered number is offered
-      // registration instead of being charged an SMS it cannot use.
-      final found = viaFirebase
-          ? await notifier.accountExists(identifier)
-          : await notifier.requestOtp(identifier);
+      final found = await ref
+          .read(authProvider.notifier)
+          .requestOtp(identifier);
       if (!mounted) return;
       if (!found) {
         HapticFeedback.heavyImpact();
-        setState(() => _errors[errorKey] = _channel == AuthChannel.phone
-            ? s.t('لا يوجد حساب بهذا الرقم', 'No account with that number')
-            : s.t('لا يوجد حساب بهذا البريد', 'No account with that email'));
+        setState(
+          () => _errors[errorKey] = s.t(
+            'لا يوجد حساب بهذا الرقم',
+            'No account with that number',
+          ),
+        );
         return;
-      }
-
-      if (viaFirebase) {
-        PhoneVerificationSession? session;
-        try {
-          session = await ref
-              .read(phoneVerificationServiceProvider)
-              .sendCode(AuthPhone.e164(AuthPhone.local(_phone.text)));
-        } on PhoneVerificationException catch (error) {
-          if (error.reason != PhoneVerificationFailure.notConfigured ||
-              !ref.read(appConfigProvider).apiOtpFallbackAllowed) {
-            rethrow;
-          }
-          // Firebase is not set up to text this number yet (billing off,
-          // region blocked, build not registered). A development debug build
-          // signs in with the API's own code instead, for the rest of this
-          // screen — the account was already found above, so this only sends.
-          await notifier.requestOtp(identifier);
-          if (!mounted) return;
-          _firebaseSmsNotSetUp = true;
-        }
-        if (!mounted) return;
-        // Android verified the number itself; there is no code to type.
-        final alreadyVerified = session?.idToken;
-        if (alreadyVerified != null) {
-          await notifier.loginWithVerifiedPhone(alreadyVerified);
-          if (!mounted) return;
-          _welcomeBack(s);
-          return;
-        }
-        _phoneSession = session;
       }
 
       HapticFeedback.mediumImpact();
@@ -240,45 +111,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _startResendCountdown();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_channel == AuthChannel.email
-              ? s.t('أُرسل الرمز إلى $identifier', 'Code sent to $identifier')
-              : _firebaseSmsNotSetUp
-                  // One line on purpose: a two-line bar covers the verify
-                  // button. The reason is on the code step itself.
-                  ? s.t('أُرسل رمز الخادم إلى $identifier',
-                      'API code sent to $identifier')
-                  : s.t('أُرسل الرمز عبر SMS إلى $identifier',
-                      'Code sent by SMS to $identifier')),
+          content: Text(
+            s.t(
+              'أُرسل الرمز عبر SMS إلى $identifier',
+              'Code sent by SMS to $identifier',
+            ),
+          ),
         ),
       );
-    } on PhoneVerificationException catch (error) {
-      if (!mounted) return;
-      HapticFeedback.heavyImpact();
-      setState(() => _errors[errorKey] = phoneVerificationMessage(s, error));
     } on AppException catch (error) {
       if (!mounted) return;
-      setState(() => _errors[errorKey] = _sendMessage(s, error));
+      HapticFeedback.heavyImpact();
+      setState(() => _errors[errorKey] = authSendCodeMessage(s, error));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
-  /// What to put under the phone/email field when the code could not be sent.
-  ///
-  /// `POST /auth/login` is capped at five per minute per IP — it is anonymous
-  /// and it spends money on SMS — so "try again" is actively wrong advice
-  /// there: trying again immediately is the one thing guaranteed to fail.
-  String _sendMessage(S s, AppException error) => switch (error) {
-        RateLimitedException() => s.t(
-            'طلبات كثيرة — انتظر دقيقة ثم أعد المحاولة',
-            'Too many requests — wait a minute and try again',
-          ),
-        NetworkException() || RequestTimeoutException() => s.t(
-            'تعذّر الوصول إلى الخادم — تحقّق من اتصالك',
-            'Could not reach the server — check your connection',
-          ),
-        _ => s.t('تعذّر إرسال الرمز — حاول مرة أخرى',
-            'Could not send the code — try again'),
-      };
 
   void _startResendCountdown() {
     _resendTimer?.cancel();
@@ -293,37 +141,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _verify() async {
     final s = S.of(context);
     final code = _otp.text.trim();
-    // Only the shape is checked here. Whether the code is right is for
-    // whoever sent it: Firebase for a phone, the API for an email. Anything
-    // stricter would reject a genuine code before it was ever tried.
-    if (_phoneViaFirebase ? code.length != _codeLength : code.isEmpty) {
+    // Only the shape is checked here. Whether the code is right is the API's
+    // to say; anything stricter would reject a genuine code before it was
+    // ever tried.
+    if (code.length != authCodeLength) {
       HapticFeedback.heavyImpact();
-      setState(() => _errors['otp'] = s.t(
-          'أدخل الرمز المكوّن من $_codeLength أرقام',
-          'Enter the $_codeLength-digit code'));
+      setState(
+        () => _errors['otp'] = s.t(
+          'أدخل الرمز المكوّن من $authCodeLength أرقام',
+          'Enter the $authCodeLength-digit code',
+        ),
+      );
       return;
     }
 
     setState(() => _verifying = true);
     try {
-      final notifier = ref.read(authProvider.notifier);
-      final session = _phoneSession;
-      if (_phoneViaFirebase && session != null) {
-        // Firebase checks the code; the API then checks Firebase's token and
-        // finds the account. Neither step takes the app's word for anything.
-        final idToken = await ref
-            .read(phoneVerificationServiceProvider)
-            .confirmCode(session, code);
-        await notifier.loginWithVerifiedPhone(idToken);
-      } else {
-        await notifier.login(_identifier, code);
-      }
+      await ref.read(authProvider.notifier).login(_identifier, code);
       if (!mounted) return;
       _welcomeBack(s);
-    } on PhoneVerificationException catch (error) {
-      if (!mounted) return;
-      HapticFeedback.heavyImpact();
-      setState(() => _errors['otp'] = phoneVerificationMessage(s, error));
     } on AppException catch (error) {
       if (!mounted) return;
       HapticFeedback.heavyImpact();
@@ -333,7 +169,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  /// Leaves the screen once a session has started, however it was proved.
+  /// Leaves the screen once a session has started.
   void _welcomeBack(S s) {
     HapticFeedback.heavyImpact();
     final messenger = ScaffoldMessenger.of(context);
@@ -346,59 +182,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       SnackBar(content: Text(s.t('مرحباً بعودتك', 'Welcome back'))),
     );
   }
+
   /// What to put under the code field when verification fails.
   ///
   /// Every one of these used to read "could not log in — try again", which is
   /// the least useful thing the screen could say: it gives a person who
   /// mistyped one digit no reason to look at what they typed, and a person
   /// who has burned all five attempts no reason to ask for a new code.
-  ///
-  /// The server deliberately does *not* distinguish "wrong code" from
-  /// "expired" from "too many attempts" — all three answer
-  /// `otp_invalid_or_expired`, so an attacker cannot use the message to learn
-  /// whether a code was ever right. This copy respects that: it names the two
-  /// things the user can actually do something about without claiming to know
-  /// which one happened.
   String _verifyMessage(S s, AppException error) => switch (error) {
-        UnauthorizedException(code: 'otp_invalid_or_expired') => s.t(
-            'الرمز غير صحيح أو انتهت صلاحيته — اطلب رمزاً جديداً',
-            'That code is wrong or has expired — request a new one',
-          ),
-        // Firebase accepted the code but the API would not accept its token
-        // (expired before it arrived): only a fresh code fixes that.
-        UnauthorizedException(code: 'phone_token_invalid') => s.t(
-            'انتهت صلاحية التحقق — اطلب رمزاً جديداً',
-            'The verification has expired — ask for a new code',
-          ),
-        // The account went away between the check and the code.
-        NotFoundException() => s.t(
-            'لا يوجد حساب بهذا الرقم',
-            'No account with that number',
-          ),
-        RateLimitedException() => s.t(
-            'محاولات كثيرة — انتظر دقيقة ثم أعد المحاولة',
-            'Too many attempts — wait a minute and try again',
-          ),
-        NetworkException() || RequestTimeoutException() => s.t(
-            'تعذّر الوصول إلى الخادم — تحقّق من اتصالك',
-            'Could not reach the server — check your connection',
-          ),
-        _ => s.t('تعذّر تسجيل الدخول — حاول مرة أخرى',
-            'Could not log in — try again'),
-      };
+    // The account went away between the send and the code.
+    NotFoundException() => s.t(
+      'لا يوجد حساب بهذا الرقم',
+      'No account with that number',
+    ),
+    _ => authVerifyCodeMessage(
+      s,
+      error,
+      fallback: s.t(
+        'تعذّر تسجيل الدخول — حاول مرة أخرى',
+        'Could not log in — try again',
+      ),
+    ),
+  };
 
-  /// Back out of the code step to correct the address it was sent to.
+  /// Back out of the code step to correct the number it was sent to.
   ///
-  /// The identifier field used to stay on screen, locked (`readOnly`), with
-  /// no way to unlock it — a mistyped digit meant leaving the screen and
-  /// coming back. Now the field is replaced by a summary of where the code
-  /// went, and this is the way back to it.
+  /// The phone field used to stay on screen, locked (`readOnly`), with no way
+  /// to unlock it — a mistyped digit meant leaving the screen and coming back.
+  /// Now the field is replaced by a summary of where the code went, and this
+  /// is the way back to it.
   void _editIdentifier() {
     HapticFeedback.selectionClick();
     _resendTimer?.cancel();
     setState(() {
       _otpSent = false;
-      _phoneSession = null;
       _resendIn = 0;
       _otp.clear();
       _errors.remove('otp');
@@ -421,10 +238,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             onBack: () => context.pop(),
             title: s.t('تسجيل الدخول', 'Log in'),
             subtitle: _otpSent
-                ? s.t('أدخل الرمز المكوّن من $_codeLength أرقام الذي أرسلناه إليك.',
-                    'Enter the $_codeLength-digit code we just sent you.')
-                : s.t('اختر كيف سجّلت حسابك، وسنرسل لك رمزاً لمرة واحدة.',
-                    "Choose how you registered, and we'll send you a one-time code."),
+                ? s.t(
+                    'أدخل الرمز المكوّن من $authCodeLength أرقام الذي أرسلناه إليك.',
+                    'Enter the $authCodeLength-digit code we just sent you.',
+                  )
+                : s.t(
+                    'أدخل رقم هاتفك المسجّل، وسنرسل لك رمزاً لمرة واحدة.',
+                    "Enter your registered phone number, and we'll text you a one-time code.",
+                  ),
           ),
           // Centred rather than top-aligned. The form is short, and pinning it
           // directly under the header left a wall of empty sand between it and
@@ -466,17 +287,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2.5, color: ak.onPrimary),
+                              strokeWidth: 2.5,
+                              color: ak.onPrimary,
+                            ),
                           )
-                        : Text(_otpSent
-                            ? s.t('تأكيد ودخول', 'Verify and log in')
-                            : s.t('إرسال الرمز', 'Send the code')),
+                        : Text(
+                            _otpSent
+                                ? s.t('تأكيد ودخول', 'Verify and log in')
+                                : s.t('إرسال الرمز', 'Send the code'),
+                          ),
                   ),
                   TextButton.icon(
                     onPressed: () => context.pushReplacement('/register'),
                     icon: const Icon(LucideIcons.userPlus, size: 15),
-                    label: Text(s.t('جديد على AK Cars؟ أنشئ حساباً',
-                        'New to AK Cars? Create an account')),
+                    label: Text(
+                      s.t(
+                        'جديد على AK Cars؟ أنشئ حساباً',
+                        'New to AK Cars? Create an account',
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -487,152 +316,108 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  /// Step one: which address, and what is it.
+  /// Step one: the phone number.
   Widget _identifierStep(AkColors ak, S s) => Column(
-        key: const ValueKey('identifier'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Entrance(
-            child: AuthChannelSwitch(
-              value: _channel,
-              onChanged: _switchChannel,
-            ),
+    key: const ValueKey('identifier'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Entrance(
+        child: Text(
+          s.t('سنرسل الرمز في رسالة SMS', "We'll text the code by SMS"),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11.5,
+            color: ak.inkFaint,
+            fontWeight: FontWeight.w600,
           ),
-          const SizedBox(height: 9),
-          Entrance(
-            delayMs: 40,
-            child: Text(
-              _channel == AuthChannel.phone
-                  ? s.t('سنرسل الرمز في رسالة SMS', "We'll text the code by SMS")
-                  : s.t('سنرسل الرمز إلى بريدك', "We'll email the code"),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11.5,
-                color: ak.inkFaint,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      Entrance(
+        delayMs: 40,
+        child: AuthFieldRow(
+          icon: LucideIcons.smartphone,
+          label: s.t('رقم الهاتف', 'Phone number'),
+          hint: '9200 1234',
+          prefix: '+968 ',
+          controller: _phone,
+          error: _errors['phone'],
+          keyboardType: TextInputType.phone,
+          numeric: true,
+          forceLtr: true,
+          autofocus: true,
+          formatters: const [OmanMobileFormatter()],
+          onChanged: (_) => _clearFieldError('phone'),
+        ),
+      ),
+      const SizedBox(height: 10),
+      Entrance(
+        delayMs: 120,
+        child: AuthNoticeCard(
+          icon: LucideIcons.shieldCheck,
+          background: ak.amberBgSoft,
+          foreground: ak.amberText,
+          message: s.t(
+            'حسابك — وما يظهر لك فيه — يبقى كما سجّلته: عميل أو ورشة.',
+            'Your account — and what you see in it — stays exactly as you registered it: customer or workshop.',
           ),
-          const SizedBox(height: 16),
-          Entrance(
-            delayMs: 80,
-            // Rebuilt from scratch (not just its content swapped) on every
-            // channel switch, via the `ValueKey` — the two channels are
-            // different fields with different formatters and keyboards, not
-            // the same field relabelled.
-            child: _channel == AuthChannel.phone
-                ? AuthFieldRow(
-                    key: const ValueKey('phone'),
-                    icon: LucideIcons.smartphone,
-                    label: s.t('رقم الهاتف', 'Phone number'),
-                    hint: '9200 1234',
-                    prefix: '+968 ',
-                    controller: _phone,
-                    error: _currentFieldError,
-                    keyboardType: TextInputType.phone,
-                    numeric: true,
-                    forceLtr: true,
-                    autofocus: true,
-                    formatters: const [OmanMobileFormatter()],
-                    onChanged: (_) => _clearFieldError('phone'),
-                  )
-                : AuthFieldRow(
-                    key: const ValueKey('email'),
-                    icon: LucideIcons.mail,
-                    label: s.t('البريد الإلكتروني', 'Email'),
-                    hint: 'name@example.om',
-                    controller: _email,
-                    error: _currentFieldError,
-                    keyboardType: TextInputType.emailAddress,
-                    autofocus: true,
-                    onChanged: (_) => _clearFieldError('email'),
-                  ),
-          ),
-          const SizedBox(height: 10),
-          Entrance(
-            delayMs: 120,
-            child: AuthNoticeCard(
-              icon: LucideIcons.shieldCheck,
-              background: ak.amberBgSoft,
-              foreground: ak.amberText,
-              message: s.t(
-                'حسابك — وما يظهر لك فيه — يبقى كما سجّلته: عميل أو ورشة.',
-                'Your account — and what you see in it — stays exactly as you registered it: customer or workshop.',
-              ),
-            ),
-          ),
-        ],
-      );
+        ),
+      ),
+    ],
+  );
 
   /// Step two: the code, and nothing else.
   ///
-  /// The gate notice and the channel switch are deliberately gone here —
+  /// The gate notice is deliberately gone here —
   /// there is exactly one thing to do on this step, and the address the code
   /// went to is the only context needed to do it.
   Widget _codeStep(AkColors ak, S s) => Column(
-        key: const ValueKey('code'),
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Entrance(
-            child: _SentToCard(target: _identifier, onEdit: _editIdentifier),
-          ),
-          // Only after a development build fell back from Firebase: say where
-          // this code comes from, because it is not the SMS the screen before
-          // promised, and in development it is in the API log, not a phone.
-          if (_firebaseSmsNotSetUp) ...[
-            const SizedBox(height: 10),
-            Entrance(
-              delayMs: 30,
-              child: AuthNoticeCard(
-                icon: LucideIcons.info,
-                background: ak.amberBgSoft,
-                foreground: ak.amberText,
-                message: s.t(
-                  'رسائل SMS عبر Firebase غير مُفعّلة بعد، لذلك تستخدم نسخة التطوير رمز الخادم المكوّن من 4 أرقام — تجده في سجل الخادم.',
-                  "Firebase SMS isn't set up yet, so this development build uses the API's own 4-digit code — it is in the API log.",
+    key: const ValueKey('code'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Entrance(
+        child: _SentToCard(target: _identifier, onEdit: _editIdentifier),
+      ),
+      const SizedBox(height: 18),
+      Entrance(
+        delayMs: 60,
+        child: AuthOtpBoxes(
+          controller: _otp,
+          length: authCodeLength,
+          error: _errors['otp'],
+          onChanged: (_) => _clearFieldError('otp'),
+        ),
+      ),
+      const SizedBox(height: 6),
+      // One centred element, not a label beside a button: the Arabic
+      // countdown is half again as long as the English one, and a Row
+      // holding both overflowed on a 402pt screen.
+      Entrance(
+        delayMs: 100,
+        child: Center(
+          child: _resendIn > 0
+              ? Text(
+                  s.t(
+                    'يمكنك طلب رمز جديد خلال $_resendIn ثانية',
+                    'You can ask for a new code in ${_resendIn}s',
+                  ),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
+                )
+              : TextButton.icon(
+                  onPressed: _sending ? null : _sendCode,
+                  icon: const Icon(LucideIcons.rotateCw, size: 15),
+                  label: Text(
+                    s.t('لم يصلك الرمز؟ أعد الإرسال', "Didn't get it? Resend"),
+                    style: const TextStyle(fontSize: 12.5),
+                  ),
                 ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 18),
-          Entrance(
-            delayMs: 60,
-            child: AuthOtpBoxes(
-              controller: _otp,
-              length: _codeLength,
-              error: _errors['otp'],
-              onChanged: (_) => _clearFieldError('otp'),
-            ),
-          ),
-          const SizedBox(height: 6),
-          // One centred element, not a label beside a button: the Arabic
-          // countdown is half again as long as the English one, and a Row
-          // holding both overflowed on a 402pt screen.
-          Entrance(
-            delayMs: 100,
-            child: Center(
-              child: _resendIn > 0
-                  ? Text(
-                      s.t('يمكنك طلب رمز جديد خلال $_resendIn ثانية',
-                          'You can ask for a new code in ${_resendIn}s'),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12.5, color: ak.inkFaint),
-                    )
-                  : TextButton.icon(
-                      onPressed: _sending ? null : _sendCode,
-                      icon: const Icon(LucideIcons.rotateCw, size: 15),
-                      label: Text(
-                        s.t('لم يصلك الرمز؟ أعد الإرسال',
-                            "Didn't get it? Resend"),
-                        style: const TextStyle(fontSize: 12.5),
-                      ),
-                    ),
-            ),
-          ),
-        ],
-      );
+        ),
+      ),
+    ],
+  );
 }
 
 /// Where the code went, plus the way back to change it.
@@ -655,7 +440,11 @@ class _SentToCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          MirroredIcon(LucideIcons.sendHorizontal, size: 18, color: ak.inkFaint),
+          MirroredIcon(
+            LucideIcons.sendHorizontal,
+            size: 18,
+            color: ak.inkFaint,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -669,7 +458,7 @@ class _SentToCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                // Neither a phone number nor an email is ever Arabic-ordered.
+                // A phone number is never Arabic-ordered.
                 Directionality(
                   textDirection: TextDirection.ltr,
                   child: Text(
@@ -677,7 +466,10 @@ class _SentToCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTheme.numeric(
-                        size: 13.5, weight: FontWeight.w700, color: ak.ink),
+                      size: 13.5,
+                      weight: FontWeight.w700,
+                      color: ak.ink,
+                    ),
                   ),
                 ),
               ],
@@ -763,10 +555,14 @@ class _LoginHero extends StatelessWidget {
                               color: Colors.white.withValues(alpha: 0.14),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.16)),
+                                color: Colors.white.withValues(alpha: 0.16),
+                              ),
                             ),
-                            child: const Icon(LucideIcons.keyRound,
-                                size: 22, color: Colors.white),
+                            child: const Icon(
+                              LucideIcons.keyRound,
+                              size: 22,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 14),

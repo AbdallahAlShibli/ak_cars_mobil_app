@@ -124,7 +124,7 @@ void main() {
 
     double y(String heading) => tester.getTopLeft(find.text(heading)).dy;
 
-    expect(y('My car status'), lessThan(y("This week's offers")));
+    expect(y("Your car's pulse"), lessThan(y("This week's offers")));
     expect(y("This week's offers"), lessThan(y('Trusted workshops')));
     // The supporting rails sit below all three.
     expect(y('Trusted workshops'), lessThan(y('Suggested for your car')));
@@ -184,6 +184,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Overdue — book now'), findsOneWidget);
+    // The pulse block agrees with the strip, and caps the score below half.
+    expect(find.text('Needs service now'), findsOneWidget);
+    expect(find.text('Care score'), findsOneWidget);
+    expect(find.text('Next step'), findsOneWidget);
     expect(find.text('Book now'), findsNothing);
   });
 
@@ -215,7 +219,7 @@ void main() {
     expect(find.text('88,000 km'), findsOneWidget);
     expect(find.text('Petrol'), findsOneWidget);
     // Section 1's heading, once there is a car to have a status.
-    expect(find.text('My car status'), findsOneWidget);
+    expect(find.text("Your car's pulse"), findsOneWidget);
     // A car with no logged service shows no countdown. It asks for the one
     // fact that would start one, naming the service rather than asking for
     // "your service history" in the abstract, and offers the button that opens
@@ -253,7 +257,10 @@ void main() {
     );
     expect(find.text('أهلاً بك!'), findsOneWidget);
     expect(find.text('Nissan Patrol 2019'), findsOneWidget);
-    expect(find.text('حالة سيارتي'), findsOneWidget);
+    expect(find.text('نبض سيارتك'), findsOneWidget);
+    // Mileage alone measures nothing — no record, so no care score.
+    expect(find.text('درجة العناية'), findsNothing);
+    expect(find.text('حدّث العداد'), findsOneWidget);
     expect(find.text('ورش موثوقة'), findsOneWidget);
   });
 

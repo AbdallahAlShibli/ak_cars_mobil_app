@@ -341,7 +341,8 @@ class _WorkshopOption extends ConsumerWidget {
                         fontSize: 13.5, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(
-                  '${locations.localized(provider.area, s.isAr)} · ${provider.distanceKm.toStringAsFixed(1)} ${s.km}',
+                  '${locations.localized(provider.area, s.isAr)}'
+                  '${provider.knownDistanceKm == null ? '' : ' · ${provider.distanceKm.toStringAsFixed(1)} ${s.km}'}',
                   style: TextStyle(fontSize: 11.5, color: ak.inkSub),
                 ),
                 const SizedBox(height: 5),

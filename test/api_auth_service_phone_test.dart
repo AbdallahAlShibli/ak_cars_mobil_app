@@ -41,10 +41,10 @@ void main() {
   test('register carries the phone verification token with the profile', () async {
     client.answers[ApiEndpoints.register] = session();
 
-    await auth.register(profile, phoneVerificationToken: 'firebase-id-token');
+    await auth.register(profile, phoneVerificationToken: 'phone-token-1');
 
     final body = client.bodyOf(ApiEndpoints.register);
-    expect(body['phoneVerificationToken'], 'firebase-id-token');
+    expect(body['phoneVerificationToken'], 'phone-token-1');
     expect(body['phone'], profile.phone);
   });
 
@@ -56,39 +56,68 @@ void main() {
     expect(client.bodyOf(ApiEndpoints.register).containsKey('phoneVerificationToken'), isFalse);
   });
 
-  test('the registration check posts the profile and saves no session', () async {
-    await auth.validateRegistration(profile);
+  test('asking for a registration code posts the phone and saves no session', () async {
+    await auth.requestRegistrationOtp(profile.phone);
 
-    expect(client.bodyOf(ApiEndpoints.registerCheck)['phone'], profile.phone);
+    expect(client.bodyOf(ApiEndpoints.registerOtp), {'phone': profile.phone});
     expect(await tokens.readAccessToken(), isNull);
   });
 
-  test('the registration check rethrows a refusal as the same exception', () async {
-    client.answers[ApiEndpoints.registerCheck] = const BusinessRuleException(
-      'An account with that phone or email already exists.',
+  test('a number that already has an account is rethrown as that refusal', () async {
+    client.answers[ApiEndpoints.registerOtp] = const BusinessRuleException(
+      'An account with that phone already exists.',
       code: 'account_already_exists',
     );
 
     expect(
-      () => auth.validateRegistration(profile),
+      () => auth.requestRegistrationOtp(profile.phone),
       throwsA(isA<BusinessRuleException>()
           .having((e) => e.code, 'code', 'account_already_exists')),
     );
   });
 
-  test('account check reads 204 as yes and 404 as no', () async {
-    expect(await auth.accountExists('+968 9200 0009'), isTrue);
+  test('a correct registration code returns the verification token and no session', () async {
+    client.answers[ApiEndpoints.registerOtpVerify] = {
+      'phoneVerificationToken': 'phone-token-1',
+      'expiresIn': 1800,
+    };
 
-    client.answers[ApiEndpoints.loginCheck] = const NotFoundException('none');
-    expect(await auth.accountExists('+968 9200 0001'), isFalse);
+    final token = await auth.verifyRegistrationOtp(profile.phone, '4821');
+
+    expect(client.bodyOf(ApiEndpoints.registerOtpVerify), {'phone': profile.phone, 'code': '4821'});
+    expect(token, 'phone-token-1');
+    expect(await tokens.readAccessToken(), isNull);
   });
 
-  test('phone login trades the Firebase token for a stored session', () async {
-    client.answers[ApiEndpoints.loginPhone] = session();
+  test('a wrong registration code is rethrown for the sheet to word', () async {
+    client.answers[ApiEndpoints.registerOtpVerify] = const UnauthorizedException(
+      'Wrong or expired code.',
+      code: 'otp_invalid_or_expired',
+    );
 
-    final user = await auth.loginWithVerifiedPhone('firebase-id-token');
+    expect(
+      () => auth.verifyRegistrationOtp(profile.phone, '0000'),
+      throwsA(isA<UnauthorizedException>()
+          .having((e) => e.code, 'code', 'otp_invalid_or_expired')),
+    );
+  });
 
-    expect(client.bodyOf(ApiEndpoints.loginPhone), {'idToken': 'firebase-id-token'});
+  test('a profile save carries the new phone\'s verification token only when given one', () async {
+    client.putAnswer = {...profile.toJson(), 'id': 'user-1'};
+
+    await auth.updateProfile(profile);
+    expect((client.puts[ApiEndpoints.updateProfile]! as Map).containsKey('phoneVerificationToken'), isFalse);
+
+    await auth.updateProfile(profile, phoneVerificationToken: 'phone-token-2');
+    expect((client.puts[ApiEndpoints.updateProfile]! as Map)['phoneVerificationToken'], 'phone-token-2');
+  });
+
+  test('phone login posts the number and code and stores the session', () async {
+    client.answers[ApiEndpoints.loginVerify] = session();
+
+    final user = await auth.login(profile.phone, '4821');
+
+    expect(client.bodyOf(ApiEndpoints.loginVerify), {'identifier': profile.phone, 'code': '4821'});
     expect(user.id, 'user-1');
     expect(await tokens.readAccessToken(), 'access-1');
   });
@@ -120,9 +149,14 @@ class _RecordingApiClient implements ApiClient {
   Future<JsonMap> get(String path, {Map<String, dynamic>? queryParameters, Map<String, String>? headers}) =>
       throw UnimplementedError(path);
 
+  JsonMap putAnswer = {};
+  final puts = <String, Object?>{};
+
   @override
-  Future<JsonMap> put(String path, {Object? body, Map<String, dynamic>? queryParameters, Map<String, String>? headers}) =>
-      throw UnimplementedError(path);
+  Future<JsonMap> put(String path, {Object? body, Map<String, dynamic>? queryParameters, Map<String, String>? headers}) async {
+    puts[path] = body;
+    return putAnswer;
+  }
 
   @override
   Future<JsonMap> patch(String path, {Object? body, Map<String, dynamic>? queryParameters, Map<String, String>? headers}) =>

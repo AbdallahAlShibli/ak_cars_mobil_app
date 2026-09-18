@@ -555,12 +555,21 @@ class _AuthServiceThatFailsToSignOut implements AuthService {
   }) => _inner.register(profile, phoneVerificationToken: phoneVerificationToken);
 
   @override
-  Future<void> validateRegistration(UserProfile profile) =>
-      _inner.validateRegistration(profile);
+  Future<void> requestRegistrationOtp(String phone) =>
+      _inner.requestRegistrationOtp(phone);
 
   @override
-  Future<UserProfile> updateProfile(UserProfile profile) =>
-      _inner.updateProfile(profile);
+  Future<String> verifyRegistrationOtp(String phone, String code) =>
+      _inner.verifyRegistrationOtp(phone, code);
+
+  @override
+  Future<UserProfile> updateProfile(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) => _inner.updateProfile(
+    profile,
+    phoneVerificationToken: phoneVerificationToken,
+  );
 
   @override
   Future<bool> requestOtp(String identifier) => _inner.requestOtp(identifier);
@@ -568,14 +577,6 @@ class _AuthServiceThatFailsToSignOut implements AuthService {
   @override
   Future<UserProfile> login(String identifier, String code) =>
       _inner.login(identifier, code);
-
-  @override
-  Future<bool> accountExists(String identifier) =>
-      _inner.accountExists(identifier);
-
-  @override
-  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) =>
-      _inner.loginWithVerifiedPhone(firebaseIdToken);
 }
 
 /// [MockAuthService] plus the two side effects only `ApiAuthService` carries
@@ -623,12 +624,21 @@ class _AuthServiceThatClearsTokensOnSignOut implements AuthService {
   );
 
   @override
-  Future<void> validateRegistration(UserProfile profile) =>
-      _inner.validateRegistration(profile);
+  Future<void> requestRegistrationOtp(String phone) =>
+      _inner.requestRegistrationOtp(phone);
 
   @override
-  Future<UserProfile> updateProfile(UserProfile profile) =>
-      _inner.updateProfile(profile);
+  Future<String> verifyRegistrationOtp(String phone, String code) =>
+      _inner.verifyRegistrationOtp(phone, code);
+
+  @override
+  Future<UserProfile> updateProfile(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) => _inner.updateProfile(
+    profile,
+    phoneVerificationToken: phoneVerificationToken,
+  );
 
   @override
   Future<bool> requestOtp(String identifier) => _inner.requestOtp(identifier);
@@ -636,14 +646,6 @@ class _AuthServiceThatClearsTokensOnSignOut implements AuthService {
   @override
   Future<UserProfile> login(String identifier, String code) =>
       _withToken(() => _inner.login(identifier, code));
-
-  @override
-  Future<bool> accountExists(String identifier) =>
-      _inner.accountExists(identifier);
-
-  @override
-  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) =>
-      _withToken(() => _inner.loginWithVerifiedPhone(firebaseIdToken));
 }
 
 /// An in-memory [GarageService], same shape as `guest_garage_test.dart`'s —

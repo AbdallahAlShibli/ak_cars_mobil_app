@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/constants/api_endpoints.dart';
 import '../core/error/app_exception.dart';
 import '../core/network/response_cache.dart';
 import '../core/utils/jwt_claims.dart';
@@ -185,12 +186,23 @@ abstract final class AppBootstrap {
   ///
   /// Best-effort: a screen that fails to refresh keeps what it painted with,
   /// and the booking screen asks for its own workshop's slots as it opens.
+  ///
+  /// **Except when the server cannot be reached at all.** A start-up painted
+  /// from disk never touched the network, so it looks healthy with the API
+  /// down; it is only here, asking the server first, that this shows. That
+  /// throws — the connection error, a timeout, or a 5xx such as the tunnel's
+  /// 502 in front of a stopped API — and `AppLauncher` shows the failure
+  /// screen instead of a stale app nothing in which can be refreshed, booked
+  /// or paid for.
   static Future<void> completeWarmUp(ProviderContainer container) async {
     try {
       await startupSettled(container);
     } catch (_) {
       // Nothing to complete: `AppLauncher` shows the failure screen.
       return;
+    }
+    if (container.read(bootServedFromCacheProvider)) {
+      await _ensureServerReachable(container);
     }
     try {
       if (container.read(bootServedFromCacheProvider)) {
@@ -213,6 +225,27 @@ abstract final class AppBootstrap {
         error: error,
         stackTrace: stack,
       );
+    }
+  }
+
+  /// Throws when the API cannot be reached; returns when it answered at all.
+  ///
+  /// Any answer that is not a server fault counts as reachable — a `404` from
+  /// an API deployed before `/health` existed included — because the question
+  /// is whether anything is there, not whether this route is. Reads retry
+  /// stalls (`AppConfig.readRetries`), so one slow round trip through the
+  /// tunnel does not fail start-up.
+  static Future<void> _ensureServerReachable(ProviderContainer container) async {
+    try {
+      await container.read(apiClientProvider).get(ApiEndpoints.health);
+    } on ApiException catch (error) {
+      if (error.isServerError) rethrow;
+    } on NetworkException {
+      rethrow;
+    } on RequestTimeoutException {
+      rethrow;
+    } on AppException {
+      // Answered: 401/403/404/429 and friends all come from a live server.
     }
   }
 

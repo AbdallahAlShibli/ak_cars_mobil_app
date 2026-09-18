@@ -249,6 +249,11 @@ class ServiceProvider {
   /// application.
   bool get isApproved => stage.grantsAccess;
 
+  /// [distanceKm] when the record actually carries one. The API sends 0 for a
+  /// workshop nobody has measured a distance for, and printing "0.0 km" under
+  /// it reads as "right next to you" — a claim the app cannot back.
+  double? get knownDistanceKm => distanceKm > 0 ? distanceKm : null;
+
   /// True while the workshop cannot yet act — the account exists but the
   /// panel, the bookings and the listing are all closed to it.
   bool get isPendingApproval => stage.awaitsFounder;

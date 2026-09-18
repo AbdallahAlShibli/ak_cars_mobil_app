@@ -305,7 +305,7 @@ class _ProviderOfferRow extends ConsumerWidget {
                       Flexible(
                         child: Text(
                           '${locations.localized(p.area, s.isAr)}${s.t('، ', ', ')}${locations.localized(p.region, s.isAr)}'
-                          ' · ${p.distanceKm.toStringAsFixed(0)} ${s.km}'
+                          '${p.knownDistanceKm == null ? '' : ' · ${p.distanceKm.toStringAsFixed(0)} ${s.km}'}'
                           '${offering.durationMin != null ? s.t(' · ${offering.durationMin} دقيقة', ' · ${offering.durationMin} min') : ''}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

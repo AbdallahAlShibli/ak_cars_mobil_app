@@ -15,7 +15,6 @@ import 'package:ak_cars_mobil_app/features/auth/register_screen.dart';
 import 'package:ak_cars_mobil_app/features/profile/profile_screen.dart';
 import 'package:ak_cars_mobil_app/state/app_state.dart';
 
-import 'fakes/fake_phone_verification_service.dart';
 import 'fakes/mock_auth_service.dart';
 import 'helpers/test_harness.dart';
 
@@ -129,17 +128,21 @@ Future<void> pickWilayat(WidgetTester tester, String name) async {
   await tester.pumpAndSettle();
 }
 
-/// Registration texts a code before it creates the account: types the one
-/// code `FakePhoneVerificationService` accepts into the sheet, and confirms.
-Future<void> confirmSmsCode(WidgetTester tester) async {
+/// Registration proves the phone first: types [localDigits], asks for the
+/// code, and enters the one code `MockAuthService` accepts into the sheet.
+Future<void> verifyPhone(WidgetTester tester, String localDigits) async {
+  await tester.enterText(fieldUnder('Phone number'), localDigits);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Send verification code'));
+  await tester.pumpAndSettle();
   expect(find.byType(PhoneCodeSheet), findsOneWidget,
-      reason: 'registering must stop for the SMS code');
+      reason: 'sending the code must open the code sheet');
   await tester.enterText(
     find.descendant(
       of: find.byType(PhoneCodeSheet),
       matching: find.byType(TextField),
     ),
-    FakePhoneVerificationService.validCode,
+    MockAuthService.validRegistrationCode,
   );
   await tester.pumpAndSettle();
   await tester.tap(find.text('Confirm number'));
@@ -202,45 +205,103 @@ void main() {
       expect(find.text('My activity'), findsOneWidget);
     });
 
-    // This screen used to demand an OTP when the phone or email changed, and
-    // compared it against a constant compiled into the app. `PUT
-    // /user/profile` saves whatever it is sent with no OTP step, so that gate
-    // could only ever have been satisfied by a code the real server never
-    // issued — it went with the rest of the demo plumbing on 2026-08-10.
-    // Login still verifies a real, server-issued code.
-    testWidgets('changing the phone saves it, with nothing to re-verify',
+    // The phone is the login. Saving a new one with no proof let a signed-in
+    // user move their account to a number they do not hold; `PUT
+    // /user/profile` now refuses that, and the screen asks for the SMS code
+    // for the *new* number first — the same step registration uses.
+    testWidgets('changing the phone needs an SMS code for the new number',
         (tester) async {
       final container = await pumpAccount(tester, profile: _profile);
+      final auth = container.read(authServiceProvider) as MockAuthService;
 
       await tester.tap(find.text('My details'));
       await tester.pumpAndSettle();
+      // An unchanged number has nothing to prove.
+      expect(find.text('Send verification code'), findsNothing);
+
       await tester.enterText(fieldUnder('Phone number'), '95550000');
       await tester.pumpAndSettle();
+      expect(find.text('Send verification code'), findsOneWidget);
 
-      expect(find.text('Verify with'), findsNothing);
-      expect(find.textContaining('Enter the code sent to'), findsNothing);
+      // Saving before proving it is refused on the screen, and nothing moves.
+      await tester.tap(find.text('Save changes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Verify the new number with an SMS code before saving'),
+          findsOneWidget);
+      expect(container.read(authProvider).profile!.phone, _profile.phone);
+
+      await tester.tap(find.text('Send verification code'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(PhoneCodeSheet),
+          matching: find.byType(TextField),
+        ),
+        MockAuthService.validRegistrationCode,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm number'));
+      await tester.pumpAndSettle();
+      expect(find.text('Number verified'), findsOneWidget);
 
       await tester.tap(find.text('Save changes'));
       await tester.pumpAndSettle();
 
       expect(container.read(authProvider).profile!.phone, '+968 9555 0000');
+      expect(auth.lastProfileUpdateToken,
+          MockAuthService.tokenFor('+968 9555 0000'));
+    });
+
+    testWidgets('the same number written differently is not a change',
+        (tester) async {
+      final container = await pumpAccount(tester, profile: _profile);
+      final auth = container.read(authServiceProvider) as MockAuthService;
+
+      await tester.tap(find.text('My details'));
+      await tester.pumpAndSettle();
+      await tester.enterText(fieldUnder('Phone number'), '+968 9200 1234');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Send verification code'), findsNothing);
+      await tester.tap(find.text('Save changes'));
+      await tester.pumpAndSettle();
+
+      expect(container.read(authProvider).profile!.phone, '+968 9200 1234');
+      expect(auth.lastProfileUpdateToken, isNull);
+      expect(auth.registrationCodesSentTo, isEmpty);
     });
   });
 
   group('registration', () {
-    testWidgets('refuses a malformed phone and an unset governorate',
+    testWidgets('refuses a malformed phone before sending a code',
+        (tester) async {
+      final container =
+          await pumpAccount(tester, initialLocation: '/register');
+      final auth = container.read(authServiceProvider) as MockAuthService;
+      await chooseCustomerAccount(tester);
+
+      await tester.enterText(fieldUnder('Phone number'), '123');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Send verification code'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('An 8-digit Oman number'), findsOneWidget);
+      expect(auth.registrationCodesSentTo, isEmpty);
+      expect(find.byType(PhoneCodeSheet), findsNothing);
+    });
+
+    testWidgets('refuses an unset governorate once the phone is proved',
         (tester) async {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
       await chooseCustomerAccount(tester);
+      await verifyPhone(tester, '99887766');
 
       await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
-      await tester.enterText(fieldUnder('Phone number'), '123');
       await tester.pumpAndSettle();
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
 
-      expect(find.text('An 8-digit Oman number'), findsOneWidget);
       expect(find.text('Choose your governorate'), findsOneWidget);
       expect(container.read(authProvider).isRegistered, isFalse);
     });
@@ -252,6 +313,7 @@ void main() {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
       await chooseCustomerAccount(tester);
+      await verifyPhone(tester, '99887766');
 
       // Nothing to choose from until the governorate narrows it.
       expect(find.text('Choose a governorate first'), findsOneWidget);
@@ -270,11 +332,9 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
-      await tester.enterText(fieldUnder('Phone number'), '99887766');
       await tester.pumpAndSettle();
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
-      await confirmSmsCode(tester);
 
       expect(container.read(authProvider).profile!.wilayat, 'Seeb');
     });
@@ -282,6 +342,8 @@ void main() {
     testWidgets('changing the governorate clears a wilayat from the old one',
         (tester) async {
       await pumpAccount(tester, initialLocation: '/register');
+      await chooseCustomerAccount(tester);
+      await verifyPhone(tester, '99887766');
 
       await pickGovernorate(tester, 'Muscat');
       await pickWilayat(tester, 'Seeb');
@@ -297,18 +359,17 @@ void main() {
         (tester) async {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
+      final auth = container.read(authServiceProvider) as MockAuthService;
       await chooseCustomerAccount(tester);
 
-      await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '24478120');
       await tester.pumpAndSettle();
-      await pickGovernorate(tester, 'Muscat');
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.text('Send verification code'));
       await tester.pumpAndSettle();
 
       expect(find.text('An Oman mobile number starting with 7 or 9'),
           findsOneWidget);
-      expect(container.read(authProvider).isRegistered, isFalse);
+      expect(auth.registrationCodesSentTo, isEmpty);
     });
 
     // People paste from contacts, not just type eight bare digits.
@@ -348,35 +409,40 @@ void main() {
     testWidgets('registers once the phone is proved by SMS', (tester) async {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
-      final phones = container.read(phoneVerificationServiceProvider)
-          as FakePhoneVerificationService;
       final auth = container.read(authServiceProvider) as MockAuthService;
       await chooseCustomerAccount(tester);
 
-      await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
-      await tester.enterText(fieldUnder('Phone number'), '99887766');
-      await tester.pumpAndSettle();
-      await pickGovernorate(tester, 'Muscat');
+      // The rest of the form stays closed until the number is proved.
+      expect(find.text('Full name'), findsNothing);
+      expect(
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Continue')).onPressed,
+        isNull,
+      );
 
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
+      await verifyPhone(tester, '99887766');
 
       // The code went to the number on the form, and nothing exists yet.
-      expect(phones.sentTo, ['+96899887766']);
+      expect(auth.registrationCodesSentTo, ['+968 9988 7766']);
       expect(container.read(authProvider).isRegistered, isFalse);
+      expect(find.text('Number verified'), findsOneWidget);
 
-      await confirmSmsCode(tester);
+      await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
+      await tester.pumpAndSettle();
+      await pickGovernorate(tester, 'Muscat');
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
 
       final saved = container.read(authProvider).profile!;
       expect(saved.name, 'Aisha Al Balushi');
       expect(saved.phone, '+968 9988 7766');
+      expect(saved.email, isEmpty);
       // The governorate the user actually picked, not the first in the list.
       expect(saved.region, 'Muscat');
       expect(container.read(regionProvider), 'Muscat');
       // The proof the API checks rode along with the registration.
       expect(
         auth.lastPhoneVerificationToken,
-        FakePhoneVerificationService.tokenFor('+96899887766'),
+        MockAuthService.tokenFor('+968 9988 7766'),
       );
     });
 
@@ -387,79 +453,95 @@ void main() {
         initialLocation: '/register',
         existingAccount: _profile,
       );
-      final phones = container.read(phoneVerificationServiceProvider)
-          as FakePhoneVerificationService;
+      final auth = container.read(authServiceProvider) as MockAuthService;
       await chooseCustomerAccount(tester);
 
-      await tester.enterText(fieldUnder('Full name'), 'Someone Else');
       await tester.enterText(fieldUnder('Phone number'), '92001234');
       await tester.pumpAndSettle();
-      await pickGovernorate(tester, 'Muscat');
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.text('Send verification code'));
       await tester.pumpAndSettle();
 
       expect(
-        find.text('You already have an account with that phone or email.'),
+        find.text('This number already has an account — log in instead'),
         findsOneWidget,
       );
-      expect(phones.sentTo, isEmpty);
+      expect(auth.registrationCodesSentTo, isEmpty);
       expect(find.byType(PhoneCodeSheet), findsNothing);
+      expect(find.text('Full name'), findsNothing);
       expect(container.read(authProvider).isRegistered, isFalse);
     });
 
-    testWidgets('closing the code sheet creates nothing and keeps the form',
+    testWidgets('closing the code sheet leaves the number unverified',
         (tester) async {
       final container =
           await pumpAccount(tester, initialLocation: '/register');
       await chooseCustomerAccount(tester);
 
-      await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '99887766');
       await tester.pumpAndSettle();
-      await pickGovernorate(tester, 'Muscat');
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.text('Send verification code'));
       await tester.pumpAndSettle();
 
       await tester.tapAt(const Offset(20, 20));
       await tester.pumpAndSettle();
 
       expect(find.byType(PhoneCodeSheet), findsNothing);
+      expect(find.text('Number verified'), findsNothing);
+      expect(find.text('Full name'), findsNothing);
+      expect(textIn(tester, 'Phone number'), '9988 7766');
       expect(container.read(authProvider).isRegistered, isFalse);
-      expect(textIn(tester, 'Full name'), 'Aisha Al Balushi');
-      expect(find.text('Continue'), findsOneWidget);
     });
-    // Email used to be a *verification channel* the user picked, and became
-    // required once they picked it. With no OTP anywhere on this screen it is
-    // simply an optional contact detail — but a typo in one is still worth
-    // catching, since it is where a receipt would be sent.
-    testWidgets('email is optional, but a malformed one is refused',
+
+    testWidgets('a wrong code keeps the sheet open and the form closed',
         (tester) async {
-      final container =
-          await pumpAccount(tester, initialLocation: '/register');
+      await pumpAccount(tester, initialLocation: '/register');
       await chooseCustomerAccount(tester);
 
-      await tester.enterText(fieldUnder('Full name'), 'Aisha Al Balushi');
       await tester.enterText(fieldUnder('Phone number'), '99887766');
       await tester.pumpAndSettle();
-      await pickGovernorate(tester, 'Muscat');
-
-      await tester.enterText(fieldUnder('Email'), 'not-an-email');
+      await tester.tap(find.text('Send verification code'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(PhoneCodeSheet),
+          matching: find.byType(TextField),
+        ),
+        '9999',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm number'));
       await tester.pumpAndSettle();
 
-      expect(find.text('That does not look like an email'), findsOneWidget);
-      expect(container.read(authProvider).isRegistered, isFalse);
+      expect(find.byType(PhoneCodeSheet), findsOneWidget);
+      expect(
+        find.text('That code is wrong or has expired — request a new one'),
+        findsOneWidget,
+      );
+    });
 
-      // Cleared rather than corrected: an account with only a phone number is
-      // complete.
-      await tester.enterText(fieldUnder('Email'), '');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-      await confirmSmsCode(tester);
+    testWidgets('changing a verified number drops the proof', (tester) async {
+      await pumpAccount(tester, initialLocation: '/register');
+      await chooseCustomerAccount(tester);
+      await verifyPhone(tester, '99887766');
+      expect(find.text('Full name'), findsOneWidget);
 
-      expect(container.read(authProvider).isRegistered, isTrue);
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Number verified'), findsNothing);
+      expect(find.text('Send verification code'), findsOneWidget);
+      expect(find.text('Full name'), findsNothing);
+    });
+
+    // Registration is phone only for now.
+    testWidgets('registration does not ask for an email', (tester) async {
+      await pumpAccount(tester, initialLocation: '/register');
+      await chooseCustomerAccount(tester);
+      await verifyPhone(tester, '99887766');
+
+      expect(find.text('Email'), findsNothing);
     });
   });
+
+
 }

@@ -500,6 +500,7 @@ class DioApiClient implements ApiClient {
       // status is the whole message and the type carries it.
       429 => RateLimitedException(
           'Rate limited by $_baseUrl',
+          code: code,
           cause: e,
         ),
       // A `409` carrying a code is a business rule like any other — the server

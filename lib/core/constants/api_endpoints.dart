@@ -5,28 +5,28 @@
 /// in `Backend/AKCarsApi` (Auth, Cars, Products, Orders, ServiceMarketplace,
 /// Bookings, Payments) so Phase 2 wiring is a lookup, not a guess.
 abstract final class ApiEndpoints {
+  /// Answers `200` with no database behind it. Asked after a start-up painted
+  /// from disk, to find out whether the server is there at all.
+  static const health = '/health';
+
   // ------------------------------------------------------------------ auth
-  /// Looks up an account by phone or email and, when one exists, sends the
-  /// OTP. Answers `404` for no match — the client reads that as "no account",
-  /// not as a transport error.
+  /// Looks up an account by phone and, when one exists, texts it the OTP.
+  /// Answers `404` for no match — the client reads that as "no account", not
+  /// as a transport error.
   static const login = '/auth/login';
 
   /// Verifies the code sent by [login] and starts the session.
   static const loginVerify = '/auth/login/verify';
 
-  /// `204` when an account uses the identifier, `404` when none does. Sends
-  /// nothing: asked before Firebase texts a login code.
-  static const loginCheck = '/auth/login/check';
-
-  /// Exchanges the Firebase ID token from SMS phone verification for a
-  /// session.
-  static const loginPhone = '/auth/login/phone';
-
   static const register = '/auth/register';
 
-  /// Every `/auth/register` rule, saving nothing: `204`, or the error
-  /// registering would give. Asked before Firebase texts a registration code.
-  static const registerCheck = '/auth/register/check';
+  /// Texts a code to a phone that is about to register: `204` once sent,
+  /// `409 account_already_exists` when the number already has an account.
+  static const registerOtp = '/auth/register/otp';
+
+  /// Checks that code and answers with the `phoneVerificationToken`
+  /// [register] requires.
+  static const registerOtpVerify = '/auth/register/otp/verify';
   static const refreshToken = '/auth/refresh';
   static const logout = '/auth/logout';
 
@@ -224,9 +224,11 @@ abstract final class ApiEndpoints {
   // ------------------------------------------------------ job workspace
   // 2026-09-15. What the workshop records while the car is with it. Every
   // route is new — nothing above moved.
-  static String _jobRequest(String requestId) => '$myWorkshopRequests/$requestId';
+  static String _jobRequest(String requestId) =>
+      '$myWorkshopRequests/$requestId';
 
-  static String jobCheckIn(String requestId) => '${_jobRequest(requestId)}/check-in';
+  static String jobCheckIn(String requestId) =>
+      '${_jobRequest(requestId)}/check-in';
 
   static String jobInspection(String requestId) =>
       '${_jobRequest(requestId)}/inspection';
@@ -237,7 +239,8 @@ abstract final class ApiEndpoints {
   static String jobExtraWorkWithdraw(String requestId, String extraId) =>
       '${jobExtraWork(requestId)}/$extraId/withdraw';
 
-  static String jobCard(String requestId) => '${_jobRequest(requestId)}/job-card';
+  static String jobCard(String requestId) =>
+      '${_jobRequest(requestId)}/job-card';
 
   static String jobCardLines(String requestId) => '${jobCard(requestId)}/lines';
 

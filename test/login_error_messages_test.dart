@@ -8,7 +8,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'fakes/fake_phone_verification_service.dart';
 import 'helpers/test_harness.dart';
 
 /// The login screen has to say *which* thing went wrong.
@@ -18,24 +17,16 @@ import 'helpers/test_harness.dart';
 /// who had burned all five attempts and a person who was simply offline all
 /// read the same sentence. Only one of those is helped by trying again.
 ///
-/// Two senders, two sets of rules. The API's own code (email) deliberately
-/// collapses wrong/expired/too-many into `otp_invalid_or_expired`, so that copy
-/// names what the user can *do*. Firebase's SMS code (phone) does tell a
-/// mistyped code from an expired one, and that copy says which.
+/// The API deliberately collapses wrong/expired/too-many into
+/// `otp_invalid_or_expired`, so that copy names what the user can *do*.
 void main() {
-  Future<void> pumpLogin(
-    WidgetTester tester, {
-    required AuthService auth,
-    FakePhoneVerificationService? phones,
-  }) async {
+  Future<void> pumpLogin(WidgetTester tester, {required AuthService auth}) async {
     tester.view.physicalSize = const Size(402 * 3, 874 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
 
     final container = await createTestContainer(overrides: [
       authServiceProvider.overrideWithValue(auth),
-      if (phones != null)
-        phoneVerificationServiceProvider.overrideWithValue(phones),
     ]);
 
     await tester.pumpWidget(
@@ -56,19 +47,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  group('the API code, sent by email', () {
+  Future<void> sendCode(WidgetTester tester) async {
+    await tester.enterText(find.byType(TextField).first, '92220002');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Send the code'));
+    await tester.pumpAndSettle();
+  }
+
+  group('verifying the code', () {
     Future<void> failVerifyWith(
       WidgetTester tester,
       AppException failure,
     ) async {
-      await pumpLogin(tester, auth: _ScriptedAuthService(failure));
-
-      await tester.tap(find.text('Email'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).first, 'owner@akcars.om');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Send the code'));
-      await tester.pumpAndSettle();
+      await pumpLogin(tester, auth: _ScriptedAuthService(verifyFailure: failure));
+      await sendCode(tester);
 
       await tester.enterText(find.byType(TextField).last, '1234');
       await tester.pumpAndSettle();
@@ -125,101 +117,123 @@ void main() {
     });
   });
 
-  group('the Firebase code, sent by SMS', () {
-    Future<void> sendAndEnter(WidgetTester tester, String code) async {
-      await tester.enterText(find.byType(TextField).first, '92220002');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Send the code'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).last, code);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Verify and log in'));
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('a mistyped code says to check it, and never reaches the API',
-        (tester) async {
-      final auth = _ScriptedAuthService(const UnknownException('unused'));
-      await pumpLogin(tester, auth: auth);
-
-      await sendAndEnter(tester, '000000');
-
-      expect(
-        find.text('That code is not right — check it and try again'),
-        findsOneWidget,
-      );
-      expect(auth.phoneLoginAttempts, 0);
-    });
-
-    testWidgets('a verification the API no longer accepts asks for a new code',
+  group('sending the code', () {
+    testWidgets('being rate-limited says to wait, under the number',
         (tester) async {
       await pumpLogin(
         tester,
-        auth: _ScriptedAuthService(const UnauthorizedException(
-          'The phone verification is not valid or has expired.',
-          code: 'phone_token_invalid',
-        )),
+        auth: _ScriptedAuthService(
+          sendFailure: const RateLimitedException('Rate limited'),
+        ),
       );
 
-      await sendAndEnter(tester, FakePhoneVerificationService.validCode);
+      await sendCode(tester);
 
       expect(
-        find.text('The verification has expired — ask for a new code'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('SMS verification that cannot run says so under the number',
-        (tester) async {
-      final phones = FakePhoneVerificationService()
-        ..sendFailure = const PhoneVerificationException(
-          'operation-not-allowed',
-          reason: PhoneVerificationFailure.unavailable,
-        );
-      await pumpLogin(
-        tester,
-        auth: _ScriptedAuthService(const UnknownException('unused')),
-        phones: phones,
-      );
-
-      await tester.enterText(find.byType(TextField).first, '92220002');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Send the code'));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text(
-            'SMS verification is not available right now — try again later'),
+        find.text('Too many requests — wait a minute and try again'),
         findsOneWidget,
       );
       expect(find.text('Verify and log in'), findsNothing);
     });
+
+    testWidgets('the per-phone hourly cap says an hour, not a minute',
+        (tester) async {
+      await pumpLogin(
+        tester,
+        auth: _ScriptedAuthService(
+          sendFailure: const RateLimitedException(
+            'Rate limited',
+            code: 'otp_too_many_requests',
+          ),
+        ),
+      );
+
+      await sendCode(tester);
+
+      expect(
+        find.text('Too many codes sent to this number — try again in an hour'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an unreachable server says so, under the number',
+        (tester) async {
+      await pumpLogin(
+        tester,
+        auth: _ScriptedAuthService(
+          sendFailure: const NetworkException('Could not reach the host'),
+        ),
+      );
+
+      await sendCode(tester);
+
+      expect(
+        find.text('Could not reach the server — check your connection'),
+        findsOneWidget,
+      );
+    });
+
+    // The SMS gateway refusing the message (a Twilio sender that is not on the
+    // account, a country that is not enabled, no credit) is neither the user's
+    // connection nor anything they typed. It read as "Could not send the code
+    // — try again" until the API started answering `503 sms_send_failed`,
+    // which sent people round the same loop with no idea why.
+    testWidgets('a gateway that refuses the message says so', (tester) async {
+      await pumpLogin(
+        tester,
+        auth: _ScriptedAuthService(
+          sendFailure: const ApiException(
+            'The verification code could not be sent. Try again shortly.',
+            statusCode: 503,
+            errorCode: 'sms_send_failed',
+          ),
+        ),
+      );
+
+      await sendCode(tester);
+
+      expect(
+        find.text("Our SMS provider wouldn't send the message — try again shortly"),
+        findsOneWidget,
+      );
+      expect(find.text('Could not send the code — try again'), findsNothing);
+    });
+
+    testWidgets('a server fault is told apart from the send', (tester) async {
+      await pumpLogin(
+        tester,
+        auth: _ScriptedAuthService(
+          sendFailure: const ApiException('Bad gateway', statusCode: 502),
+        ),
+      );
+
+      await sendCode(tester);
+
+      expect(
+        find.text("Our server isn't responding — try again shortly"),
+        findsOneWidget,
+      );
+    });
   });
 }
 
-/// Finds the account, then fails whichever login is attempted with [_failure].
+/// Finds the account, then fails the send or the login as scripted.
 class _ScriptedAuthService extends MockAuthServiceBase {
-  _ScriptedAuthService(this._failure);
+  _ScriptedAuthService({this.sendFailure, this.verifyFailure});
 
-  final AppException _failure;
-
-  int phoneLoginAttempts = 0;
-
-  @override
-  Future<bool> requestOtp(String identifier) async => true;
+  final AppException? sendFailure;
+  final AppException? verifyFailure;
 
   @override
-  Future<bool> accountExists(String identifier) async => true;
+  Future<bool> requestOtp(String identifier) async {
+    final failure = sendFailure;
+    if (failure != null) throw failure;
+    return true;
+  }
 
   @override
   Future<UserProfile> login(String identifier, String code) async =>
-      throw _failure;
-
-  @override
-  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) async {
-    phoneLoginAttempts++;
-    throw _failure;
-  }
+      throw verifyFailure ?? const UnknownException('unscripted');
 }
 
 /// The parts of [AuthService] this test does not exercise.
@@ -231,14 +245,7 @@ class MockAuthServiceBase implements AuthService {
   Future<bool> requestOtp(String identifier) async => false;
 
   @override
-  Future<bool> accountExists(String identifier) async => false;
-
-  @override
   Future<UserProfile> login(String identifier, String code) async =>
-      throw UnimplementedError();
-
-  @override
-  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken) async =>
       throw UnimplementedError();
 
   @override
@@ -248,12 +255,19 @@ class MockAuthServiceBase implements AuthService {
   }) async => throw UnimplementedError();
 
   @override
-  Future<void> validateRegistration(UserProfile profile) async {}
+  Future<void> requestRegistrationOtp(String phone) async {}
+
+  @override
+  Future<String> verifyRegistrationOtp(String phone, String code) async =>
+      throw UnimplementedError();
 
   @override
   Future<void> signOut() async {}
 
   @override
-  Future<UserProfile> updateProfile(UserProfile profile) async =>
+  Future<UserProfile> updateProfile(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  }) async =>
       throw UnimplementedError();
 }

@@ -1,8 +1,5 @@
 plugins {
     id("com.android.application")
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services")
-    // END: FlutterFire Configuration
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -21,8 +18,7 @@ android {
     }
 
     defaultConfig {
-        // The store identity, and the ID Firebase registers this app under (google-services.json
-        // is matched against it). Changing it means a new Play listing and re-registering in Firebase.
+        // The store identity. Changing it means a new Play listing.
         applicationId = "om.akcars.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.

@@ -1,4 +1,5 @@
 import '../../core/constants/app_constants.dart';
+import '../../core/error/app_exception.dart';
 import '../models/user_profile.dart';
 
 /// Registration and session identity.
@@ -17,20 +18,36 @@ abstract interface class AuthService {
 
   /// Completes registration and returns the stored profile.
   ///
-  /// [phoneVerificationToken] is the Firebase ID token from proving
-  /// [UserProfile.phone] by SMS. The server requires it in production and
-  /// refuses one issued for a different number.
+  /// [phoneVerificationToken] comes from [verifyRegistrationOtp] for
+  /// [UserProfile.phone]. The server requires it in production and refuses
+  /// one issued for a different number.
   Future<UserProfile> register(
     UserProfile profile, {
     String? phoneVerificationToken,
   });
 
-  /// Runs every server-side registration rule for [profile] without creating
-  /// anything: completes when it would be accepted, and throws the exception
-  /// [register] would otherwise throw.
-  Future<void> validateRegistration(UserProfile profile);
+  /// Texts a registration code to [phone], the first step of signing up.
+  ///
+  /// Throws [BusinessRuleException] `account_already_exists` when the number
+  /// already has an account; no SMS is sent for it.
+  Future<void> requestRegistrationOtp(String phone);
 
-  Future<UserProfile> updateProfile(UserProfile profile);
+  /// Checks the code [requestRegistrationOtp] sent and returns the phone
+  /// verification token [register] needs. Creates nothing.
+  ///
+  /// Throws [UnauthorizedException] `otp_invalid_or_expired` for a wrong,
+  /// expired or used-up code.
+  Future<String> verifyRegistrationOtp(String phone, String code);
+
+  /// Saves edits to the signed-in account.
+  ///
+  /// The phone is the account's login, so a *changed* phone must carry
+  /// [phoneVerificationToken] from [verifyRegistrationOtp] for the new number.
+  /// The server refuses the change without it (`phone_verification_required`).
+  Future<UserProfile> updateProfile(
+    UserProfile profile, {
+    String? phoneVerificationToken,
+  });
 
   /// Asks the server to send a one-time code to [identifier], and reports
   /// whether an account was there to send it to.
@@ -46,15 +63,6 @@ abstract interface class AuthService {
   /// longer sends the profile, so there is nothing left to return but the
   /// answer to that check.
   Future<bool> requestOtp(String identifier);
-
-  /// Whether an account uses [identifier]. Sends nothing.
-  Future<bool> accountExists(String identifier);
-
-  /// Starts the session for the account whose phone Firebase verified.
-  ///
-  /// The server checks [firebaseIdToken] and looks the account up by the
-  /// number inside it; throws [NotFoundException] when no account has it.
-  Future<UserProfile> loginWithVerifiedPhone(String firebaseIdToken);
 
   /// Verifies [code] against the OTP sent to [identifier] and, if it
   /// matches, starts the session.
