@@ -17,6 +17,46 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-18 · Soft delete for everything customers and workshop owners delete (API)
+
+**Baseline:** API `a848899`; code in `1e4f1c0`.
+
+Request, verbatim: "Any delete process by the workshops owners or by customers account should be soft delete."
+
+### What was hard-deleted, and now isn't
+
+| Who | Delete | Entity |
+|---|---|---|
+| Customer | remove a car (and, by cascade, its book, records, custom items) | `Vehicle`, `MaintenanceBook`, `ServiceRecord`, `CustomMaintenanceItem` |
+| Customer | remove a maintenance book / a service record / a custom item | same |
+| Customer | remove a car ad | `CarListing` |
+| Workshop owner | delete an add-on | `AddOn` |
+| Workshop owner | delete a job-card line; inspection items dropped when the list is replaced | `JobCardLine`, `InspectionItem` |
+
+Already soft before this: offerings and inventory items (`IsActive = false`), staff (deactivated), notifications (dismissed), workshops (`ServiceProvider.IsDeleted`, founder action).
+
+Deliberately still hard: cart lines, device (push) registrations, OTP challenges, refresh tokens — technical/session state, not a customer's or workshop's record — and founder/admin deletes (categories, promotions, offers), which the request does not cover.
+
+### How
+
+- `Domain/Common/ISoftDeletable` (`IsDeleted`, `DeletedAt`, `DeletedBy`), on the 8 entities above.
+- `AkCarsDbContext`: a global query filter `!IsDeleted` on every `ISoftDeletable`; on save, any `Deleted` entry of one is turned into `Modified` + the mark (`DeletedBy` = signed-in user via an optional `ICurrentUser` ctor argument). Handlers keep calling `Remove()`. Owned values (`ServiceRecord.Title`, `AddOn.Name`, `InspectionItem.Photos`) are put back to `Unchanged` so a hidden row keeps its title/name/photos.
+- `RemoveVehicleCommand` loads the car's book, records and custom items, so they are marked with it (the DB cascade never runs on a soft delete).
+- A book is keyed by its car: `MaintenanceAuth.StartBookAsync` revives and clears the car's deleted book row instead of inserting a duplicate key; its old records stay deleted. Used by all six places that create a book.
+- Migration `20260918193004_AddSoftDelete`: 24 columns (3 × 8 tables), nothing else. Applied to the local DB only.
+
+### Verified
+
+- `dotnet test` **1144 passed** (6 new in `SoftDeleteTests`). With the owned-value step disabled, 4 of them fail.
+- Live on the local SQL Server: `/cars`, `/service-marketplace/offerings`, `/providers` answer 200 — after the migration was really applied. (A first `database update --no-build` said "Done" but applied nothing: the build it used predated the migration; `/cars` returned 500 "Invalid column IsDeleted" until it was re-run.)
+
+### Not done / to do
+
+- Apply `AddSoftDelete` to staging/production **before** deploying this API — without it every query on these 8 tables fails.
+- There is no "restore" or "purge" UI; deleted rows are reachable only with `IgnoreQueryFilters()`.
+
+---
+
 ## 2026-09-18 · "Add your car": make picker opened empty
 
 **Baseline:** app `116f79b`; code in `0e0109a`.
