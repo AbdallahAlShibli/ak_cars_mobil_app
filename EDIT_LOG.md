@@ -17,6 +17,36 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-18 · Login failures from the API log: Twilio trial refuses our text; log fixes
+
+**Baseline:** API `084f3f5`.
+
+Request, verbatim: "Check the api logs then fix the login bugs".
+
+### What the log showed (20:16–20:17)
+
+- The signed APK works: its calls produced no `AppGate … would be refused` lines.
+- All 5 `POST /auth/login` attempts failed at Twilio: `HTTP 400, error 572006: Invalid template name. Trial accounts can only use predefined SMS templates`. Twilio trial accounts no longer allow custom message bodies, so **no OTP can be sent until the account is upgraded** — not fixable in code. The sender is also still not a Twilio number on the account.
+- Each failure was logged as `responded 500` (the client actually got `503 sms_send_failed`) and appeared ~5 times with full stack traces, plus an EF "savepoints disabled (MARS)" warning on every login.
+
+### Changes (API)
+
+| File | Change |
+|---|---|
+| `Program.cs` | `UseSerilogRequestLogging` moved outside `UseExceptionHandler`: one line per request with the status the client got (503, not 500). |
+| `appsettings.json` | `ExceptionHandlerMiddleware` category → Fatal: its "unhandled exception" duplicate is gone; `GlobalExceptionHandler` still logs every real 500 with the exception. |
+| `GlobalExceptionHandler.cs` | SMS refusal logged as one line with the reason, no stack. |
+| `TransactionBehaviour.cs` | Rollback logged as a Warning with the exception type only (the handler logs the exception). |
+| `DependencyInjection.cs` | Ignore `SavepointsDisabledBecauseOfMARS`. |
+| `TwilioAccountCheck.cs`, `TwilioReadinessCheck.cs` (+ test) | A trial account is now a **Fail** naming error 572006 and the upgrade; the sender is checked whenever credentials pass, so start-up shows both blockers together. |
+
+### Verified
+
+- `dotnet test` 1138 passed. API restarted; start-up log now shows both Twilio blockers; tunnel health 200.
+- Not re-run: a real `/auth/login` send (it would try to text a real number).
+
+---
+
 ## 2026-09-18 · Only the app may call the API: signed requests (AppGate)
 
 **Baseline:** app `0c14328`, API `a8a0192`.
