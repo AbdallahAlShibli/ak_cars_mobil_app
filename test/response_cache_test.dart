@@ -131,6 +131,39 @@ void main() {
       expect(scope.servedFromCache, isTrue);
     });
 
+    test('once start-up closes its scope, a refresh begun in that zone asks '
+        'the server (2026-09-18: the empty make list)', () async {
+      final api = client();
+      await ResponseCacheScope.record(() => api.getList('/cars'));
+      await _untilStored(directory, count: 1);
+
+      // A callback registered during start-up — an app-resume listener —
+      // runs in the start-up zone for the rest of the session.
+      final scope = ResponseCacheScope.preferringCache();
+      late Future<List<Map<String, dynamic>>> Function() laterRefresh;
+      await scope.run(() async {
+        laterRefresh = () => ResponseCacheScope.record(() => api.getList('/cars'));
+      });
+      scope.close();
+
+      final rows = await scope.run(laterRefresh);
+
+      expect(requests, ['/cars', '/cars']);
+      expect(rows, [
+        {'n': 2},
+      ]);
+      // …and stored for the next start-up. Waited for, too: the write is
+      // fire-and-forget, and tear-down cannot delete a file still open.
+      for (var i = 0; i < 100; i++) {
+        final stored = directory.listSync().whereType<File>().any(
+          (f) => f.readAsStringSync().contains('"n":2'),
+        );
+        if (stored) return;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      fail('The live answer was never stored');
+    });
+
     test('a start-up miss is fetched, stored, and reported as live', () async {
       final api = client();
 

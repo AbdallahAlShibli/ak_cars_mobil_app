@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/utils/guid.dart';
 import '../../config/app_flags.dart';
+import '../../core/error/app_exception.dart';
 import '../../core/i18n/strings.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -14,6 +15,7 @@ import '../../core/widgets/oman_plate_input.dart';
 import '../../core/widgets/widgets.dart';
 import '../../state/app_state.dart';
 import '../../data/models/models.dart';
+import '../../di/providers.dart';
 
 /// Add / edit a car — everything on ONE page. Each detail opens a popup
 /// picker: make (logo grid), model, trim, year, colour, plate with 1–2
@@ -260,7 +262,35 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
 
   /// -------------------------------------------------------------- popups
 
+  /// The make/model list is loaded at start-up. When that load never landed —
+  /// a start-up with no connection, or a stored answer that held no makes —
+  /// the picker used to open onto an empty sheet with nothing to say why.
+  /// Asks the API for it now instead, and says so when that fails too.
+  Future<bool> _ensureVehicleCatalog() async {
+    if (_vehicles.makes.isNotEmpty) return true;
+    final s = S.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(catalogRepositoryProvider).refreshVehicles();
+      // The provider read the repository once; make it read the new list.
+      ref.invalidate(vehicleCatalogProvider);
+    } on AppException {
+      // Reported below, with the empty list it leaves.
+    }
+    if (_vehicles.makes.isNotEmpty) return true;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(s.t(
+          'تعذّر تحميل قائمة الشركات — تحقّق من الاتصال وحاول مرة أخرى',
+          "Couldn't load the list of makes — check your connection and try again",
+        )),
+      ));
+    return false;
+  }
+
   Future<void> _pickMake() async {
+    if (!await _ensureVehicleCatalog() || !mounted) return;
     final ak = AkColors.of(context);
     final make = await _showPopup<CarMake>(
       title: S.of(context).t('اختر الشركة المصنعة', 'Pick a make'),
@@ -268,6 +298,17 @@ class _AddCarScreenState extends ConsumerState<AddCarScreen> {
         final makes = _vehicles.makes
             .where((m) => m.name.toLowerCase().contains(query))
             .toList();
+        if (makes.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                S.of(context).t('لا توجد شركة بهذا الاسم', 'No make matches that'),
+                style: TextStyle(fontSize: 13, color: ak.inkSub),
+              ),
+            ),
+          );
+        }
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),

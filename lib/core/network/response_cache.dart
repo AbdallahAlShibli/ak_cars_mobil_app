@@ -173,13 +173,27 @@ final class FileResponseCache implements ResponseCache {
 ///
 /// Outside both, the client never reads or writes the cache.
 final class ResponseCacheScope {
-  ResponseCacheScope._({required this.readsStoredAnswers});
+  ResponseCacheScope._({required this._readsStoredAnswers});
 
   static const _zoneKey = #akCarsResponseCacheScope;
 
-  /// True inside [preferCached]: a stored answer is returned before the API
-  /// is asked. False inside [record].
-  final bool readsStoredAnswers;
+  final bool _readsStoredAnswers;
+  var _closed = false;
+
+  /// True inside [preferCached] until [close]: a stored answer is returned
+  /// before the API is asked. False inside [record].
+  bool get readsStoredAnswers => _readsStoredAnswers && !_closed;
+
+  /// Ends the preference for stored answers. The scope lives in a zone, and a
+  /// zone outlives the code that entered it: a listener or subscription set
+  /// up during start-up keeps running in it for the whole session. Without
+  /// this, every refresh such a callback triggered — an app resume hours
+  /// later — was answered from disk and never reached the API, so a stale
+  /// stored answer (an empty make list behind "Add your car") could never be
+  /// replaced. After [close] the scope still records answers for the next
+  /// start-up; it just always asks the API first.
+  void close() => _closed = true;
+
   var _served = 0;
 
   /// Whether any request in this scope was answered from disk — the signal

@@ -131,6 +131,10 @@ abstract final class AppBootstrap {
         stackTrace: stack,
       );
     } finally {
+      // The first load is over: from here on nothing may be answered from
+      // disk, including callbacks that were set up inside it and still run in
+      // its zone — see [ResponseCacheScope.close].
+      scope.close();
       _tryUpdate(container, () {
         container.read(bootServedFromCacheProvider.notifier).state =
             scope.servedFromCache;
