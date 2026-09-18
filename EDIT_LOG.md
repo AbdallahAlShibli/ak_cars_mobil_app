@@ -17,6 +17,28 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-18 · API review: OTP guess race, deleted-account 500, registration phone rule
+
+**Baseline:** API `e1ae31b` (branch `feat/twilio-otp-phone-first`).
+
+Request, verbatim: "/ecc:code-review fix any bugs in the api you find after reviewing". Reviewed every source file changed on the branch against `master`.
+
+| Severity | File | Bug → fix |
+|---|---|---|
+| HIGH | `Auth/Common/OtpChallenges.cs`, `Configurations/OtpChallengeConfiguration.cs`, model snapshot | A guess read `Attempts`, compared, then wrote `Attempts + 1`. Parallel requests all read the same count, so the 5-attempt cap did not hold, and two parallel right answers could both spend one code. `Attempts` and `Consumed` are now EF concurrency tokens (no schema change, no migration); `ConsumeAsync` saves both outcomes at once and answers a lost race with `otp_invalid_or_expired`. |
+| MEDIUM | `Auth/Login/VerifyOtpCommand.cs` | `FirstAsync` on the challenge's user threw (→ 500) if the account was removed between sending and entering the code. Now `otp_invalid_or_expired`. |
+| LOW | `Auth/Register/RegistrationRules.cs` | Phone was only `NotEmpty`: with `PhoneVerification:Required=false` (Development) a landline could register. Now must be an Omani mobile, same rule as the OTP endpoints. |
+| LOW | `Auth/Login/VerifyOtpCommand.cs` | `Code` had no maximum length (registration verify already had 10). |
+
+Reviewed and left as is: the per-phone lockout can be triggered by someone else (10 wrong guesses lock that number's sign-in for an hour) — the usual trade-off for a guess budget; the per-phone code cap is counted before the insert, so a burst of parallel requests can exceed 5 by a little (the per-IP limiter still applies).
+
+### Verified
+
+- `dotnet test`: **1126 passed** (new `OtpRaceTests`: stale-count guess refused, removed account, mobile-only registration).
+- The race test **fails** with the two `IsConcurrencyToken()` lines removed, and passes with them.
+
+---
+
 ## 2026-09-18 · Home "نبض سيارتك" (Direction A, phase 1), no more "0 km" workshops, per-phone OTP budget
 
 **Baseline:** the entry below, uncommitted.
