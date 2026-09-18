@@ -27,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
 import '../core/network/api_client.dart';
+import '../core/network/app_signer.dart';
 import '../core/network/chat_hub.dart';
 import '../core/network/dio_api_client.dart';
 import '../core/network/network_activity.dart';
@@ -134,6 +135,7 @@ final apiClientProvider = Provider<ApiClient>(
     tokens: ref.watch(tokenStoreProvider),
     cache: ref.watch(responseCacheProvider),
     activity: ref.watch(networkActivityProvider),
+    signer: AppSigner.fromBuild(),
   ),
 );
 

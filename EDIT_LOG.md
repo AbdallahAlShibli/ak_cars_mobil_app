@@ -17,6 +17,32 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-18 · Only the app may call the API: signed requests (AppGate)
+
+**Baseline:** app `0c14328`, API `a8a0192`.
+
+Request, verbatim: "I want to improve the api efficiency. All endpoints should reject any call that os not from the flutter app." Chosen with the user: signed requests (not a bare key, not Play Integrity yet), rolled out log-first.
+
+| Where | Change |
+|---|---|
+| API `Common/AppSignatureMiddleware.cs`, `AppGateSettings.cs`, `Program.cs`, `appsettings.json`, `ErrorCodes.cs`, `README.md` | Before rate limiting/auth: requires `X-AK-Client/Timestamp/Nonce/Signature` (HMAC-SHA256 of method, raw path+query, timestamp, nonce). Refusals: `app_signature_missing/invalid/replayed`, `app_clock_skew` (+ `X-AK-Server-Time`), 403 — not 401, which would trigger a session refresh. Exempt: OPTIONS, health, `/hubs` (already need a session/device key), Swagger. `AppGate:Enforce=false` logs "would be refused" and answers; `true` with no client refuses to start. |
+| App `lib/core/network/app_signer.dart` (new), `dio_api_client.dart`, `di/providers.dart`, `config/app_config.dart`, `pubspec.yaml` (`crypto` direct) | Signs every request in the Dio interceptor (fresh nonce each attempt). On `app_clock_skew` adopts the server clock and retries once. Id/secret from `--dart-define-from-file=secrets/app_gate.json` (git-ignored); without them requests go unsigned. |
+| Secrets | Generated locally, stored in the API's user-secrets and `secrets/app_gate.json`; not in git, not printed. Client id `android-2026-09`. |
+
+**Build command now:** `flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols --dart-define-from-file=secrets/app_gate.json`. A build without the file still runs but is refused once enforcement is on.
+
+### Verified
+
+- API `dotnet test` **1138 passed** (12 new: missing/invalid/other-route/stale/replayed/Arabic query/POST/health/log-only/cross-language vector). App `flutter test` **733 passed** (6 new, incl. a real-socket clock-skew retry). Both sides match an HMAC computed independently in Python.
+- Live through the Cloudflare tunnel: a call signed with the real secret passes with no warning; a wrong secret logs `app_signature_invalid` — so the tunnel forwards the raw path+query unchanged.
+
+### Not verified / next
+
+- Enforcement is **off** until the signed APK is installed and the log shows no refusals from it. Then set `AppGate__Enforce=true` and restart.
+- Flutter web builds would carry the secret in JavaScript; there is no production web build today.
+
+---
+
 ## 2026-09-18 · API review: OTP guess race, deleted-account 500, registration phone rule
 
 **Baseline:** API `e1ae31b` (branch `feat/twilio-otp-phone-first`).

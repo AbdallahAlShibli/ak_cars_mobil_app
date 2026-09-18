@@ -105,6 +105,15 @@ class AppConfig {
   static const bool useRemoteVehicleImages =
       bool.fromEnvironment('AK_REMOTE_CAR_IMAGES', defaultValue: true);
 
+  /// The client id and secret every API request is signed with (see
+  /// `AppSigner`). Supplied at build time from a git-ignored file —
+  /// `--dart-define-from-file=secrets/app_gate.json` — and empty otherwise,
+  /// in which case requests go unsigned.
+  static const String appClientId =
+      String.fromEnvironment('AK_APP_CLIENT_ID', defaultValue: '');
+  static const String appSecret =
+      String.fromEnvironment('AK_APP_SECRET', defaultValue: '');
+
   /// Configuration for the environment this binary was built for.
   ///
   /// [_apiBaseUrlOverride], when set, replaces the environment's

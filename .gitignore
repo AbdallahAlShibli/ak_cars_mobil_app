@@ -74,3 +74,6 @@ docs/*
 
 # Golden-test failure output, written by flutter_test on a mismatch.
 test/failures/
+
+# Build-time secrets (--dart-define-from-file). Never commit.
+/secrets/

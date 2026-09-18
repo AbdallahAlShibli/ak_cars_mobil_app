@@ -12,6 +12,7 @@ import '../error/app_exception.dart';
 import '../json/json_utils.dart';
 import '../utils/jwt_claims.dart';
 import 'api_client.dart';
+import 'app_signer.dart';
 import 'network_activity.dart';
 import 'response_cache.dart';
 import 'browser_cors_warning.dart'
@@ -33,6 +34,7 @@ class DioApiClient implements ApiClient {
     required this._tokens,
     this._cache = const NoResponseCache(),
     this._activity,
+    this._signer,
   })  : _baseUrl = config.apiBaseUrl,
         _readTimeout = config.readTimeout,
         _readRetries = config.readRetries,
@@ -99,6 +101,12 @@ class DioApiClient implements ApiClient {
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          // Last, over the final URI: every retry passes through here again
+          // and gets a fresh nonce and timestamp.
+          final signer = _signer;
+          if (signer != null) {
+            options.headers.addAll(signer.headersFor(options.method, options.uri));
+          }
           handler.next(options);
         },
       ),
@@ -114,6 +122,10 @@ class DioApiClient implements ApiClient {
 
   /// What the app-wide loading bar reads; null where nothing shows one.
   final NetworkActivity? _activity;
+
+  /// Signs each request as coming from this app; null in builds without a
+  /// client secret (and in tests that do not exercise it).
+  final AppSigner? _signer;
 
   /// The pause before asking a stalled read again, multiplied by the attempt
   /// number — long enough not to hammer a link that has just stalled.
@@ -165,6 +177,7 @@ class DioApiClient implements ApiClient {
     Map<String, String>? headers,
     bool isRetry = false,
     int readAttempt = 0,
+    bool clockCorrected = false,
   }) async {
     final isRead = method == 'GET';
     try {
@@ -193,6 +206,22 @@ class DioApiClient implements ApiClient {
           readAttempt: readAttempt + 1,
         );
       }
+      // The API refused the signature because this device's clock is off.
+      // It said what time it is; line up with it and try once more.
+      final serverTime = clockCorrected ? null : _serverTimeIfClockSkew(e);
+      if (serverTime != null) {
+        _signer!.adoptServerTime(serverTime);
+        return _attempt(
+          method,
+          path,
+          body: body,
+          queryParameters: queryParameters,
+          headers: headers,
+          isRetry: isRetry,
+          readAttempt: readAttempt,
+          clockCorrected: true,
+        );
+      }
       if (e.response?.statusCode == 401 &&
           !isRetry &&
           !_isAuthRoute(path) &&
@@ -208,6 +237,15 @@ class DioApiClient implements ApiClient {
       }
       throw _translate(e);
     }
+  }
+
+  /// The API's clock, when [e] is its "device clock is off" refusal.
+  int? _serverTimeIfClockSkew(DioException e) {
+    final response = e.response;
+    if (_signer == null || response?.statusCode != 403) return null;
+    final data = response!.data;
+    if (data is! Map || data['code'] != AppSigner.clockSkewCode) return null;
+    return int.tryParse(response.headers.value(AppSigner.serverTimeHeader) ?? '');
   }
 
   /// A failure with no response behind it that another attempt could fix.
