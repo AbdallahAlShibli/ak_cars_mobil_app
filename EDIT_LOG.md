@@ -17,6 +17,34 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-18 · "Add your car": make picker opened empty
+
+**Baseline:** app `116f79b`; code in `0e0109a`.
+
+Request, verbatim: "Register car not working as expected" (screenshot: the "اختر الشركة المصنعة" sheet with a search box and nothing under it).
+
+### Cause
+
+- The API serves `/cars/catalog` correctly (checked locally and through the tunnel), but the phone never asked for it: across both API runs that day no `/cars/catalog` or `/locations` request arrived, while `/cars/spec-options` did.
+- `ResponseCacheScope` lives in a zone. Start-up's first load runs in a *prefer stored answers* zone, and anything registered inside it (listeners, subscriptions) keeps running in that zone for the whole session. `ResponseCacheScope.record` deliberately inherits an enclosing scope, so every refresh such a callback started — e.g. on app resume — was served from disk. A stale stored catalogue with no makes could therefore never be replaced.
+- The picker then showed that empty list with no message at all.
+
+### Changes
+
+| File | Change |
+|---|---|
+| `lib/core/network/response_cache.dart` | `ResponseCacheScope.close()`; `readsStoredAnswers` is false once closed. A closed scope still records answers for the next start-up. |
+| `lib/app/bootstrap.dart` | `_loadFirst` closes its scope when the first load ends, so nothing after it is answered from disk. |
+| `lib/features/garage/add_car_screen.dart` | `_ensureVehicleCatalog`: an empty catalogue is fetched live when the make picker opens (and `vehicleCatalogProvider` invalidated); if that fails, a snackbar says so instead of an empty sheet. A search with no match shows "لا توجد شركة بهذا الاسم". |
+| Tests | `response_cache_test` (a refresh begun in the start-up zone after close reaches the server — **fails** with `close()` as a no-op), `add_car_make_picker_test` (3: refetch on open, failure message, no-match text). |
+
+### Verified
+
+- `flutter analyze` clean; `flutter test` 737 passed (+ the new ones re-run after a lint fix).
+- Not reproduced on the phone itself (no device attached); the stored-empty-catalogue cause is inferred from the API log and the code, and the picker fix covers it whatever emptied it.
+
+---
+
 ## 2026-09-18 · Login failures from the API log: Twilio trial refuses our text; log fixes
 
 **Baseline:** API `084f3f5`.
