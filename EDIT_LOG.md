@@ -17,6 +17,69 @@ re-diagnosed from scratch.
 
 ---
 
+## 2026-09-19 · API build + AddSecurityMonitor applied (follow-up)
+
+**Request (verbatim):** "build all api projects and fix the errors then update the database"
+
+Follows *Security monitor + founder Security dashboard* below, which recorded the migration as not applied.
+
+- The solution build reported 6 errors, all MSB3021/MSB3027: the running `AKCars.Api.exe` (PID 21692, started from `bin\Debug`) had the DLLs locked. The 30 "warnings" were the copy retries. There were no compile errors. Fixed by stopping that process; no code change.
+- `dotnet build AKCarsMobileAPI.sln --no-incremental`: 0 errors, 0 warnings.
+- `dotnet ef database update` applied `20260919085140_AddSecurityMonitor` to `.\SQLEXPRESS / AKCarsMobileDb` (the only pending migration). `SecurityAlerts` and `SecurityEvents` exist and are empty.
+- `dotnet test` (Debug): 1196 passed, 0 failed.
+- **Not done:** the API was left stopped. It was running from `bin\Debug` with no launch arguments visible, so restart it with your usual launch profile (e.g. "https (Twilio)").
+
+---
+
+## 2026-09-19 · Security monitor + founder Security dashboard (API + app)
+
+**Baseline:** app `045f6f5`, API `1e4f1c0` (both uncommitted at time of writing).
+
+**Request (verbatim):** "I want you to build a new section in the owner dashboard which especially for security reasons which as tracking any suspicious trafficking on the api. If there any, the security dashboard job is to give me a full information about the alert and also in the alert details it should contain all attack info, ip address, location, device info, what he trying to attack, ... I think it should you build something modern in the backend to do this. Generate a modern dashboard with info graphics icons and images."
+
+**What was built**
+
+API — detection runs off the request path:
+- `SecurityMonitorMiddleware` (outside the exception handler, so it sees the final status) inspects every call: injection payloads in path/query/UA/Referer/small JSON bodies (SQLi, XSS, traversal, command injection, log4shell), scanner probe paths (`/.env`, `wp-login`, `.git`…), attack-tool user agents (sqlmap, nikto, nuclei…). After the call it reads the outcome: AppGate refusals (forged → ForgedSignature, replay → ReplayAttack, missing → UnsignedClient *only while AppGate is enforced*), and per-IP bursts via `BehaviourTracker` (wrong OTP codes → brute force, 401/403/429/404 floods). It never changes a response.
+- Findings go on a bounded channel (`SecurityObservationQueue`, drops under flood) → `SecurityMonitorHostedService` → `SecurityAlertWriter`: merges same IP + threat type + still-open + within 60 min into one alert, geolocates once per new alert (ipwho.is, cached 24 h, configurable/off-switch), parses the device from UA, keeps ≤200 evidence rows per alert, escalates one level past 100 calls, pushes founders on High/Critical (route `/admin/security/{id}`), purges alerts quiet > 90 days.
+- Client IP = `CF-Connecting-IP`, believed only when the connection itself is loopback/private (the local Cloudflare connector).
+- Founder-only endpoints `GET /security/overview?hours=`, `GET /security/alerts`, `GET /security/alerts/{id}`, `PUT /security/alerts/{id}/status`.
+- New tables `SecurityAlerts`, `SecurityEvents` — migration `AddSecurityMonitor` (additive only). Settings in `appsettings.json` → `SecurityMonitor`.
+- Evidence never stores `Authorization`, cookies or the app signature.
+
+App — new **Security** tab in the founder panel, plus alert list and detail screens:
+- Tab: threat gauge (0–100), KPI tiles, 24h/7d/30d switch, stacked severity timeline, threat-mix donut, top attackers (flag, IP, city, ISP), most targeted endpoints, attack origins, latest alerts.
+- Detail: hero with severity, explanation + advice, attack-path map (lat/long grid → Muscat, no tile server), IP/location/ISP/ASN/time zone, Open in Maps / reputation links, device & tool with UA, targets + firing rules + server responses, account used, expandable evidence log (payload, query, headers, trace id), related alerts from the same IP, triage bar (Investigate / False alarm / Resolve / Reopen, with note), copy-report.
+- Route `/admin/security/:alertId` is founder-guarded (guard now covers every `/admin/...`).
+
+**Files**
+
+| Area | Files |
+|---|---|
+| API domain | `Domain/Enums/SecurityEnums.cs`, `Domain/Entities/SecurityAlert.cs`, `SecurityEvent.cs` |
+| API app layer | `Application/Security/*` (catalog, DTOs, mappers, overview/list/detail queries, status command), `IAkCarsDbContext` |
+| API infra | `Infrastructure/Security/*`, `Persistence/Configurations/SecurityConfigurations.cs`, `AkCarsDbContext`, `DependencyInjection.cs`, migration `20260919085140_AddSecurityMonitor` |
+| API web | `Api/Common/SecurityMonitorMiddleware.cs`, `AppSignatureMiddleware.cs` (records its verdict in `HttpContext.Items`), `Endpoints/SecurityEndpoints.cs`, `Program.cs`, `appsettings.json` |
+| API tests | `tests/AKCars.Tests/Security/*` (signatures, UA parser, tracker, writer, full-pipeline integration) |
+| App | `data/models/security_*.dart`, `data/services/security_service.dart` + `api/api_security_service.dart`, `state/security_state.dart`, `features/operations/security/*`, `admin_screen.dart`, `app_router.dart`, `api_endpoints.dart`, `di/providers.dart`, `state/app_state.dart` |
+| App tests | `test/security_dashboard_test.dart` |
+
+**Verified**
+- API: `dotnet test -c Release` — 1196 passed, 0 failed (52 new). Build clean (Debug output could not be overwritten: the running API held the DLLs, so builds/tests used Release / a scratch output dir).
+- App: `flutter analyze` — no issues; `flutter test` — 750 passed (13 new). The widget test caught a real bug (ExpansionTile ink hidden inside a coloured card) — fixed.
+- Visual: temporary web preview with sample data screenshotted in headless Chrome, en/light and ar/dark; map grid contrast raised after the first look. Preview file deleted.
+
+**Not verified / to do before it is live**
+- Migration **not applied** — run `dotnet ef database update` on the real DB, then restart the API (the running instance predates this code).
+- Geolocation against the live ipwho.is service not exercised (tests turn it off).
+- Not tested on a device against the real API.
+
+**Known-adjacent, left alone**
+- `IpRateLimiting:RealIpHeader = CF-Connecting-IP` trusts that header from anyone who can reach the API directly; the monitor only trusts it from loopback/private. Worth aligning.
+- No "block this IP" action — blocking is advised at Cloudflare; an in-API blocklist would be a separate decision.
+
+---
+
 ## 2026-09-18 · Soft delete for everything customers and workshop owners delete (API)
 
 **Baseline:** API `a848899`; code in `1e4f1c0`.

@@ -356,4 +356,15 @@ abstract final class ApiEndpoints {
 
   static String toggleChallengeStep(String stepId) =>
       '/challenges/steps/$stepId/toggle';
+
+  // ------------------------------------------------------------ security
+  // Founder-only: the API's own record of suspicious traffic.
+
+  static const securityOverview = '/security/overview';
+  static const securityAlerts = '/security/alerts';
+
+  static String securityAlert(String alertId) => '/security/alerts/$alertId';
+
+  static String securityAlertStatus(String alertId) =>
+      '/security/alerts/$alertId/status';
 }

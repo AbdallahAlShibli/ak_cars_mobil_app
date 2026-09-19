@@ -34,6 +34,7 @@ import '../core/network/network_activity.dart';
 import '../core/network/response_cache.dart';
 import '../core/push/push_service.dart';
 import '../data/services/api/api_admin_workshop_service.dart';
+import '../data/services/api/api_security_service.dart';
 import '../data/services/api/api_auth_service.dart';
 import '../data/services/api/api_cars_service.dart';
 import '../data/services/api/api_catalog_service.dart';
@@ -78,6 +79,7 @@ import '../data/services/service_marketplace_service.dart';
 import '../data/services/session_routed_services.dart';
 import '../data/services/shop_service.dart';
 import '../data/services/admin_workshop_service.dart';
+import '../data/services/security_service.dart';
 import '../data/services/workshop_service.dart';
 
 // ---------------------------------------------------------------- platform
@@ -303,6 +305,10 @@ final jobWorkspaceServiceProvider = Provider<JobWorkspaceService>(
 
 final adminWorkshopServiceProvider = Provider<AdminWorkshopService>(
   (ref) => ApiAdminWorkshopService(ref.watch(apiClientProvider)),
+);
+
+final securityServiceProvider = Provider<SecurityService>(
+  (ref) => ApiSecurityService(ref.watch(apiClientProvider)),
 );
 
 // ------------------------------------------------------------- repositories

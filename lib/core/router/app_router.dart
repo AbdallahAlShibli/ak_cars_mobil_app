@@ -25,6 +25,7 @@ import '../../features/garage/my_cars_screen.dart';
 import '../../features/home/notifications_screen.dart';
 import '../../features/operations/admin_screen.dart';
 import '../../features/operations/admin_workshop_detail_screen.dart';
+import '../../features/operations/security/security_alert_detail_screen.dart';
 import '../../features/workshop_dashboard/add_ons_screen.dart';
 import '../../features/workshop_dashboard/dashboard_home_screen.dart';
 import '../../features/workshop_dashboard/inventory_screen.dart';
@@ -232,6 +233,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ),
         GoRoute(
+          path: '/admin/security/:alertId',
+          builder: (context, state) => SecurityAlertDetailScreen(
+            alertId: state.pathParameters['alertId']!,
+          ),
+        ),
+        GoRoute(
           path: '/workshop/dashboard',
           builder: (context, state) => const DashboardHomeScreen(),
         ),
@@ -384,12 +391,13 @@ final routerProvider = Provider<GoRouter>((ref) {
 String? _guardOperatorPanels(Ref ref, GoRouterState state) {
   final location = state.matchedLocation;
   final isDashboard = location.startsWith('/workshop/dashboard');
-  final isAdminWorkshopDetail = location.startsWith('/admin/workshops/');
-  if (location != '/admin' && !isAdminWorkshopDetail && !isDashboard) {
+  // Every /admin/... page (workshop detail, security alert) is founder-only.
+  final isAdminDetail = location.startsWith('/admin/');
+  if (location != '/admin' && !isAdminDetail && !isDashboard) {
     return null;
   }
 
-  if (location == '/admin' || isAdminWorkshopDetail) {
+  if (location == '/admin' || isAdminDetail) {
     return ref.read(authProvider).isFounder ? null : '/profile';
   }
 

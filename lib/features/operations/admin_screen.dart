@@ -16,6 +16,7 @@ import 'admin_today_tab.dart';
 import 'admin_workshops_tab.dart';
 
 import 'operator_shell.dart';
+import 'security/admin_security_tab.dart';
 
 /// The founder's panel (spec §3 note 2 and §6, restructured by phase 2.5 §5).
 ///
@@ -33,6 +34,8 @@ import 'operator_shell.dart';
 /// * **Money** — the escrow ledger and what each workshop is owed.
 /// * **Offers** — the discounts themselves: create, edit, enable, delete.
 /// * **Log** — who changed what, when, and why.
+/// * **Security** — what the API's security monitor has caught: attacks,
+///   where they came from, what they went for.
 class AdminScreen extends ConsumerWidget {
   const AdminScreen({super.key});
 
@@ -70,6 +73,9 @@ class AdminScreen extends ConsumerWidget {
         if (ref.exists(adminPromotionsProvider)) {
           await ref.read(adminPromotionsProvider.notifier).refresh();
         }
+        // The Security tab's providers are auto-disposed and only alive while
+        // it is on screen; bumping the revision re-reads whichever are.
+        ref.read(securityRevisionProvider.notifier).state++;
       },
       banner: OffAppTransferNotice(
         s.t(
@@ -101,6 +107,10 @@ class AdminScreen extends ConsumerWidget {
         OperatorTab(
           label: s.t('السجل', 'Log'),
           builder: (context) => const AdminAuditTab(),
+        ),
+        OperatorTab(
+          label: s.t('الأمان', 'Security'),
+          builder: (context) => const AdminSecurityTab(),
         ),
       ],
     );
